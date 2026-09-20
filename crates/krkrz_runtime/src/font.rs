@@ -2,14 +2,15 @@
 use crate::{Services, layer::object};
 use anyhow::{Context, Result};
 use krkrz_tjs::{Value, Vm, unsupported};
+#[derive(Clone)]
 pub(crate) struct Font {
-    face: String,
-    height: i32,
-    angle: i32,
-    bold: bool,
-    italic: bool,
-    underline: bool,
-    strikeout: bool,
+    pub(crate) face: String,
+    pub(crate) height: i32,
+    pub(crate) angle: i32,
+    pub(crate) bold: bool,
+    pub(crate) italic: bool,
+    pub(crate) underline: bool,
+    pub(crate) strikeout: bool,
 }
 impl Default for Font {
     fn default() -> Self {

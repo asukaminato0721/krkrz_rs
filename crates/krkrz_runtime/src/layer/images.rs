@@ -14,6 +14,59 @@ fn extension(name: &str) -> &str {
 }
 
 impl Services {
+    pub(super) fn layer_assign_images(
+        &mut self,
+        id: usize,
+        source: &Value,
+        budget: &mut u64,
+    ) -> Result<Value> {
+        let source = object(source)?.context("image source is null")?;
+        let src = self
+            .layers
+            .get(&source)
+            .context("image source is not a Layer")?;
+        if source == id {
+            let layer = self.layers.get_mut(&id).unwrap();
+            layer.image_modified = true;
+            if layer.image.is_some() {
+                layer.reset_clip()?;
+            }
+            return Ok(Value::Void);
+        }
+        let bytes = src.image.as_ref().map_or(0, |i| i.rgba.len())
+            + src.province.as_ref().map_or(0, |p| p.pixels.len());
+        let used: usize = self
+            .layers
+            .iter()
+            .filter(|(key, _)| **key != id)
+            .map(|(_, l)| {
+                l.image.as_ref().map_or(0, |i| i.rgba.len())
+                    + l.province.as_ref().map_or(0, |p| p.pixels.len())
+            })
+            .sum();
+        ensure!(
+            used + bytes <= 256 << 20,
+            "session layer image memory limit exceeded"
+        );
+        *budget = budget
+            .checked_sub(bytes as u64 / 4)
+            .ok_or_else(|| unsupported("image assignment execution budget exceeded"))?;
+        let (image, province) = (src.image.clone(), src.province.clone());
+        let dest = self.layers.get_mut(&id).unwrap();
+        dest.image = image;
+        dest.province = province;
+        if let Some(image) = &dest.image {
+            let (w, h) = (image.width as i32, image.height as i32);
+            dest.width = dest.width.min(w);
+            dest.height = dest.height.min(h);
+            dest.image_left = dest.image_left.max(dest.width - w);
+            dest.image_top = dest.image_top.max(dest.height - h);
+            dest.reset_clip()?;
+        }
+        dest.image_modified = true;
+        Ok(Value::Void)
+    }
+
     fn suggest_graphic(&self, name: &str) -> Option<String> {
         EXTENSIONS
             .iter()

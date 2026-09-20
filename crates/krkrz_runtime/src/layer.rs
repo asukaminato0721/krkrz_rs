@@ -4,6 +4,7 @@ use anyhow::{Context, Result, ensure};
 use krkrz_assets::media::Image;
 use krkrz_tjs::{ObjectRef, Value, Vm, unsupported};
 
+#[derive(Clone)]
 struct Province {
     width: usize,
     height: usize,
@@ -946,6 +947,12 @@ impl Services {
         if op == "loadImages" {
             return self.layer_load_images(vm, id, args, budget);
         }
+        if op == "assignImages" {
+            return self.layer_assign_images(id, arg(0)?, budget);
+        }
+        if op == "drawText" {
+            return self.layer_draw_text(id, args, budget);
+        }
         if matches!(op, "copyRect" | "operateRect") {
             return self.layer_blit(id, op, args, budget);
         }
@@ -971,6 +978,7 @@ impl Services {
 mod blit;
 mod focus;
 mod images;
+mod text;
 
 // Match TVPOpacityOnOpacityTable's single-precision construction rather than
 // replacing its 8-bit interpolation with a different compositing formula.

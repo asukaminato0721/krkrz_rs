@@ -5,6 +5,9 @@ use krkrz_tjs::unsupported;
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, sync::Arc};
 
+mod raster;
+pub(crate) use raster::TextGlyph;
+
 #[derive(Clone)]
 struct Face {
     data: Arc<[u8]>,

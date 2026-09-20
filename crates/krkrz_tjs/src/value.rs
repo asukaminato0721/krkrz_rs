@@ -249,9 +249,10 @@ pub fn parse_number(text: &str) -> Value {
         ("Infinity", Value::Real(f64::INFINITY * sign as f64)),
     ] {
         if let Some(rest) = s.strip_prefix(word)
-            && !rest.chars().next().is_some_and(|c| {
-                c.is_ascii_alphabetic() || c == '_' || c as u32 >= 0x100
-            })
+            && !rest
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic() || c == '_' || c as u32 >= 0x100)
         {
             return value;
         }
