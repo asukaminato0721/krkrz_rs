@@ -8,6 +8,7 @@ license = "MIT AND BSD-3-Clause"
 anyhow.workspace = true
 serde.workspace = true
 krkrz_core.workspace = true
+fancy-regex = "0.16.2"
 
 [dev-dependencies]
 tempfile.workspace = true

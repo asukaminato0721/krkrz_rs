@@ -32,8 +32,13 @@ pub(crate) enum ObjectKind {
     Class {
         definition: Arc<Class>,
         bases: Vec<usize>,
+        native_initializer: Option<String>,
     },
     Instance,
+    RegExp {
+        compiled: Arc<fancy_regex::Regex>,
+        global: bool,
+    },
     Property {
         getter: Option<Value>,
         setter: Option<Value>,
@@ -54,6 +59,11 @@ pub(crate) struct Object {
     pub members: BTreeMap<Vec<u16>, Value>,
     pub owner: Option<usize>,
     pub classes: Vec<String>,
+    pub member_flags: BTreeMap<Vec<u16>, u32>,
+    // Native static methods receive the script caller's this, not their namespace.
+    pub native_static: bool,
+    pub member_layout: crate::member_layout::MemberLayout,
+    pub hash_generation: u64,
 }
 impl Object {
     pub fn new(kind: ObjectKind) -> Self {
@@ -62,6 +72,10 @@ impl Object {
             members: BTreeMap::new(),
             owner: None,
             classes: vec![],
+            member_flags: BTreeMap::new(),
+            native_static: false,
+            member_layout: Default::default(),
+            hash_generation: 0,
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::{
     Argument, Class, Function, Instruction, Op, Program, Property, Value,
-    lexer::{Kind, Token, lex},
+    lexer::{Kind, Token, lex_with_preprocessor},
     unsupported,
 };
 use anyhow::{Result, bail, ensure};
@@ -180,10 +180,15 @@ impl Compiler {
             let mut items = vec![];
             while !self.eat("]") {
                 let key = self.expression(0)?;
-                ensure!(
-                    self.eat("=>") || self.eat(":"),
-                    "expected dictionary key separator"
-                );
+                let key = if self.eat(":") {
+                    match key {
+                        Expr::Name(n) => Expr::Value(Value::string(&n)),
+                        e => e,
+                    }
+                } else {
+                    self.expect("=>")?;
+                    key
+                };
                 let value = self.expression(0)?;
                 items.push((key, value));
                 if self.eat("]") {
@@ -210,7 +215,7 @@ impl Compiler {
             };
             Expr::Construct(callee, args)
         } else if [
-            "!", "~", "+", "-", "typeof", "int", "real", "string", "#", "$", "&", "*",
+            "!", "~", "+", "-", "typeof", "int", "real", "string", "#", "$", "&", "*", "delete",
         ]
         .iter()
         .any(|op| self.is(op))
@@ -223,20 +228,22 @@ impl Compiler {
             Expr::Unary(op, Box::new(self.expression(14)?))
         } else {
             match self.tokens[self.pos].kind.clone() {
+                Kind::Regex { pattern, flags } => {
+                    self.pos += 1;
+                    Expr::Construct(
+                        Box::new(Expr::Name("RegExp".into())),
+                        vec![
+                            Expr::Value(Value::string(&pattern)),
+                            Expr::Value(Value::string(&flags)),
+                        ],
+                    )
+                }
                 Kind::Literal(v) => {
                     self.pos += 1;
                     Expr::Value(v)
                 }
                 Kind::Name(n) => {
-                    if [
-                        "delete",
-                        "invalidate",
-                        "isvalid",
-                        "instanceof",
-                        "switch",
-                        "do",
-                    ]
-                    .contains(&n.as_str())
+                    if ["invalidate", "isvalid", "instanceof", "switch", "do"].contains(&n.as_str())
                     {
                         return Err(unsupported(format!("unsupported TJS construct {n}")));
                     }
@@ -394,6 +401,36 @@ impl Compiler {
             })
             .collect()
     }
+    fn compile_discard(&mut self, e: Expr, at: &SourceLocation) -> Result<()> {
+        if let Expr::Eval(e) = e {
+            let input = self.compile_expr(*e, at)?;
+            let out = self.reg();
+            self.emit(
+                Op::Eval {
+                    out,
+                    input,
+                    result_needed: false,
+                },
+                at,
+            );
+        } else {
+            let out = self.compile_expr(e, at)?;
+            if let Some(Instruction {
+                op:
+                    Op::Call {
+                        out: call_out,
+                        result_needed,
+                        ..
+                    },
+                ..
+            }) = self.program.code.last_mut()
+                && *call_out == out
+            {
+                *result_needed = false;
+            }
+        }
+        Ok(())
+    }
     fn compile_expr(&mut self, e: Expr, at: &SourceLocation) -> Result<usize> {
         let out = self.reg();
         match e {
@@ -468,6 +505,17 @@ impl Compiler {
                     at,
                 );
             }
+            Expr::Unary(op, e) if op == "delete" => match *e {
+                Expr::Name(name) => {
+                    self.emit(Op::DeleteName { out, name }, at);
+                }
+                Expr::Member(receiver, key) => {
+                    let object = self.compile_expr(*receiver, at)?;
+                    let key = self.compile_expr(*key, at)?;
+                    self.emit(Op::DeleteMember { out, object, key }, at);
+                }
+                _ => bail!("delete requires a member or variable"),
+            },
             Expr::Unary(op, e) if op == "&" => return self.read_raw(*e, false, true, at),
             Expr::Unary(op, e) if op == "*" => {
                 let input = self.compile_expr(*e, at)?;
@@ -582,6 +630,7 @@ impl Compiler {
                         callee,
                         context,
                         args,
+                        result_needed: true,
                     },
                     at,
                 );
@@ -593,7 +642,14 @@ impl Compiler {
             }
             Expr::Eval(e) => {
                 let input = self.compile_expr(*e, at)?;
-                self.emit(Op::Eval { out, input }, at);
+                self.emit(
+                    Op::Eval {
+                        out,
+                        input,
+                        result_needed: true,
+                    },
+                    at,
+                );
             }
             Expr::Conditional(test, yes, no) => {
                 let test = self.compile_expr(*test, at)?;
@@ -1037,15 +1093,13 @@ impl Compiler {
         }
         let e = self.expression(0)?;
         if self.eat("if") {
-            self.expect("(")?;
             let test = self.expression(0)?;
-            self.expect(")")?;
             let input = self.compile_expr(test, &at)?;
             let end = self.emit(Op::JumpUnless { input, target: 0 }, &at);
-            self.compile_expr(e, &at)?;
+            self.compile_discard(e, &at)?;
             self.patch(end);
         } else {
-            self.compile_expr(e, &at)?;
+            self.compile_discard(e, &at)?;
         }
         self.end()
     }
@@ -1055,9 +1109,14 @@ enum Target {
     Member(usize, usize, bool),
     Property(usize),
 }
-fn run_compile(storage: &str, source: &str, expression: bool) -> Result<Program> {
+pub fn compile_with_preprocessor(
+    storage: &str,
+    source: &str,
+    expression: bool,
+    state: &mut crate::Preprocessor,
+) -> Result<Program> {
     let mut c = Compiler {
-        tokens: lex(storage, source)?,
+        tokens: lex_with_preprocessor(storage, source, state)?,
         pos: 0,
         program: Program {
             storage: storage.into(),
@@ -1093,10 +1152,10 @@ fn run_compile(storage: &str, source: &str, expression: bool) -> Result<Program>
     Ok(c.program)
 }
 pub fn compile(storage: &str, source: &str) -> Result<Program> {
-    run_compile(storage, source, false)
+    compile_with_preprocessor(storage, source, false, &mut crate::Preprocessor::default())
 }
 pub fn compile_expression(storage: &str, source: &str) -> Result<Program> {
-    run_compile(storage, source, true)
+    compile_with_preprocessor(storage, source, true, &mut crate::Preprocessor::default())
 }
 #[cfg(test)]
 mod tests {

@@ -1,5 +1,5 @@
 use crate::object::ObjectKind;
-use crate::{Value, Vm, unsupported};
+use crate::{Host, Value, Vm, unsupported};
 use anyhow::{Context, Result, bail, ensure};
 
 fn units(value: &Value) -> Vec<u16> {
@@ -16,6 +16,27 @@ fn index(key: &Value) -> Option<i64> {
     }
 }
 impl Vm {
+    pub(crate) fn delete_member(&mut self, receiver: &Value, key: &Value) -> Result<Value> {
+        let id = self.object_id(receiver)?;
+        self.objects[id].member_flags.remove(&units(key));
+        self.objects[id].member_layout.remove(&units(key));
+        let removed = if id == 0 {
+            self.globals.remove(&key.text()).is_some()
+        } else if let ObjectKind::Array(items) = &mut self.objects[id].kind
+            && let Some(index) = index(key)
+        {
+            if index >= 0 && (index as usize) < items.len() {
+                items.remove(index as usize);
+                true
+            } else {
+                false
+            }
+        } else {
+            self.objects[id].members.remove(&units(key)).is_some()
+        };
+        Ok(Value::Integer(i64::from(removed)))
+    }
+
     pub(crate) fn has_member(&self, receiver: &Value, key: &Value) -> Result<bool> {
         if matches!(receiver, Value::String(_)) {
             return Ok(false);
@@ -56,6 +77,8 @@ impl Vm {
                 ));
             }
             if [
+                "replace",
+                "match",
                 "reverse",
                 "split",
                 "substring",
@@ -87,6 +110,12 @@ impl Vm {
                 .or_else(|| optional.then_some(Value::Void))
                 .with_context(|| format!("member not found: {name}"));
         }
+        if self.objects[id].hash_generation != self.hash_generation {
+            let count = self.objects[id].members.len();
+            self.objects[id].member_layout.rehash(count);
+            self.objects[id].hash_generation = self.hash_generation;
+        }
+        self.objects[id].member_layout.touch(&units(key));
         let object = &self.objects[id];
         if let Some(value) = object.members.get(&units(key)) {
             return Ok(value.clone());
@@ -105,6 +134,14 @@ impl Vm {
                     return Ok(value);
                 }
             }
+        }
+        if matches!(object.kind, ObjectKind::RegExp { .. })
+            && ["replace", "split", "match", "test", "exec"].contains(&name.as_str())
+        {
+            return self.allocate(ObjectKind::Method {
+                receiver: receiver.clone(),
+                name,
+            });
         }
         if let ObjectKind::Array(items) = &object.kind {
             if name == "count" || name == "length" {
@@ -133,6 +170,7 @@ impl Vm {
     }
     pub fn set_member(&mut self, receiver: &Value, key: &Value, value: Value) -> Result<()> {
         let id = self.object_id(receiver)?;
+        self.objects[id].member_flags.remove(&units(key));
         if id == 0 {
             self.globals.insert(key.text(), value);
             return Ok(());
@@ -159,15 +197,38 @@ impl Vm {
             self.objects[id].members.len() < 100_000,
             "object member limit exceeded"
         );
+        self.objects[id].member_layout.insert(&units(key));
         self.objects[id].members.insert(units(key), value);
         Ok(())
     }
-    pub(crate) fn method(&mut self, receiver: &Value, name: &str, args: &[Value]) -> Result<Value> {
+    pub(crate) fn method(
+        &mut self,
+        receiver: &Value,
+        name: &str,
+        args: &[Value],
+        host: &mut impl Host,
+        budget: &mut u64,
+    ) -> Result<Value> {
         let arg = |i| {
             args.get(i)
                 .with_context(|| format!("{name}: missing argument {i}"))
         };
+        if let Value::Object(_) = receiver
+            && matches!(
+                self.objects[self.object_id(receiver)?].kind,
+                ObjectKind::RegExp { .. }
+            )
+        {
+            return self.regexp_method(receiver, name, args, host, budget);
+        }
         if let Value::String(s) = receiver {
+            if ["replace", "match", "split"].contains(&name)
+                && matches!(args.first(), Some(Value::Object(_)))
+            {
+                let mut forwarded = vec![receiver.clone()];
+                forwarded.extend_from_slice(&args[1..]);
+                return self.regexp_method(&args[0], name, &forwarded, host, budget);
+            }
             return match name {
                 "reverse" => Ok(Value::String(s.iter().copied().rev().collect())),
                 "toLowerCase" | "toUpperCase" => Ok(Value::String(

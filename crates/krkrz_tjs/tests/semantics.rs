@@ -42,3 +42,10 @@ fn thrown_object_preserves_identity_and_handlers_unwind_with_scopes() {
         .unwrap();
     assert_eq!(result, Value::Integer(1));
 }
+
+#[test]
+fn adjacent_strings_require_whitespace_and_matching_delimiters() {
+    for source in ["return 'a' /*comment*/ 'b';", "return 'a' \"b\";"] {
+        assert!(compile("adjacent", source).is_err(), "{source}");
+    }
+}

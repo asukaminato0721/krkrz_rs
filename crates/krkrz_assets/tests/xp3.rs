@@ -121,6 +121,50 @@ fn patch_overrides_and_search_paths() {
     assert_eq!(s.read("scn/start.ks").unwrap(), b"old");
     assert!(s.extract("start.ks", &d.path().join("new.ks")).is_err());
 }
+
+#[test]
+fn qualified_paths_select_the_named_archive_and_roundtrip_placed_paths() {
+    let d = tempfile::tempdir().unwrap();
+    for (archive, content) in [
+        ("data.xp3", b"original".as_slice()),
+        ("patch2.xp3", b"patched"),
+    ] {
+        std::fs::write(
+            d.path().join(archive),
+            fixture("scripts/start.tjs", content, true, false),
+        )
+        .unwrap();
+    }
+    let mut storage = Storage::open(
+        d.path(),
+        Some(CxEncryption::otome_domain().unwrap()),
+        Limits::default(),
+    )
+    .unwrap();
+    assert_eq!(storage.read("scripts/start.tjs").unwrap(), b"patched");
+    assert_eq!(
+        storage.read("DATA.XP3>Scripts/START.TJS").unwrap(),
+        b"original"
+    );
+    let placed = storage.placed_path("data.xp3>scripts/start.tjs").unwrap();
+    assert_eq!(storage.read(&placed).unwrap(), b"original");
+    storage.verify(&placed).unwrap();
+    storage
+        .add_search_path(&format!("{}/data.xp3>scripts/", d.path().display()))
+        .unwrap();
+    assert_eq!(storage.read("start.tjs").unwrap(), b"original");
+    storage.add_search_path("patch2.xp3>scripts").unwrap();
+    assert_eq!(storage.read("start.tjs").unwrap(), b"patched");
+    storage.add_search_path("data.xp3>scripts").unwrap();
+    assert_eq!(storage.read("start.tjs").unwrap(), b"original");
+    assert!(storage.read("data.xp3>../scripts/start.tjs").is_err());
+    assert!(
+        storage
+            .read("data.xp3>../patch2.xp3>scripts/start.tjs")
+            .is_err()
+    );
+    assert!(storage.read("/outside/data.xp3>scripts/start.tjs").is_err());
+}
 #[test]
 fn bad_offsets_truncation_and_budgets() {
     let d = tempfile::tempdir().unwrap();

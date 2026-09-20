@@ -34,6 +34,15 @@ IN THE SOFTWARE.
 TLG5 decoding derives from W.Dee’s TLG implementation through GARbro.
 Text stream decoding and TJS value, object, and interpreter semantics follow
 Kirikiri Z (`tjs2/tjsVariant.cpp`, `tjsInterCodeExec.cpp`, `tjsObject.cpp`).
+Preprocessor, regex binding and native-class/window event behavior also follow
+`tjsCompileControl.cpp`, `tjsLex.cpp`, `tjsRegExp.cpp`, `tjsNative.cpp`,
+`visual/WindowIntf.cpp` and `base/EventIntf.h`.
+ScriptsEx reflection, structural operations and traversal derive from
+`krkrz/krkr2`, revision `dec49af97e174d31059c3ccd7efc700ba3c6b788`,
+`kirikiri2/trunk/kirikiri2/src/plugins/win32/scriptsEx/Main.cpp`.
+Its authors are Go Watanabe / ゆんゆん探偵; its readme specifies the
+Kirikiri license reproduced below. Member enumeration and deferred rehashing
+follow Kirikiri Z `tjs2/tjsObject.cpp` and `tjs2/tjsHashSearch.h`.
 Habakiri is used only as an external differential-test reference. Its Java
 sources are not bundled or linked into the Rust engine.
 SLI parsing and PCM loop mixing are adapted from Kirikiri Z

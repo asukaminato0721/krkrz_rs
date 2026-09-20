@@ -20,7 +20,8 @@ impl Value {
         object: None,
         context: None,
     });
-    pub(crate) fn object(id: usize) -> Self {
+    /// Unbound object handle. The VM validates the ID when it is used.
+    pub fn object(id: usize) -> Self {
         Self::Object(ObjectRef {
             object: Some(id),
             context: None,

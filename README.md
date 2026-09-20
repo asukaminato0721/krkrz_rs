@@ -2,8 +2,9 @@
 
 This repository contains an initial implementation toward the Otome Domain
 playable slice. **The game is not playable yet.** Original startup now
-executes through its framework call. Compilation of `system/Initialize.tjs`
-stops at line 80 because TJS preprocessing (`@if`) is not implemented. The title,
+executes its framework, including preprocessing and archive setup. Execution
+currently stops at `system/Initialize.tjs:301` because `PackinOne.dll` has no
+registered Rust replacement yet. The title,
 New Game, first choice, scene transition, and original save/load acceptance
 criteria have not been met. Execution failures never count as checkpoints.
 
@@ -45,7 +46,8 @@ candidates**, including lexer diagnostics; it does not establish reachability.
 `compile` emits this implementation's diagnostic register instructions, not
 Kirikiri's original bytecode format. `exec` runs a source file in the standalone
 TJS VM and prints a JSON value; Kirikiri services are provided by the engine
-command instead.
+command or `exec NAME --runtime`. The runtime option uses the same Session as
+the engine, including plugin registration and shared execution budgets.
 
 An unfiltered `verify` deliberately returns failure for the installation's
 malformed protection-notice entry. It verifies all other resolved resources
@@ -80,15 +82,23 @@ outside the installation.
 | Crate | Implemented | Still required for the slice |
 |---|---|---|
 | `krkrz_core` | Storage-name normalization, resource limits, source/input types, separate save path selection | Full Kirikiri URI/media normalization |
-| `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, text decoding, PSB v2, PNG/JPEG/TLG5, Vorbis PCM, SLI loops and labels | TLG6, PSB plugin object bindings, font integration, MPEG/AlphaMovie |
-| `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, loops, interpolation, argument forwarding/rest/spread, `instanceof`, register interpreter, budgets, community differential tests | Preprocessing, full grammar and built-ins, function hoisting/default arguments, object finalization/collection, original bytecode loader |
+| `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding, PSB v2, PNG/JPEG/TLG5, Vorbis PCM, SLI loops and labels | TLG6, PSB plugin object bindings, font integration, MPEG/AlphaMovie |
+| `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, loops, interpolation, argument forwarding/rest/spread, `instanceof`, preprocessing, RegExp, native class/accessor registration, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting/default arguments, object finalization/collection, original bytecode loader |
 | `krkrz_kag` | Ordered tags/attributes, labels, text/escaped brackets, multiline tags, explicit jump/call/return and restorable cursor | Macros, conditionals, parameter expansion, script-driven parser bindings, complete KAGParserEx state |
-| `krkrz_runtime` | Shared session services, nested script execution, basic storage/script/debug natives, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
+| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, Window state and deferred resize callbacks, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
 | `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, static inventory, primitive evaluation, startup diagnostics | Deterministic interactive replay, input-driven checkpoints, frame/audio comparison, native play |
 
-The compositor, scheduler and PCM mixer are tested components, not yet a game player.
+The compositor, scheduler, Window state and PCM mixer are tested components, not yet a game player. Window support currently covers construction, caption, visibility, client size, position, primary-layer lookup and resize/action callbacks in headless sessions. It does not create an OS window.
 The interpreter deliberately rejects unsupported constructs; it does
 not replace TJS with JavaScript. KAG cursor restoration is not a game save.
+
+The standalone `ScriptsEx.dll` replacement now provides dictionary reflection,
+object-context inspection, flagged property access, structural comparison,
+recursive cloning, array/dictionary callbacks and deferred rehashing. It follows
+the community source and the installed PackinOne component's behavior. Array
+member reflection and octet MD5 remain explicit unsupported operations, as do
+some object kinds in `foreach`. This component is not yet a replacement for
+the complete PackinOne bundle, so original startup still stops at that plugin.
 
 ## Installed-game validation
 

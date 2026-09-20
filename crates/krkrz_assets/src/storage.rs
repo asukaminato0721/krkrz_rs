@@ -57,21 +57,68 @@ impl Storage {
         Ok(())
     }
     pub fn add_search_path(&mut self, path: &str) -> Result<()> {
-        let path = storage_name(path)?;
-        if !self.search_paths.contains(&path) {
-            self.search_paths.push(path);
-        }
+        let path = self.normalize(path, true)?;
+        self.search_paths.retain(|existing| existing != &path);
+        self.search_paths.push(path);
         Ok(())
     }
+    fn normalize(&self, name: &str, directory: bool) -> Result<String> {
+        let name = name.replace('\\', "/");
+        let prefix = format!("{}/", self.project.display());
+        let name = if name
+            .to_ascii_lowercase()
+            .starts_with(&prefix.to_ascii_lowercase())
+        {
+            &name[prefix.len()..]
+        } else {
+            &name
+        };
+        if let Some((archive, member)) = name.split_once('>') {
+            ensure!(
+                !member.contains('>'),
+                "nested archive storage is not supported"
+            );
+            let archive = storage_name(archive)?;
+            let member = if directory && member.is_empty() {
+                String::new()
+            } else {
+                storage_name(member)?
+            };
+            Ok(format!("{archive}>{member}"))
+        } else {
+            storage_name(name)
+        }
+    }
+    fn archive_location<'a>(&self, name: &'a str) -> Option<(usize, &'a str)> {
+        if let Some((archive, member)) = name.split_once('>') {
+            self.archives
+                .iter()
+                .position(|a| {
+                    a.path
+                        .strip_prefix(&self.project)
+                        .is_ok_and(|p| p.to_string_lossy().eq_ignore_ascii_case(archive))
+                })
+                .filter(|i| self.archives[*i].entries.contains_key(member))
+                .map(|i| (i, member))
+        } else {
+            self.catalog.get(name).map(|i| (*i, name))
+        }
+    }
+    fn contains(&self, name: &str) -> Result<bool> {
+        Ok(self.loose_path(name)?.is_some() || self.archive_location(name).is_some())
+    }
     pub fn resolve(&self, name: &str) -> Result<String> {
-        let name = storage_name(name)?;
-        if self.loose_path(&name)?.is_some() || self.catalog.contains_key(&name) {
+        let name = self.normalize(name, false)?;
+        if self.contains(&name)? {
             return Ok(name);
         }
-        for path in self.search_paths.iter().rev() {
-            let candidate = format!("{path}/{name}");
-            if self.loose_path(&candidate)?.is_some() || self.catalog.contains_key(&candidate) {
-                return Ok(candidate);
+        if !name.contains('>') {
+            for path in self.search_paths.iter().rev() {
+                let separator = if path.ends_with('>') { "" } else { "/" };
+                let candidate = format!("{path}{separator}{name}");
+                if self.contains(&candidate)? {
+                    return Ok(candidate);
+                }
             }
         }
         // Kirikiri auto-paths must be registered explicitly. Do not silently choose
@@ -96,12 +143,17 @@ impl Storage {
             );
             return Ok(bytes);
         }
-        let index = self.catalog[&name];
+        let (index, member) = self
+            .archive_location(&name)
+            .context("archive entry disappeared")?;
         self.archives[index]
-            .read(&name, self.cipher.as_ref())
+            .read(member, self.cipher.as_ref())
             .with_context(|| format!("read {name}"))
     }
     fn loose_path(&self, name: &str) -> Result<Option<PathBuf>> {
+        if name.contains('>') {
+            return Ok(None);
+        }
         let mut path = self.project.clone();
         for component in name.split('/') {
             if !path.is_dir() {
@@ -147,12 +199,11 @@ impl Storage {
     }
     pub fn entry(&self, name: &str) -> Result<(&Path, &Entry)> {
         let name = self.resolve(name)?;
-        let index = *self
-            .catalog
-            .get(&name)
+        let (index, member) = self
+            .archive_location(&name)
             .context("storage is a loose file, not an archive entry")?;
         let archive = &self.archives[index];
-        Ok((&archive.path, &archive.entries[&name]))
+        Ok((&archive.path, &archive.entries[member]))
     }
     pub fn verify(&mut self, name: &str) -> Result<()> {
         let name = self.resolve(name)?;
@@ -160,8 +211,10 @@ impl Storage {
             self.loose_path(&name)?.is_none(),
             "loose file has no XP3 checksum: {name}"
         );
-        let index = self.catalog[&name];
-        self.archives[index].verify(&name, self.cipher.as_ref())
+        let (index, member) = self
+            .archive_location(&name)
+            .context("archive entry disappeared")?;
+        self.archives[index].verify(member, self.cipher.as_ref())
     }
     /// Extract a single explicitly named storage. Never overwrite an existing file.
     pub fn extract(&mut self, name: &str, destination: &Path) -> Result<()> {

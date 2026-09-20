@@ -50,9 +50,11 @@ enum Command {
     Kag { name: String },
     /// Compile the supported TJS subset to diagnostic register instructions.
     Compile { name: String },
-    /// Execute a source script with the TJS core (without Kirikiri host services).
+    /// Execute a source script, optionally with Kirikiri session services.
     Exec {
         name: String,
+        #[arg(long)]
+        runtime: bool,
         #[arg(long, default_value_t = 100000)]
         budget: u64,
     },
@@ -152,9 +154,30 @@ fn run() -> Result<()> {
             &mut out,
             &krkrz_tjs::compile(&name, &text::decode(&storage.read(&name)?)?)?,
         )?,
-        Command::Exec { name, mut budget } => {
-            let program = krkrz_tjs::compile(&name, &text::decode(&storage.read(&name)?)?)?;
-            let value = krkrz_tjs::Vm::default().execute(&program, &mut (), &mut budget)?;
+        Command::Exec {
+            name,
+            mut budget,
+            runtime,
+        } => {
+            if runtime {
+                let mut session = krkrz_runtime::Session::open(
+                    &args.project_dir,
+                    None,
+                    matches!(args.profile, Profile::OtomeDomain),
+                    budget,
+                )?;
+                let value = session.execute_storage(&name)?;
+                serde_json::to_writer_pretty(&mut out, &value)?;
+                return Ok(());
+            }
+            let mut vm = krkrz_tjs::Vm::default();
+            let program = krkrz_tjs::compile_with_preprocessor(
+                &name,
+                &text::decode(&storage.read(&name)?)?,
+                false,
+                &mut vm.preprocessor,
+            )?;
+            let value = vm.execute(&program, &mut (), &mut budget)?;
             serde_json::to_writer_pretty(&mut out, &value)?;
         }
         Command::Eval {

@@ -13,6 +13,15 @@ pub enum Argument {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Op {
+    DeleteName {
+        out: usize,
+        name: String,
+    },
+    DeleteMember {
+        out: usize,
+        object: usize,
+        key: usize,
+    },
     Constant {
         out: usize,
         value: Value,
@@ -82,6 +91,7 @@ pub enum Op {
         callee: usize,
         context: Option<usize>,
         args: Vec<Argument>,
+        result_needed: bool,
     },
     Construct {
         out: usize,
@@ -108,6 +118,7 @@ pub enum Op {
     Eval {
         out: usize,
         input: usize,
+        result_needed: bool,
     },
     Jump {
         target: usize,
@@ -172,7 +183,9 @@ impl Program {
                     );
                     regs.push(*out);
                 }
-                Op::Load { out, .. } | Op::With { out } => regs.push(*out),
+                Op::Load { out, .. } | Op::DeleteName { out, .. } | Op::With { out } => {
+                    regs.push(*out)
+                }
                 Op::Store { input, .. }
                 | Op::Declare { input, .. }
                 | Op::Return { input }
@@ -181,14 +194,15 @@ impl Program {
                 Op::ReadProperty { out, input }
                 | Op::Move { out, input }
                 | Op::Unary { out, input, .. }
-                | Op::Eval { out, input } => regs.extend([*out, *input]),
+                | Op::Eval { out, input, .. } => regs.extend([*out, *input]),
                 Op::Binary {
                     out, left, right, ..
                 } => regs.extend([*out, *left, *right]),
                 Op::Get {
                     out, object, key, ..
                 }
-                | Op::TypeOfMember { out, object, key } => regs.extend([*out, *object, *key]),
+                | Op::TypeOfMember { out, object, key }
+                | Op::DeleteMember { out, object, key } => regs.extend([*out, *object, *key]),
                 Op::Set {
                     object, key, input, ..
                 } => regs.extend([*object, *key, *input]),
@@ -249,6 +263,7 @@ impl Program {
                     callee,
                     context,
                     args,
+                    ..
                 } => {
                     ensure!(args.len() <= 1024, "too many TJS arguments");
                     regs.extend([*out, *callee]);
@@ -282,6 +297,17 @@ impl Program {
 }
 pub trait Host {
     fn call(&mut self, vm: &mut Vm, name: &str, args: &[Value], budget: &mut u64) -> Result<Value>;
+    /// Called with the resolved receiver, including an explicitly bound context.
+    fn call_with_context(
+        &mut self,
+        vm: &mut Vm,
+        name: &str,
+        _context: &Value,
+        args: &[Value],
+        budget: &mut u64,
+    ) -> Result<Value> {
+        self.call(vm, name, args, budget)
+    }
     fn trace(&mut self, _instruction: &Instruction) -> Result<()> {
         Ok(())
     }
@@ -292,20 +318,24 @@ impl Host for () {
     }
 }
 pub struct Vm {
+    pub preprocessor: crate::Preprocessor,
     pub globals: BTreeMap<String, Value>,
     pub executed: u64,
     pub(crate) objects: Vec<Object>,
+    pub(crate) hash_generation: u64,
     depth: usize,
 }
 impl Default for Vm {
     fn default() -> Self {
         let mut vm = Self {
+            preprocessor: crate::Preprocessor::default(),
             globals: BTreeMap::new(),
             executed: 0,
             objects: vec![Object::new(ObjectKind::Global)],
+            hash_generation: 0,
             depth: 0,
         };
-        for name in ["Array", "Dictionary", "Exception"] {
+        for name in ["Array", "Dictionary", "Exception", "RegExp"] {
             vm.register_native(name).expect("initial TJS heap");
         }
         vm
@@ -343,8 +373,20 @@ impl Vm {
             return Err(unsupported("TJS object allocation limit exceeded"));
         }
         let id = self.objects.len();
+        let bound = matches!(
+            kind,
+            ObjectKind::Array(_)
+                | ObjectKind::Dictionary
+                | ObjectKind::Instance
+                | ObjectKind::RegExp { .. }
+        );
         self.objects.push(Object::new(kind));
-        Ok(Value::object(id))
+        self.objects[id].hash_generation = self.hash_generation;
+        let mut value = Value::object(id);
+        if bound && let Value::Object(reference) = &mut value {
+            reference.context = Some(id);
+        }
+        Ok(value)
     }
     pub(crate) fn object_id(&self, value: &Value) -> Result<usize> {
         let Value::Object(ObjectRef {
@@ -364,6 +406,9 @@ impl Vm {
         self.globals.insert(name.into(), value.clone());
         Ok(value)
     }
+    pub fn new_dictionary(&mut self) -> Result<Value> {
+        self.allocate(ObjectKind::Dictionary)
+    }
     pub fn register_native(&mut self, name: &str) -> Result<()> {
         let value = self.allocate(ObjectKind::Native(name.into()))?;
         if let Some((namespace, member)) = name.split_once('.') {
@@ -377,6 +422,73 @@ impl Vm {
             self.globals.insert(name.into(), value);
         }
         Ok(())
+    }
+    /// Native classes participate in ordinary TJS inheritance and property dispatch.
+    /// The host receives `NAME.@initialize` before the derived class's field initializers.
+    pub fn register_native_class(&mut self, name: &str) -> Result<Value> {
+        ensure!(
+            !self.globals.contains_key(name),
+            "class is already registered: {name}"
+        );
+        let value = self.define_class(
+            &crate::Class {
+                name: name.into(),
+                methods: vec![],
+                properties: vec![],
+                fields: vec![],
+            },
+            &[],
+        )?;
+        let id = self.object_id(&value)?;
+        if let ObjectKind::Class {
+            native_initializer, ..
+        } = &mut self.objects[id].kind
+        {
+            *native_initializer = Some(format!("{name}.@initialize"));
+        }
+        self.globals.insert(name.into(), value.clone());
+        Ok(value)
+    }
+    /// Install an accessor descriptor. Host operation names are explicit to avoid
+    /// confusing a method and a property with the same script-visible name.
+    pub fn register_native_property(
+        &mut self,
+        receiver: &Value,
+        name: &str,
+        getter: Option<&str>,
+        setter: Option<&str>,
+    ) -> Result<()> {
+        let mut accessor = |name: Option<&str>| -> Result<Option<Value>> {
+            name.map(|name| self.allocate(ObjectKind::Native(name.into())))
+                .transpose()
+        };
+        let getter = accessor(getter)?;
+        let setter = accessor(setter)?;
+        let property = self.allocate(ObjectKind::Property { getter, setter })?;
+        self.set_member(receiver, &Value::string(name), property)
+    }
+    /// Execute a top-level script in the supplied object context (Scripts.exec).
+    pub fn execute_in_context(
+        &mut self,
+        program: &Program,
+        context: &Value,
+        host: &mut impl Host,
+        budget: &mut u64,
+    ) -> Result<Value> {
+        let mut frame = Frame::global();
+        frame.context = self.object_id(context)?;
+        self.run(program, host, budget, frame)
+    }
+    /// Invoke a script callback from a native service using the same budget.
+    pub fn call_function(
+        &mut self,
+        function: &Value,
+        context: &Value,
+        args: &[Value],
+        host: &mut impl Host,
+        budget: &mut u64,
+    ) -> Result<Value> {
+        self.invoke(function, context, args, host, budget)
     }
     pub fn execute(
         &mut self,
@@ -474,7 +586,7 @@ impl Vm {
             if let Some(scope) = frame.scopes.last_mut() {
                 scope.insert(name.into(), value);
             } else {
-                self.globals.insert(name.into(), value);
+                self.set_member(&Value::object(frame.context), &Value::string(name), value)?;
             }
             return Ok(());
         }
@@ -519,6 +631,26 @@ impl Vm {
             ip += 1;
             let result = (|| -> Result<Option<Value>> {
                 match &instruction.op {
+                    Op::DeleteName { out, name } => {
+                        if frame.scopes.iter().any(|s| s.contains_key(name)) {
+                            return Err(unsupported(
+                                "deleting a lexical local requires compile-time binding removal",
+                            ));
+                        }
+                        let context = if self
+                            .has_member(&Value::object(frame.context), &Value::string(name))?
+                        {
+                            frame.context
+                        } else {
+                            0
+                        };
+                        registers[*out] =
+                            self.delete_member(&Value::object(context), &Value::string(name))?;
+                    }
+                    Op::DeleteMember { out, object, key } => {
+                        registers[*out] =
+                            self.delete_member(&registers[*object], &registers[*key])?
+                    }
                     Op::Constant { out, value } => registers[*out] = value.clone(),
                     Op::Load {
                         out,
@@ -650,14 +782,26 @@ impl Vm {
                         callee,
                         context,
                         args,
+                        result_needed,
                     } => {
+                        let static_call = self
+                            .object_id(&registers[*callee])
+                            .ok()
+                            .is_some_and(|id| self.objects[id].native_static);
                         let context = context
                             .as_ref()
+                            .filter(|_| !static_call)
                             .map(|r| registers[*r].clone())
                             .unwrap_or(Value::object(frame.context));
                         let args = self.expand_args(args, &registers, &frame.arguments)?;
-                        registers[*out] =
-                            self.invoke(&registers[*callee], &context, &args, host, budget)?;
+                        registers[*out] = self.invoke_result(
+                            &registers[*callee],
+                            &context,
+                            &args,
+                            host,
+                            budget,
+                            *result_needed,
+                        )?;
                     }
                     Op::Construct { out, callee, args } => {
                         let args = self.expand_args(args, &registers, &frame.arguments)?;
@@ -695,10 +839,16 @@ impl Vm {
                             budget,
                         )?;
                     }
-                    Op::Eval { out, input } => {
-                        let p = crate::compile_expression(
+                    Op::Eval {
+                        out,
+                        input,
+                        result_needed,
+                    } => {
+                        let p = crate::compile_with_preprocessor(
                             "<eval operator>",
                             &registers[*input].text(),
+                            *result_needed,
+                            &mut self.preprocessor,
                         )?;
                         // TJS eval sees the current object context, not local lexical variables.
                         let mut eval = Frame::global();
@@ -829,6 +979,18 @@ impl Vm {
         host: &mut impl Host,
         budget: &mut u64,
     ) -> Result<Value> {
+        self.invoke_result(callee, context, args, host, budget, true)
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn invoke_result(
+        &mut self,
+        callee: &Value,
+        context: &Value,
+        args: &[Value],
+        host: &mut impl Host,
+        budget: &mut u64,
+        result_needed: bool,
+    ) -> Result<Value> {
         let id = self.object_id(callee)?;
         let Value::Object(reference) = callee else {
             unreachable!()
@@ -836,12 +998,27 @@ impl Vm {
         let kind = self.objects[id].kind.clone();
         match kind {
             ObjectKind::Native(name) => match name.as_str() {
+                "RegExp" => self.regexp_new(args),
                 "Dictionary" => self.allocate(ObjectKind::Dictionary),
                 "Array" => self.allocate(ObjectKind::Array(vec![])),
                 "Exception" => {
                     self.exception_object(&args.first().map(Value::text).unwrap_or_default())
                 }
-                _ => host.call(self, &name, args, budget),
+                _ if name.starts_with("ScriptsEx.") => {
+                    let context = reference
+                        .context
+                        .map(Value::object)
+                        .unwrap_or_else(|| context.clone());
+                    self.scripts_ex(&name[10..], &context, args, host, budget, result_needed)
+                }
+                _ => {
+                    let context = reference
+                        .context
+                        .map(Value::object)
+                        .unwrap_or_else(|| context.clone());
+                    self.object_id(&context)?;
+                    host.call_with_context(self, &name, &context, args, budget)
+                }
             },
             ObjectKind::Function(function) => {
                 let mut frame = Frame::global();
@@ -869,7 +1046,9 @@ impl Vm {
                 frame.scopes.push(locals);
                 self.run(&function.program, host, budget, frame)
             }
-            ObjectKind::Method { receiver, name } => self.method(&receiver, &name, args),
+            ObjectKind::Method { receiver, name } => {
+                self.method(&receiver, &name, args, host, budget)
+            }
             _ => bail!("TJS object is not callable"),
         }
     }

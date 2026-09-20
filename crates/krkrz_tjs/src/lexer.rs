@@ -1,10 +1,11 @@
-use crate::Value;
+use crate::{Preprocessor, Value};
 use anyhow::{Result, bail, ensure};
 use krkrz_core::SourceLocation;
 use std::collections::VecDeque;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Kind {
     Name(String),
+    Regex { pattern: String, flags: String },
     Literal(Value),
     Symbol(String),
     Eof,
@@ -22,6 +23,12 @@ struct Lexer<'a> {
     column: usize,
     pending: VecDeque<Token>,
     interpolation_depth: usize,
+    preprocessor: Option<&'a mut Preprocessor>,
+    conditionals: Vec<bool>,
+    reserved: bool,
+    expect_operand: bool,
+    last_name: Option<String>,
+    control_parentheses: Vec<bool>,
 }
 impl Lexer<'_> {
     fn escape(&mut self) -> Result<Vec<u16>> {
@@ -104,6 +111,7 @@ impl Lexer<'_> {
                     location: at.clone(),
                 });
                 tokens.push(symbol("("));
+                self.expect_operand = true;
                 let mut nesting = 0usize;
                 loop {
                     let token = self.next()?;
@@ -163,6 +171,60 @@ impl Lexer<'_> {
         }
         Some(c)
     }
+    fn directive(&mut self) -> Result<bool> {
+        if self.preprocessor.is_none() {
+            return Ok(false);
+        }
+        let directive = ["@endif", "@set", "@if"]
+            .into_iter()
+            .find(|d| self.source[self.pos..].starts_with(d));
+        let Some(directive) = directive else {
+            return Ok(false);
+        };
+        for _ in directive.chars() {
+            self.bump();
+        }
+        if directive == "@endif" {
+            ensure!(self.conditionals.pop().is_some(), "unmatched @endif");
+            return Ok(true);
+        }
+        while self.peek().is_some_and(char::is_whitespace) {
+            self.bump();
+        }
+        ensure!(self.bump() == Some('('), "expected '(' after {directive}");
+        let start = self.pos;
+        let mut nesting = 0;
+        loop {
+            match self.peek() {
+                Some(')') if nesting == 0 => break,
+                Some('(') => nesting += 1,
+                Some(')') => nesting -= 1,
+                None => bail!("unterminated {directive} expression"),
+                _ => (),
+            }
+            ensure!(nesting <= 128, "preprocessor parentheses exceed limit");
+            self.bump();
+        }
+        let end = self.pos;
+        self.bump();
+        let active = self.conditionals.last().copied().unwrap_or(true);
+        let value = if active {
+            self.preprocessor
+                .as_mut()
+                .unwrap()
+                .evaluate(&self.source[start..end])?
+        } else {
+            0
+        };
+        if directive == "@if" {
+            ensure!(
+                self.conditionals.len() < 128,
+                "preprocessor conditional nesting exceeds limit"
+            );
+            self.conditionals.push(active && value != 0);
+        }
+        Ok(true)
+    }
     fn skip(&mut self) -> Result<()> {
         loop {
             while self.peek().is_some_and(char::is_whitespace) {
@@ -189,18 +251,62 @@ impl Lexer<'_> {
                         ensure!(self.bump().is_some(), "unterminated TJS comment");
                     }
                 }
+            } else if self.directive()? {
+                continue;
+            } else if self.conditionals.last() == Some(&false) {
+                ensure!(self.bump().is_some(), "unterminated @if");
             } else {
                 return Ok(());
             }
         }
     }
     fn next(&mut self) -> Result<Token> {
+        let token = self.next_inner()?;
+        self.expect_operand = match &token.kind {
+            Kind::Name(n) => [
+                "return",
+                "throw",
+                "typeof",
+                "delete",
+                "invalidate",
+                "isvalid",
+                "instanceof",
+                "incontextof",
+                "new",
+                "case",
+                "else",
+                "int",
+                "real",
+                "string",
+            ]
+            .contains(&n.as_str()),
+            Kind::Literal(_) | Kind::Regex { .. } => false,
+            Kind::Symbol(s) if s == "(" => {
+                self.control_parentheses
+                    .push(self.last_name.as_deref().is_some_and(|n| {
+                        ["if", "while", "for", "with", "switch", "catch"].contains(&n)
+                    }));
+                true
+            }
+            Kind::Symbol(s) if s == ")" => self.control_parentheses.pop().unwrap_or(false),
+            Kind::Symbol(s) => !["]", "++", "--"].contains(&s.as_str()),
+            Kind::Eof => false,
+        };
+        self.last_name = if let Kind::Name(n) = &token.kind {
+            Some(n.clone())
+        } else {
+            None
+        };
+        Ok(token)
+    }
+    fn next_inner(&mut self) -> Result<Token> {
         if let Some(token) = self.pending.pop_front() {
             return Ok(token);
         }
         self.skip()?;
         let location = self.location();
         let Some(c) = self.peek() else {
+            ensure!(self.conditionals.is_empty(), "unterminated @if");
             return Ok(Token {
                 kind: Kind::Eof,
                 location,
@@ -209,136 +315,192 @@ impl Lexer<'_> {
         if c == '@' && self.source[self.pos + 1..].starts_with(['\'', '"']) {
             let tokens = self.interpolation()?;
             self.pending.extend(tokens);
-            return self.next();
+            return self.next_inner();
         }
-        let kind = if c == '_' || c.is_alphabetic() {
-            let start = self.pos;
-            while self
-                .peek()
-                .is_some_and(|c| c == '_' || c == '$' || c.is_alphanumeric())
-            {
+        let kind =
+            if c == '/' && self.reserved && self.expect_operand {
                 self.bump();
-            }
-            match &self.source[start..self.pos] {
-                "void" => Kind::Literal(Value::Void),
-                "true" => Kind::Literal(Value::Integer(1)),
-                "false" => Kind::Literal(Value::Integer(0)),
-                "null" => Kind::Literal(Value::NULL),
-                s => Kind::Name(s.into()),
-            }
-        } else if c.is_ascii_digit()
-            || (c == '.'
-                && self.source[self.pos + 1..]
-                    .chars()
-                    .next()
-                    .is_some_and(|c| c.is_ascii_digit()))
-        {
-            let start = self.pos;
-            self.bump();
-            if c == '0'
-                && self
-                    .peek()
-                    .is_some_and(|c| matches!(c, 'x' | 'X' | 'b' | 'B'))
-            {
-                self.bump();
-                while self.peek().is_some_and(|c| c.is_ascii_hexdigit()) {
-                    self.bump();
-                }
-            } else {
-                while self.peek().is_some_and(|c| c.is_ascii_digit()) {
-                    self.bump();
-                }
-                if self.peek() == Some('.') {
-                    self.bump();
-                    while self.peek().is_some_and(|c| c.is_ascii_digit()) {
-                        self.bump();
-                    }
-                }
-                if self.peek().is_some_and(|c| c == 'e' || c == 'E') {
-                    self.bump();
-                    if self.peek().is_some_and(|c| c == '+' || c == '-') {
-                        self.bump();
-                    }
-                    while self.peek().is_some_and(|c| c.is_ascii_digit()) {
-                        self.bump();
-                    }
-                }
-            }
-            Kind::Literal(crate::value::parse_number(&self.source[start..self.pos]))
-        } else if c == '\'' || c == '"' {
-            self.bump();
-            let mut units = Vec::new();
-            loop {
-                let ch = self
-                    .bump()
-                    .ok_or_else(|| anyhow::anyhow!("unterminated TJS string"))?;
-                if ch == c {
-                    break;
-                }
-                if ch == '\\' {
+                let mut pattern = String::new();
+                loop {
                     let ch = self
                         .bump()
-                        .ok_or_else(|| anyhow::anyhow!("truncated string escape"))?;
-                    if ch == 'x' {
-                        let mut n = 0;
-                        let mut count = 0;
-                        while count < 4 {
-                            let Some(d) = self.peek().and_then(|c| c.to_digit(16)) else {
-                                break;
-                            };
-                            self.bump();
-                            n = n * 16 + d;
-                            count += 1;
-                        }
-                        ensure!(count > 0, "empty TJS hex escape");
-                        units.push(n as u16);
-                    } else {
-                        let ch = match ch {
-                            'n' => '\n',
-                            'r' => '\r',
-                            't' => '\t',
-                            'b' => '\u{8}',
-                            'f' => '\u{c}',
-                            'v' => '\u{b}',
-                            'a' => '\u{7}',
-                            '0' => '\0',
-                            v => v,
-                        };
-                        units.extend(ch.encode_utf16(&mut [0; 2]).iter().copied());
+                        .ok_or_else(|| anyhow::anyhow!("unterminated regular expression"))?;
+                    if ch == '/' {
+                        break;
                     }
-                } else {
-                    units.extend(ch.encode_utf16(&mut [0; 2]).iter().copied());
+                    if ch == '\\' {
+                        pattern.push(ch);
+                        pattern.push(self.bump().ok_or_else(|| {
+                            anyhow::anyhow!("truncated regular expression escape")
+                        })?);
+                    } else {
+                        pattern.push(ch);
+                    }
                 }
-            }
-            Kind::Literal(Value::String(units))
-        } else {
-            let mut symbol = None;
-            for op in [
-                ">>>=", "===", "!==", ">>>", "<<=", ">>=", "...", "==", "!=", "<=", ">=", "&&",
-                "||", "<<", ">>", "+=", "-=", "*=", "/=", "%=", "\\=", "&=", "|=", "^=", "++",
-                "--", "=>", "%[", "<%", "%>",
-            ] {
-                if self.source[self.pos..].starts_with(op) {
-                    for _ in op.chars() {
+                let mut flags = String::new();
+                while self.peek().is_some_and(|c| c.is_ascii_lowercase()) {
+                    flags.push(self.bump().unwrap());
+                }
+                Kind::Regex { pattern, flags }
+            } else if c == '_' || c.is_alphabetic() {
+                let start = self.pos;
+                while self
+                    .peek()
+                    .is_some_and(|c| c == '_' || c == '$' || c.is_alphanumeric())
+                {
+                    self.bump();
+                }
+                match &self.source[start..self.pos] {
+                    s if !self.reserved => Kind::Name(s.into()),
+                    "void" => Kind::Literal(Value::Void),
+                    "true" => Kind::Literal(Value::Integer(1)),
+                    "false" => Kind::Literal(Value::Integer(0)),
+                    "null" => Kind::Literal(Value::NULL),
+                    s => Kind::Name(s.into()),
+                }
+            } else if c.is_ascii_digit()
+                || (c == '.'
+                    && self.source[self.pos + 1..]
+                        .chars()
+                        .next()
+                        .is_some_and(|c| c.is_ascii_digit()))
+            {
+                let start = self.pos;
+                self.bump();
+                if c == '0'
+                    && self
+                        .peek()
+                        .is_some_and(|c| matches!(c, 'x' | 'X' | 'b' | 'B'))
+                {
+                    self.bump();
+                    while self.peek().is_some_and(|c| c.is_ascii_hexdigit()) {
                         self.bump();
                     }
-                    symbol = Some(op.to_string());
-                    break;
+                } else {
+                    while self.peek().is_some_and(|c| c.is_ascii_digit()) {
+                        self.bump();
+                    }
+                    if self.peek() == Some('.') {
+                        self.bump();
+                        while self.peek().is_some_and(|c| c.is_ascii_digit()) {
+                            self.bump();
+                        }
+                    }
+                    if self.peek().is_some_and(|c| c == 'e' || c == 'E') {
+                        self.bump();
+                        if self.peek().is_some_and(|c| c == '+' || c == '-') {
+                            self.bump();
+                        }
+                        while self.peek().is_some_and(|c| c.is_ascii_digit()) {
+                            self.bump();
+                        }
+                    }
                 }
-            }
-            if let Some(s) = symbol {
-                Kind::Symbol(s)
-            } else if "{}[]();,.?:+-*/%\\!~&|^=<>@#$".contains(c) {
+                Kind::Literal(crate::value::parse_number(&self.source[start..self.pos]))
+            } else if c == '\'' || c == '"' {
                 self.bump();
-                Kind::Symbol(c.to_string())
+                let mut units = Vec::new();
+                loop {
+                    let ch = self
+                        .bump()
+                        .ok_or_else(|| anyhow::anyhow!("unterminated TJS string"))?;
+                    if ch == c {
+                        // Upstream joins only matching quotes separated by whitespace.
+                        // A comment or a different delimiter ends the literal.
+                        let remaining = &self.source[self.pos..];
+                        let trimmed = remaining.trim_start_matches(char::is_whitespace);
+                        if trimmed.starts_with(c) {
+                            let next = self.pos + remaining.len() - trimmed.len();
+                            while self.pos < next {
+                                self.bump();
+                            }
+                            self.bump();
+                            continue;
+                        }
+                        break;
+                    }
+                    if ch == '\\' {
+                        let ch = self
+                            .bump()
+                            .ok_or_else(|| anyhow::anyhow!("truncated string escape"))?;
+                        if ch == 'x' {
+                            let mut n = 0;
+                            let mut count = 0;
+                            while count < 4 {
+                                let Some(d) = self.peek().and_then(|c| c.to_digit(16)) else {
+                                    break;
+                                };
+                                self.bump();
+                                n = n * 16 + d;
+                                count += 1;
+                            }
+                            ensure!(count > 0, "empty TJS hex escape");
+                            units.push(n as u16);
+                        } else {
+                            let ch = match ch {
+                                'n' => '\n',
+                                'r' => '\r',
+                                't' => '\t',
+                                'b' => '\u{8}',
+                                'f' => '\u{c}',
+                                'v' => '\u{b}',
+                                'a' => '\u{7}',
+                                '0' => '\0',
+                                v => v,
+                            };
+                            units.extend(ch.encode_utf16(&mut [0; 2]).iter().copied());
+                        }
+                    } else {
+                        units.extend(ch.encode_utf16(&mut [0; 2]).iter().copied());
+                    }
+                }
+                Kind::Literal(Value::String(units))
             } else {
-                bail!("unsupported TJS character {c:?}")
-            }
-        };
+                let mut symbol = None;
+                for op in [
+                    ">>>=", "===", "!==", ">>>", "<<=", ">>=", "...", "==", "!=", "<=", ">=", "&&",
+                    "||", "<<", ">>", "+=", "-=", "*=", "/=", "%=", "\\=", "&=", "|=", "^=", "++",
+                    "--", "=>", "%[", "<%", "%>",
+                ] {
+                    if self.source[self.pos..].starts_with(op) {
+                        for _ in op.chars() {
+                            self.bump();
+                        }
+                        symbol = Some(op.to_string());
+                        break;
+                    }
+                }
+                if let Some(s) = symbol {
+                    Kind::Symbol(s)
+                } else if "{}[]();,.?:+-*/%\\!~&|^=<>@#$".contains(c) {
+                    self.bump();
+                    Kind::Symbol(c.to_string())
+                } else {
+                    bail!("unsupported TJS character {c:?}")
+                }
+            };
         Ok(Token { kind, location })
     }
 }
 pub fn lex(storage: &str, source: &str) -> Result<Vec<Token>> {
+    lex_with_preprocessor(storage, source, &mut Preprocessor::default())
+}
+pub fn lex_with_preprocessor(
+    storage: &str,
+    source: &str,
+    state: &mut Preprocessor,
+) -> Result<Vec<Token>> {
+    lex_inner(storage, source, Some(state), true)
+}
+pub(crate) fn lex_pp(source: &str) -> Result<Vec<Token>> {
+    lex_inner("<preprocessor>", source, None, false)
+}
+fn lex_inner(
+    storage: &str,
+    source: &str,
+    preprocessor: Option<&mut Preprocessor>,
+    reserved: bool,
+) -> Result<Vec<Token>> {
     let mut lexer = Lexer {
         source,
         storage,
@@ -347,6 +509,12 @@ pub fn lex(storage: &str, source: &str) -> Result<Vec<Token>> {
         column: 1,
         pending: VecDeque::new(),
         interpolation_depth: 0,
+        preprocessor,
+        conditionals: vec![],
+        reserved,
+        expect_operand: true,
+        last_name: None,
+        control_parentheses: vec![],
     };
     let mut result = Vec::new();
     loop {

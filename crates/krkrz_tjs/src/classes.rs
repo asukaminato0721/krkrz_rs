@@ -20,6 +20,7 @@ impl Vm {
                         || match &object.kind {
                             ObjectKind::Array(_) => name == "Array",
                             ObjectKind::Dictionary => name == "Dictionary",
+                            ObjectKind::RegExp { .. } => name == "RegExp",
                             ObjectKind::Class { .. } => name == "Class",
                             ObjectKind::Property { .. } => name == "Property",
                             ObjectKind::Function(_)
@@ -67,6 +68,7 @@ impl Vm {
         let value = self.allocate(ObjectKind::Class {
             definition: Arc::new(definition.clone()),
             bases,
+            native_initializer: None,
         })?;
         let id = self.object_id(&value)?;
         for function in &definition.methods {
@@ -109,7 +111,12 @@ impl Vm {
         depth: usize,
     ) -> Result<()> {
         ensure!(depth < 128, "class inheritance depth exceeded");
-        let ObjectKind::Class { definition, bases } = self.objects[class].kind.clone() else {
+        let ObjectKind::Class {
+            definition,
+            bases,
+            native_initializer,
+        } = self.objects[class].kind.clone()
+        else {
             bail!("invalid class object")
         };
         for base in bases {
@@ -117,11 +124,23 @@ impl Vm {
         }
         let context = self.object_id(instance)?;
         self.objects[context].classes.push(definition.name.clone());
+        if let Some(initializer) = native_initializer {
+            host.call_with_context(self, &initializer, instance, &[], budget)?;
+        }
         for (key, mut value) in self.objects[class].members.clone() {
+            let flags = self.objects[class]
+                .member_flags
+                .get(&key)
+                .copied()
+                .unwrap_or(0);
+            if flags & crate::scripts_ex::STATIC != 0 {
+                continue;
+            }
             if let Value::Object(object) = &mut value {
                 object.context = Some(context);
             }
-            self.set_member(instance, &Value::String(key), value)?;
+            self.set_member(instance, &Value::String(key.clone()), value)?;
+            self.objects[context].member_flags.insert(key, flags);
         }
         for (name, initializer) in &definition.fields {
             let mut frame = Frame::global();
@@ -150,7 +169,7 @@ impl Vm {
                 Ok(instance)
             }
             ObjectKind::Native(name)
-                if ["Array", "Dictionary", "Exception"].contains(&name.as_str()) =>
+                if ["Array", "Dictionary", "Exception", "RegExp"].contains(&name.as_str()) =>
             {
                 self.invoke(callee, &Value::object(0), args, host, budget)
             }
@@ -192,6 +211,25 @@ impl Vm {
         host: &mut impl Host,
         budget: &mut u64,
     ) -> Result<()> {
+        self.set_property_flags(receiver, key, value, raw, 0, host, budget)
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn set_property_flags(
+        &mut self,
+        receiver: &Value,
+        key: &Value,
+        value: Value,
+        raw: bool,
+        flags: u32,
+        host: &mut impl Host,
+        budget: &mut u64,
+    ) -> Result<()> {
+        let id = self.object_id(receiver)?;
+        let units = match key {
+            Value::String(s) => s.clone(),
+            _ => key.text().encode_utf16().collect(),
+        };
+        self.objects[id].member_flags.insert(units.clone(), flags);
         if !raw {
             let existing = self.get_member(receiver, key, true)?;
             if let Value::Object(object) = &existing
@@ -204,7 +242,9 @@ impl Vm {
                 return self.write_property(&existing, receiver, value, host, budget);
             }
         }
-        self.set_member(receiver, key, value)
+        self.set_member(receiver, key, value)?;
+        self.objects[id].member_flags.insert(units, flags);
+        Ok(())
     }
     pub(crate) fn read_property(
         &mut self,
