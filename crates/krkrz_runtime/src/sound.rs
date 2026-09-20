@@ -21,6 +21,7 @@ pub(crate) struct Sound {
     pan: i32,
     paused: bool,
     looping: bool,
+    use_vis_buffer: bool,
     fade: Option<Fade>,
     pub(crate) fade_pending: bool,
 }
@@ -35,6 +36,7 @@ impl Default for Sound {
             pan: 0,
             paused: false,
             looping: false,
+            use_vis_buffer: false,
             fade: None,
             fade_pending: false,
         }
@@ -55,6 +57,7 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         "onStatusChanged",
         "onFadeCompleted",
         "onLabel",
+        "getVisBuffer",
     ] {
         vm.register_native(&format!("WaveSoundBuffer.{name}"))?;
     }
@@ -77,6 +80,7 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         ("flags", false),
         ("labels", false),
         ("filters", false),
+        ("useVisBuffer", true),
     ] {
         vm.register_native_property(
             &class,
@@ -130,6 +134,19 @@ impl Services {
         args: &[Value],
         budget: &mut u64,
     ) -> Result<Value> {
+        if matches!(
+            operation,
+            "getSample"
+                | "setDefaultCounts"
+                | "setDefaultAheads"
+                | "get:sampleCount"
+                | "set:sampleCount"
+                | "get:sampleAhead"
+                | "set:sampleAhead"
+                | "get:sampleValue"
+        ) {
+            return self.sample_call(vm, operation, context, args, budget, true);
+        }
         let arg = |i: usize| {
             args.get(i)
                 .with_context(|| format!("WaveSoundBuffer.{operation}: missing argument {i}"))
@@ -160,6 +177,7 @@ impl Services {
         }
         if operation == "@invalidate" {
             self.sounds.remove(&id);
+            self.sample_plugin.instances.remove(&id);
             return Ok(Value::Void);
         }
         let sound = self
@@ -183,6 +201,14 @@ impl Services {
             "get:pan" => return Ok(Value::Integer(sound.pan.into())),
             "get:paused" => return Ok(Value::Integer(sound.paused.into())),
             "get:looping" => return Ok(Value::Integer(sound.looping.into())),
+            "get:useVisBuffer" => return Ok(Value::Integer(sound.use_vis_buffer.into())),
+            "set:useVisBuffer" => sound.use_vis_buffer = arg(0)?.truth()?,
+            "getVisBuffer" => {
+                ensure!(args.len() >= 3, "getVisBuffer requires three arguments");
+                // An unloaded source has no visualization data. Once audio is
+                // attached, only handles allocated by getSample may be written.
+                return Ok(Value::Integer(0));
+            }
             "get:status" => return Ok(Value::string("unload")),
             "get:position" | "get:samplePosition" | "get:bits" | "get:channels" => {
                 return Ok(Value::Integer(0));

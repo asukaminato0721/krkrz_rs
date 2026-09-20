@@ -323,6 +323,19 @@ pub trait Host {
     ) -> Result<Value> {
         self.call(vm, name, args, budget)
     }
+    /// Native calls can observe whether the VM supplied a result destination.
+    #[allow(clippy::too_many_arguments)]
+    fn call_with_result(
+        &mut self,
+        vm: &mut Vm,
+        name: &str,
+        context: &Value,
+        args: &[Value],
+        budget: &mut u64,
+        _result_needed: bool,
+    ) -> Result<Value> {
+        self.call_with_context(vm, name, context, args, budget)
+    }
     fn trace(&mut self, _instruction: &Instruction) -> Result<()> {
         Ok(())
     }
@@ -1129,7 +1142,7 @@ impl Vm {
                         .map(Value::object)
                         .unwrap_or_else(|| context.clone());
                     self.object_id(&context)?;
-                    host.call_with_context(self, &name, &context, args, budget)
+                    host.call_with_result(self, &name, &context, args, budget, result_needed)
                 }
             },
             ObjectKind::Function(function) => {

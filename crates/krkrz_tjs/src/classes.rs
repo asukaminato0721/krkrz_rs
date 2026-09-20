@@ -265,7 +265,7 @@ impl Vm {
         }
         Ok(value)
     }
-    pub(crate) fn set_property(
+    pub fn set_property(
         &mut self,
         receiver: &Value,
         key: &Value,

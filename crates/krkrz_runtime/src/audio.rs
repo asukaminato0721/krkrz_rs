@@ -18,10 +18,12 @@ pub struct AudioBlock {
     pub samples: Vec<i16>,
     pub labels: Vec<AudioLabel>,
 }
+#[derive(Clone)]
 struct CrossFade {
     samples: Vec<i16>,
     cursor: usize,
 }
+#[derive(Clone)]
 pub struct SoundStream {
     audio: Arc<Audio>,
     info: LoopInfo,

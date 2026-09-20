@@ -185,6 +185,52 @@ pub struct Audio {
     pub samples: Vec<i16>,
 }
 impl Audio {
+    /// Decode integer PCM WAVE data into the mixer's signed 16-bit format.
+    pub fn decode_wave(bytes: &[u8], max_frames: usize) -> Result<Self> {
+        let mut header = Reader::new(bytes);
+        ensure!(header.take(4)? == b"RIFF", "not a RIFF wave");
+        let length = header.u32()? as usize;
+        ensure!(length >= 4, "invalid RIFF size");
+        let mut chunks = Reader::new(header.take(length)?);
+        ensure!(chunks.take(4)? == b"WAVE", "not a WAVE container");
+        let mut format = None;
+        let mut data = None;
+        while !chunks.done() {
+            let tag = chunks.take(4)?;
+            let length = chunks.u32()? as usize;
+            let body = chunks.take(length)?;
+            match tag {
+                b"fmt " => {
+                    ensure!(format.is_none(), "duplicate wave format chunk");
+                    let mut f = Reader::new(body);
+                    let codec = f.u16()?;
+                    let channels = f.u16()?;
+                    let rate = f.u32()?;
+                    let byte_rate = f.u32()?;
+                    let align = f.u16()?;
+                    let bits = f.u16()?;
+                    ensure!(codec == 1 && [8, 16, 24, 32].contains(&bits), "unsupported wave PCM format");
+                    ensure!((1..=8).contains(&channels) && (1..=768_000).contains(&rate), "invalid wave channel count or rate");
+                    ensure!(align == channels * (bits / 8) && byte_rate == rate * align as u32, "invalid wave block alignment");
+                    format = Some((channels as u8, rate, align as usize, bits));
+                }
+                b"data" => { ensure!(data.is_none(), "duplicate wave data chunk"); data = Some(body); }
+                _ => {}
+            }
+            if length % 2 != 0 { chunks.take(1)?; }
+        }
+        let (channels, sample_rate, align, bits) = format.ok_or_else(|| anyhow::anyhow!("wave format chunk missing"))?;
+        let data = data.ok_or_else(|| anyhow::anyhow!("wave data chunk missing"))?;
+        ensure!(data.len().is_multiple_of(align) && data.len() / align <= max_frames, "wave frame count is invalid or exceeds limit");
+        let samples = data.chunks_exact((bits / 8) as usize).map(|s| match bits {
+            8 => (s[0] as i16 - 128) << 8,
+            16 => i16::from_le_bytes([s[0], s[1]]),
+            24 => i16::from_le_bytes([s[1], s[2]]),
+            32 => i16::from_le_bytes([s[2], s[3]]),
+            _ => unreachable!(),
+        }).collect();
+        Ok(Self { channels, sample_rate, samples })
+    }
     pub fn decode_vorbis(bytes: &[u8], max_frames: usize) -> Result<Self> {
         let mut stream = lewton::inside_ogg::OggStreamReader::new(Cursor::new(bytes))?;
         let channels = stream.ident_hdr.audio_channels;

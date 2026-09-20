@@ -3,6 +3,7 @@ mod app_lock;
 pub mod audio;
 pub mod compositor;
 mod csv;
+mod get_sample;
 pub mod graphics;
 mod plugins;
 mod save_storage;
@@ -39,6 +40,7 @@ pub struct Services {
     csv_parsers: BTreeMap<usize, csv::Parser>,
     sounds: BTreeMap<usize, sound::Sound>,
     sound_global_volume: i32,
+    sample_plugin: get_sample::State,
     pub arguments: BTreeMap<String, String>,
     loaded_plugins: BTreeSet<String>,
     depth: usize,
@@ -90,6 +92,20 @@ impl Services {
     }
 }
 impl Host for Services {
+    fn call_with_result(
+        &mut self,
+        vm: &mut Vm,
+        name: &str,
+        context: &Value,
+        args: &[Value],
+        budget: &mut u64,
+        result_needed: bool,
+    ) -> Result<Value> {
+        if name == "WaveSoundBuffer.getSample" {
+            return self.sample_call(vm, "getSample", context, args, budget, result_needed);
+        }
+        self.call_with_context(vm, name, context, args, budget)
+    }
     fn call_with_context(
         &mut self,
         vm: &mut Vm,
@@ -260,6 +276,13 @@ impl Host for Services {
                         if !self.loaded_plugins.contains("savestruct.dll") {
                             vm.register_save_struct()?;
                             self.loaded_plugins.insert("savestruct.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
+                    "getsample.dll" => {
+                        if !self.loaded_plugins.contains("getsample.dll") {
+                            get_sample::register(vm)?;
+                            self.loaded_plugins.insert("getsample.dll".into());
                         }
                         Ok(Value::Void)
                     }
@@ -463,6 +486,7 @@ impl Session {
                 csv_parsers: BTreeMap::new(),
                 sounds: BTreeMap::new(),
                 sound_global_volume: 100_000,
+                sample_plugin: get_sample::State::default(),
                 arguments: BTreeMap::from([("-debugwin".into(), "no".into())]),
                 loaded_plugins: BTreeSet::new(),
                 depth: 0,

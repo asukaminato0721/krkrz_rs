@@ -1,0 +1,147 @@
+[
+  {
+    "name": "sample_defaults",
+    "source": "Plugins.link(\"getSample.dll\");var w=new WaveSoundBuffer(null);return [w.useVisBuffer,w.sampleCount,w.sampleAhead,w.useVisBuffer,w.sampleValue].join(\",\");",
+    "expected": {
+      "String": [
+        48,
+        44,
+        49,
+        48,
+        48,
+        44,
+        48,
+        44,
+        49,
+        44,
+        43,
+        48,
+        46,
+        48
+      ]
+    }
+  },
+  {
+    "name": "sample_lazy_defaults",
+    "source": "Plugins.link(\"getSample.dll\");var a=new WaveSoundBuffer(null);WaveSoundBuffer.setDefaultCounts(17);WaveSoundBuffer.setDefaultAheads(8820);var n=a.sampleCount;WaveSoundBuffer.setDefaultCounts(23);var b=new WaveSoundBuffer(null);return [n,a.sampleCount,b.sampleCount,a.sampleAhead,b.sampleAhead].join(\",\");",
+    "expected": {
+      "String": [
+        49,
+        55,
+        44,
+        49,
+        55,
+        44,
+        50,
+        51,
+        44,
+        56,
+        56,
+        50,
+        48,
+        44,
+        56,
+        56,
+        50,
+        48
+      ]
+    }
+  },
+  {
+    "name": "sample_setters",
+    "source": "Plugins.link(\"getSample.dll\");var w=new WaveSoundBuffer(null);w.sampleCount=3;w.sampleAhead=-7;return [w.sampleCount,w.sampleAhead,w.useVisBuffer].join(\",\");",
+    "expected": {
+      "String": [
+        51,
+        44,
+        45,
+        55,
+        44,
+        49
+      ]
+    }
+  },
+  {
+    "name": "sample_no_reenable",
+    "source": "Plugins.link(\"getSample.dll\");var w=new WaveSoundBuffer(null);var n=w.sampleCount;w.useVisBuffer=false;var v=w.sampleValue;return w.useVisBuffer;",
+    "expected": {
+      "Integer": 0
+    }
+  },
+  {
+    "name": "sample_real_zero",
+    "source": "Plugins.link(\"getSample.dll\");var w=new WaveSoundBuffer(null);return w.sampleValue;",
+    "expected": {
+      "Real": 0.0
+    }
+  },
+  {
+    "name": "sample_zero_count",
+    "source": "Plugins.link(\"getSample.dll\");var w=new WaveSoundBuffer(null);w.sampleCount=0;return w.sampleValue;",
+    "expected": {
+      "Real": 0.0
+    }
+  },
+  {
+    "name": "sample_callback_args",
+    "source": "Plugins.link(\"getSample.dll\");var log=\"\";class C extends WaveSoundBuffer{function C(){WaveSoundBuffer(null);}function getVisBuffer(p,n,c,a){log=n+\":\"+c+\":\"+a+\":\"+useVisBuffer;return 0;}}var w=new C();w.sampleCount=19;w.sampleAhead=11;var r=w.sampleValue;return log;",
+    "expected": {
+      "String": [
+        49,
+        57,
+        58,
+        49,
+        58,
+        49,
+        49,
+        58,
+        49
+      ]
+    }
+  },
+  {
+    "name": "sample_return_bounds",
+    "source": "Plugins.link(\"getSample.dll\");class C extends WaveSoundBuffer{function C(){WaveSoundBuffer(null);}function getVisBuffer(p,n,c,a){return -1;}}var w=new C();return w.sampleValue;",
+    "expected": {
+      "Real": 0.0
+    }
+  },
+  {
+    "name": "sample_repeat_load",
+    "source": "Plugins.link(\"getSample.dll\");WaveSoundBuffer.setDefaultAheads(77);var f=WaveSoundBuffer.setDefaultAheads;Plugins.link(\"getSample.dll\");var w=new WaveSoundBuffer(null);return w.sampleAhead+(f===WaveSoundBuffer.setDefaultAheads);",
+    "expected": {
+      "Integer": 78
+    }
+  },
+  {
+    "name": "sample_callback_throw",
+    "source": "Plugins.link(\"getSample.dll\");class C extends WaveSoundBuffer{function C(){WaveSoundBuffer(null);}function getVisBuffer(p,n,c,a){throw 19;}}function run(){var w=new C();try{var v=w.sampleValue;}catch(e){return e;}return 0;}return run();",
+    "expected": {
+      "Integer": 19
+    }
+  },
+  {
+    "name": "sample_legacy_nonpositive",
+    "source": "Plugins.link(\"getSample.dll\");var w=new WaveSoundBuffer(null);return (typeof w.getSample(0))+\",\"+(typeof w.getSample(-1));",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100,
+        44,
+        118,
+        111,
+        105,
+        100
+      ]
+    }
+  },
+  {
+    "name": "sample_legacy_discard",
+    "source": "Plugins.link(\"getSample.dll\");var n=0;class C extends WaveSoundBuffer{function C(){WaveSoundBuffer(null);}function getVisBuffer(){n++;return 0;}}var w=new C();w.getSample();return n;",
+    "expected": {
+      "Integer": 0
+    }
+  }
+]
