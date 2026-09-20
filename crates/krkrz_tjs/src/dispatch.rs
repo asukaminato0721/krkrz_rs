@@ -111,6 +111,7 @@ impl Vm {
                 "replace",
                 "match",
                 "reverse",
+                "trim",
                 "split",
                 "substring",
                 "substr",
@@ -268,6 +269,15 @@ impl Vm {
                 return self.regexp_method(&args[0], name, &forwarded, host, budget);
             }
             return match name {
+                "trim" => {
+                    ensure!(args.is_empty(), "trim expects no arguments");
+                    // Kirikiri trims only nonzero UTF-16 units through U+0020.
+                    let mut start = 0;
+                    let mut end = s.len();
+                    while end > start && (1..=32).contains(&s[end - 1]) { end -= 1; }
+                    while start < end && (1..=32).contains(&s[start]) { start += 1; }
+                    Ok(Value::String(s[start..end].to_vec()))
+                }
                 "reverse" => Ok(Value::String(s.iter().copied().rev().collect())),
                 "toLowerCase" | "toUpperCase" => Ok(Value::String(
                     s.iter()

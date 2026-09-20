@@ -1,6 +1,7 @@
 //! Shared deterministic session services. Presentation and full Kirikiri objects remain unimplemented.
 mod alpha_movie;
 mod app_lock;
+mod async_trigger;
 pub mod audio;
 pub mod compositor;
 mod csv;
@@ -17,6 +18,7 @@ mod sound;
 mod sound_stream;
 mod text_render;
 pub mod window;
+mod window_ex;
 use anyhow::{Context, Result, ensure};
 use krkrz_assets::{cx::CxEncryption, storage::Storage, text};
 use krkrz_core::{Limits, save_directory};
@@ -44,6 +46,7 @@ pub struct Services {
     pub windows: BTreeMap<usize, window::WindowState>,
     pub image_cache: graphics::ImageCache,
     app_locks: app_lock::AppLocks,
+    async_triggers: async_trigger::State,
     csv_parsers: BTreeMap<usize, csv::Parser>,
     sounds: BTreeMap<usize, sound::Sound>,
     psb_files: BTreeMap<usize, Option<psb_file::File>>,
@@ -51,6 +54,7 @@ pub struct Services {
     layer_draw: layer_draw::State,
     menus: menu::State,
     dialogs: dialog::State,
+    window_ex: window_ex::State,
     alpha_movies: BTreeMap<usize, alpha_movie::Player>,
     alpha_movie_links: BTreeSet<String>,
     sound_global_volume: i32,
@@ -128,6 +132,12 @@ impl Host for Services {
         args: &[Value],
         budget: &mut u64,
     ) -> Result<Value> {
+        if let Some(operation) = name.strip_prefix("WindowEx.") {
+            return self.window_ex_call(vm, operation, context, args, budget);
+        }
+        if let Some(operation) = name.strip_prefix("AsyncTrigger.") {
+            return self.async_call(vm, operation, context, args, budget);
+        }
         if name == "Window.get:menu" {
             return self.window_menu(vm, context, budget);
         }
@@ -168,6 +178,7 @@ impl Host for Services {
             }
             if operation == "@invalidate" {
                 self.windows.remove(&id);
+                self.window_ex.windows.remove(&id);
                 return Ok(Value::Void);
             }
             let window = self
@@ -331,6 +342,10 @@ impl Host for Services {
                     "win32dialog.dll" => {
                         self.dialogs
                             .link(vm, path.rsplit('/').next().unwrap_or(""))?;
+                        Ok(Value::Void)
+                    }
+                    "windowex.dll" => {
+                        self.window_ex.link(vm, path.rsplit('/').next().unwrap_or(""))?;
                         Ok(Value::Void)
                     }
                     "menu.dll" => {
@@ -519,6 +534,7 @@ impl Session {
         // budget. User scripts retain the full caller-supplied budget.
         vm.execute(&constants, &mut (), &mut 100_000)?;
         window::register(&mut vm)?;
+        async_trigger::register(&mut vm)?;
         sound::register(&mut vm)?;
         let system = vm.register_namespace("System")?;
         vm.register_native_property(
@@ -570,6 +586,7 @@ impl Session {
                 windows: BTreeMap::new(),
                 image_cache: graphics::ImageCache::new(graphics::automatic_limit()),
                 app_locks: app_lock::AppLocks::default(),
+                async_triggers: async_trigger::State::default(),
                 csv_parsers: BTreeMap::new(),
                 sounds: BTreeMap::new(),
                 psb_files: BTreeMap::new(),
@@ -577,6 +594,7 @@ impl Session {
                 layer_draw: layer_draw::State::default(),
                 menus: menu::State::default(),
                 dialogs: dialog::State::default(),
+                window_ex: window_ex::State::default(),
                 alpha_movies: BTreeMap::new(),
                 alpha_movie_links: BTreeSet::new(),
                 sound_global_volume: 100_000,
@@ -618,6 +636,11 @@ impl Session {
     /// Deliver one pending batch. Events posted by callbacks wait for the next
     /// batch, preventing native recursion and preserving the shared VM budget.
     pub fn dispatch_events(&mut self) -> Result<()> {
+        let through = self.services.async_triggers.begin_batch();
+        self.services.dispatch_async(&mut self.vm, through, 1, &mut self.budget)?;
+        if self.services.async_triggers.exclusive_posted() {
+            return Ok(());
+        }
         let pending_menus = std::mem::take(&mut self.services.menus.pending);
         let pending_audio = self
             .services
@@ -708,6 +731,10 @@ impl Session {
                     &mut self.budget,
                 )?;
             }
+        }
+        self.services.dispatch_async(&mut self.vm, through, 0, &mut self.budget)?;
+        if !self.services.async_triggers.exclusive_posted() {
+            self.services.dispatch_async(&mut self.vm, through, 2, &mut self.budget)?;
         }
         Ok(())
     }

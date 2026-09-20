@@ -1,0 +1,154 @@
+[
+  {
+    "name": "defaults",
+    "source": "var t=new AsyncTrigger(null);return [t.cached,t.mode,atmNormal,atmExclusive,atmAtIdle,typeof t.onFire(),typeof t.trigger(),typeof t.cancel(),typeof t.finalize()].join('|');",
+    "expected": {
+      "String": [
+        49,
+        124,
+        48,
+        124,
+        48,
+        124,
+        49,
+        124,
+        50,
+        124,
+        118,
+        111,
+        105,
+        100,
+        124,
+        118,
+        111,
+        105,
+        100,
+        124,
+        118,
+        111,
+        105,
+        100,
+        124,
+        118,
+        111,
+        105,
+        100
+      ]
+    }
+  },
+  {
+    "name": "coercions",
+    "source": "var t=new AsyncTrigger(null),out=[];t.cached=0.5;out.add(t.cached);t.cached=4294967296;out.add(t.cached);t.mode=4294967297;out.add(t.mode);t.mode=-9;out.add(t.mode);t.mode='2';out.add(t.mode);return out.join('|');",
+    "expected": {
+      "String": [
+        49,
+        124,
+        49,
+        124,
+        49,
+        124,
+        45,
+        57,
+        124,
+        50
+      ]
+    }
+  },
+  {
+    "name": "callbacks",
+    "source": "global.results=[];global.owner=%[];owner.action=function(e){global.results.add(e.type+':'+(e.target===global.t)+':'+(this===global.owner));return 77;};global.t=new AsyncTrigger(owner);results.add(typeof t.onFire());global.f=new AsyncTrigger(function(e){global.results.add(e.type+':'+(e.target===global.f));},'');f.onFire();return results.join('|');",
+    "expected": {
+      "String": [
+        111,
+        110,
+        70,
+        105,
+        114,
+        101,
+        58,
+        49,
+        58,
+        49,
+        124,
+        73,
+        110,
+        116,
+        101,
+        103,
+        101,
+        114,
+        124,
+        111,
+        110,
+        70,
+        105,
+        114,
+        101,
+        58,
+        49
+      ]
+    }
+  },
+  {
+    "name": "constructor_args",
+    "source": "var out=[];try{new AsyncTrigger();}catch(e){out.add('missing');}try{new AsyncTrigger(void);}catch(e){out.add('void');}try{new AsyncTrigger(3);}catch(e){out.add('integer');}var t=new AsyncTrigger(null);t.cached=0;t.mode=2;t.AsyncTrigger(null);out.add(t.cached);out.add(t.mode);return out.join('|');",
+    "expected": {
+      "String": [
+        109,
+        105,
+        115,
+        115,
+        105,
+        110,
+        103,
+        124,
+        118,
+        111,
+        105,
+        100,
+        124,
+        105,
+        110,
+        116,
+        101,
+        103,
+        101,
+        114,
+        124,
+        48,
+        124,
+        50
+      ]
+    }
+  },
+  {
+    "name": "missing_action",
+    "source": "global.results=[];global.t=new AsyncTrigger(%[]);try{t.onFire();results.add('ok');}catch(e){results.add('missing');}global.owner=%[];owner.go=function(e){global.results.add(e.type+':'+(e.target===global.x));};global.x=new AsyncTrigger(owner,'go');x.onFire();x.action=function(){global.results.add('override');};x.onFire();invalidate x;results.add(isvalid x);return results.join('|');",
+    "expected": {
+      "String": [
+        111,
+        107,
+        124,
+        111,
+        110,
+        70,
+        105,
+        114,
+        101,
+        58,
+        49,
+        124,
+        111,
+        110,
+        70,
+        105,
+        114,
+        101,
+        58,
+        49,
+        124,
+        48
+      ]
+    }
+  }
+]

@@ -7,6 +7,8 @@ use krkrz_tjs::{Value, Vm, unsupported};
 pub struct WindowState {
     pub constructed: bool,
     pub visible: bool,
+    pub minimized: bool,
+    pub maximized: bool,
     pub caption: String,
     pub inner_width: i32,
     pub inner_height: i32,
@@ -20,6 +22,8 @@ impl Default for WindowState {
         Self {
             constructed: false,
             visible: false,
+            minimized: false,
+            maximized: false,
             caption: String::new(),
             inner_width: 10,
             inner_height: 10,

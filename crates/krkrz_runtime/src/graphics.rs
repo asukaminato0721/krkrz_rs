@@ -23,6 +23,11 @@ impl ImageCache {
         self.limit
     }
 
+    pub fn clear(&mut self) {
+        self.entries.clear();
+        self.bytes = 0;
+    }
+
     pub fn set_limit(&mut self, value: i64) {
         // The native setter first converts to tjs_int, then to unsigned 64-bit.
         // Negative values therefore select the system maximum after clamping.
