@@ -13,7 +13,13 @@ struct Trigger {
 }
 impl Default for Trigger {
     fn default() -> Self {
-        Self { constructed: false, owner: Value::NULL, action: Value::string("action"), cached: true, mode: 0 }
+        Self {
+            constructed: false,
+            owner: Value::NULL,
+            action: Value::string("action"),
+            cached: true,
+            mode: 0,
+        }
     }
 }
 #[derive(Clone, Copy)]
@@ -37,9 +43,14 @@ impl State {
         self.exclusive_posted = false;
         self.sequence
     }
-    pub(crate) fn exclusive_posted(&self) -> bool { self.exclusive_posted }
+    pub(crate) fn exclusive_posted(&self) -> bool {
+        self.exclusive_posted
+    }
     fn pop(&mut self, through: u64, priority: i32) -> Option<usize> {
-        let index = self.pending.iter().position(|event| event.sequence <= through && event.priority == priority)?;
+        let index = self
+            .pending
+            .iter()
+            .position(|event| event.sequence <= through && event.priority == priority)?;
         Some(self.pending.remove(index)?.target)
     }
 }
@@ -49,7 +60,12 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         vm.register_native_method(&class, method, &format!("AsyncTrigger.{method}"))?;
     }
     for property in ["cached", "mode"] {
-        vm.register_native_property(&class, property, Some(&format!("AsyncTrigger.get:{property}")), Some(&format!("AsyncTrigger.set:{property}")))?;
+        vm.register_native_property(
+            &class,
+            property,
+            Some(&format!("AsyncTrigger.get:{property}")),
+            Some(&format!("AsyncTrigger.set:{property}")),
+        )?;
     }
     Ok(())
 }
@@ -60,9 +76,19 @@ fn id(value: &Value) -> Result<usize> {
     anyhow::bail!("AsyncTrigger requires an object context")
 }
 impl Services {
-    pub(crate) fn async_call(&mut self, vm: &mut Vm, operation: &str, context: &Value, args: &[Value], budget: &mut u64) -> Result<Value> {
+    pub(crate) fn async_call(
+        &mut self,
+        vm: &mut Vm,
+        operation: &str,
+        context: &Value,
+        args: &[Value],
+        budget: &mut u64,
+    ) -> Result<Value> {
         let id = id(context)?;
-        let arg = |i: usize| args.get(i).with_context(|| format!("AsyncTrigger.{operation}: missing argument {i}"));
+        let arg = |i: usize| {
+            args.get(i)
+                .with_context(|| format!("AsyncTrigger.{operation}: missing argument {i}"))
+        };
         if operation == "@initialize" {
             self.async_triggers.triggers.entry(id).or_default();
             return Ok(Value::Void);
@@ -72,11 +98,18 @@ impl Services {
             self.async_triggers.triggers.remove(&id);
             return Ok(Value::Void);
         }
-        let trigger = self.async_triggers.triggers.get_mut(&id).context("context has no AsyncTrigger native instance")?;
+        let trigger = self
+            .async_triggers
+            .triggers
+            .get_mut(&id)
+            .context("context has no AsyncTrigger native instance")?;
         if operation == "AsyncTrigger" {
             if !trigger.constructed {
                 let owner = arg(0)?;
-                ensure!(matches!(owner, Value::Object(_)), "AsyncTrigger action owner must be an Object");
+                ensure!(
+                    matches!(owner, Value::Object(_)),
+                    "AsyncTrigger action owner must be an Object"
+                );
                 trigger.owner = owner.clone();
                 if let Some(name) = args.get(1).filter(|v| !matches!(v, Value::Void)) {
                     trigger.action = name.unary("string")?;
@@ -107,29 +140,54 @@ impl Services {
             "cancel" => self.async_triggers.cancel(id),
             "trigger" => {
                 let cached = trigger.cached;
-                let priority = match trigger.mode { 1 => 1, 2 => 2, _ => 0 };
-                if cached { self.async_triggers.cancel(id); }
+                let priority = match trigger.mode {
+                    1 => 1,
+                    2 => 2,
+                    _ => 0,
+                };
+                if cached {
+                    self.async_triggers.cancel(id);
+                }
                 if self.async_triggers.pending.len() >= 100_000 {
                     return Err(unsupported("AsyncTrigger pending event limit exceeded"));
                 }
-                let sequence = self.async_triggers.sequence.checked_add(1).context("AsyncTrigger event sequence overflow")?;
+                let sequence = self
+                    .async_triggers
+                    .sequence
+                    .checked_add(1)
+                    .context("AsyncTrigger event sequence overflow")?;
                 self.async_triggers.sequence = sequence;
-                self.async_triggers.pending.push_back(Event { target: id, sequence, priority });
+                self.async_triggers.pending.push_back(Event {
+                    target: id,
+                    sequence,
+                    priority,
+                });
                 self.async_triggers.exclusive_posted |= priority == 1;
             }
             "onFire" => {
                 let owner = trigger.owner.clone();
                 let action_name = trigger.action.clone();
-                if owner == Value::NULL { return Ok(Value::Void); }
+                if owner == Value::NULL {
+                    return Ok(Value::Void);
+                }
                 let event = vm.new_dictionary()?;
                 vm.set_member(&event, &Value::string("type"), Value::string("onFire"))?;
-                vm.set_member(&event, &Value::string("target"), Value::Object(ObjectRef { object: Some(id), context: Some(id) }))?;
+                vm.set_member(
+                    &event,
+                    &Value::string("target"),
+                    Value::Object(ObjectRef {
+                        object: Some(id),
+                        context: Some(id),
+                    }),
+                )?;
                 let callback = if action_name == Value::string("") {
                     owner.clone()
                 } else {
                     // Missing action methods are ignored by native FuncCall.
                     let callback = vm.get_member(&owner, &action_name, true)?;
-                    if callback == Value::Void { return Ok(Value::Void); }
+                    if callback == Value::Void {
+                        return Ok(Value::Void);
+                    }
                     callback
                 };
                 return vm.call_function(&callback, &owner, &[event], self, budget);
@@ -138,10 +196,20 @@ impl Services {
         }
         Ok(Value::Void)
     }
-    pub(crate) fn dispatch_async(&mut self, vm: &mut Vm, through: u64, priority: i32, budget: &mut u64) -> Result<()> {
+    pub(crate) fn dispatch_async(
+        &mut self,
+        vm: &mut Vm,
+        through: u64,
+        priority: i32,
+        budget: &mut u64,
+    ) -> Result<()> {
         while let Some(id) = self.async_triggers.pop(through, priority) {
-            *budget = budget.checked_sub(1).ok_or_else(|| unsupported("AsyncTrigger execution budget exceeded"))?;
-            if !self.async_triggers.triggers.contains_key(&id) { continue; }
+            *budget = budget
+                .checked_sub(1)
+                .ok_or_else(|| unsupported("AsyncTrigger execution budget exceeded"))?;
+            if !self.async_triggers.triggers.contains_key(&id) {
+                continue;
+            }
             let target = Value::object(id);
             let callback = vm.get_member(&target, &Value::string("onFire"), false)?;
             vm.call_function(&callback, &target, &[], self, budget)?;

@@ -299,6 +299,12 @@ impl Host for Services {
                         }
                         Ok(Value::Void)
                     }
+                    // wuvorbis installs the Ogg decoder; WaveSoundBuffer already
+                    // uses the Rust Vorbis decoder for these streams.
+                    "wuvorbis.dll" => {
+                        self.loaded_plugins.insert("wuvorbis.dll".into());
+                        Ok(Value::Void)
+                    }
                     // PackinOne already registers the image extension. The
                     // original accepts this component alias without replacing
                     // its Layer methods. Their invocation is still explicit
@@ -347,7 +353,8 @@ impl Host for Services {
                         Ok(Value::Void)
                     }
                     "windowex.dll" => {
-                        self.window_ex.link(vm, path.rsplit('/').next().unwrap_or(""))?;
+                        self.window_ex
+                            .link(vm, path.rsplit('/').next().unwrap_or(""))?;
                         Ok(Value::Void)
                     }
                     "menu.dll" => {
@@ -650,7 +657,8 @@ impl Session {
     /// batch, preventing native recursion and preserving the shared VM budget.
     pub fn dispatch_events(&mut self) -> Result<()> {
         let through = self.services.async_triggers.begin_batch();
-        self.services.dispatch_async(&mut self.vm, through, 1, &mut self.budget)?;
+        self.services
+            .dispatch_async(&mut self.vm, through, 1, &mut self.budget)?;
         if self.services.async_triggers.exclusive_posted() {
             return Ok(());
         }
@@ -745,9 +753,11 @@ impl Session {
                 )?;
             }
         }
-        self.services.dispatch_async(&mut self.vm, through, 0, &mut self.budget)?;
+        self.services
+            .dispatch_async(&mut self.vm, through, 0, &mut self.budget)?;
         if !self.services.async_triggers.exclusive_posted() {
-            self.services.dispatch_async(&mut self.vm, through, 2, &mut self.budget)?;
+            self.services
+                .dispatch_async(&mut self.vm, through, 2, &mut self.budget)?;
         }
         Ok(())
     }

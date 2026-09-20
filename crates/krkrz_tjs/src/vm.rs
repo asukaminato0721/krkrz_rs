@@ -376,11 +376,16 @@ impl Default for Vm {
         vm.register_native_method(&array, "assign", "Array.assign")
             .expect("initial Array.assign member");
         let array_id = vm.object_id(&array).expect("Array class");
-        vm.objects[array_id].member_flags.insert("assign".encode_utf16().collect(), crate::scripts_ex::HIDDEN);
+        vm.objects[array_id]
+            .member_flags
+            .insert("assign".encode_utf16().collect(), crate::scripts_ex::HIDDEN);
         let dictionary = vm.globals["Dictionary"].clone();
         for method in ["assign", "clear"] {
-            vm.register_native_static_method(&dictionary, method, &format!("Dictionary.{method}")).expect("initial Dictionary members");
-            let function = vm.get_member(&dictionary, &Value::string(method), false).expect("Dictionary method");
+            vm.register_native_static_method(&dictionary, method, &format!("Dictionary.{method}"))
+                .expect("initial Dictionary members");
+            let function = vm
+                .get_member(&dictionary, &Value::string(method), false)
+                .expect("Dictionary method");
             let id = vm.object_id(&function).expect("Dictionary method object");
             vm.objects[id].native_static = true;
         }
@@ -1199,11 +1204,17 @@ impl Vm {
         match kind {
             ObjectKind::Native(name) => match name.as_str() {
                 "Array.assign" => {
-                    let context = reference.context.map(Value::object).unwrap_or_else(|| context.clone());
+                    let context = reference
+                        .context
+                        .map(Value::object)
+                        .unwrap_or_else(|| context.clone());
                     self.array_assign(&context, args, budget)
                 }
                 "Dictionary.assign" | "Dictionary.clear" => {
-                    let context = reference.context.map(Value::object).unwrap_or_else(|| context.clone());
+                    let context = reference
+                        .context
+                        .map(Value::object)
+                        .unwrap_or_else(|| context.clone());
                     self.dictionary_assign(&context, args, name == "Dictionary.clear", budget)
                 }
                 "RegExp" => self.regexp_new(args),

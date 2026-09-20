@@ -28,14 +28,18 @@ pub struct GlyphBitmap {
     pub coverage: Vec<u8>,
 }
 impl FontBook {
-    pub fn face_count(&self) -> usize { self.faces.len() }
+    pub fn face_count(&self) -> usize {
+        self.faces.len()
+    }
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.names.keys().map(String::as_str)
     }
     /// Register complete TTF/OTF/TTC data. Invalid fonts return zero, as addFont does.
     pub fn add(&mut self, data: Vec<u8>) -> Result<u32> {
         let hash: [u8; 32] = Sha256::digest(&data).into();
-        if let Some(count) = self.sources.get(&hash) { return Ok(*count); }
+        if let Some(count) = self.sources.get(&hash) {
+            return Ok(*count);
+        }
         if data.len() > 64 << 20 || self.bytes.saturating_add(data.len()) > 256 << 20 {
             return Err(unsupported("private font storage limit exceeded"));
         }
@@ -45,11 +49,19 @@ impl FontBook {
         }
         let mut names = Vec::new();
         for index in 0..count {
-            let Ok(face) = ttf_parser::Face::parse(&data, index) else { return Ok(0); };
-            if FontRef::try_from_slice_and_index(&data, index).is_err() { return Ok(0); }
+            let Ok(face) = ttf_parser::Face::parse(&data, index) else {
+                return Ok(0);
+            };
+            if FontRef::try_from_slice_and_index(&data, index).is_err() {
+                return Ok(0);
+            }
             for name in face.names() {
-                if matches!(name.name_id, ttf_parser::name_id::FAMILY | ttf_parser::name_id::FULL_NAME | ttf_parser::name_id::TYPOGRAPHIC_FAMILY)
-                    && let Some(name) = name.to_string()
+                if matches!(
+                    name.name_id,
+                    ttf_parser::name_id::FAMILY
+                        | ttf_parser::name_id::FULL_NAME
+                        | ttf_parser::name_id::TYPOGRAPHIC_FAMILY
+                ) && let Some(name) = name.to_string()
                     && !name.is_empty()
                 {
                     names.push((name, self.faces.len() + index as usize));
@@ -58,31 +70,65 @@ impl FontBook {
         }
         self.bytes += data.len();
         let data: Arc<[u8]> = data.into();
-        for index in 0..count { self.faces.push(Face { data: data.clone(), index }); }
-        for (name, index) in names { self.names.insert(name, index); }
+        for index in 0..count {
+            self.faces.push(Face {
+                data: data.clone(),
+                index,
+            });
+        }
+        for (name, index) in names {
+            self.names.insert(name, index);
+        }
         self.sources.insert(hash, count);
         Ok(count)
     }
     /// Rasterize a glyph at an em size in pixels. The caller supplies text layout.
     pub fn rasterize(&self, name: &str, character: char, em_pixels: f32) -> Result<GlyphBitmap> {
-        ensure!(em_pixels.is_finite() && em_pixels > 0.0 && em_pixels <= 4096.0, "font size is outside supported range");
-        let index = self.names.get(name).with_context(|| format!("private font face not found: {name}"))?;
+        ensure!(
+            em_pixels.is_finite() && em_pixels > 0.0 && em_pixels <= 4096.0,
+            "font size is outside supported range"
+        );
+        let index = self
+            .names
+            .get(name)
+            .with_context(|| format!("private font face not found: {name}"))?;
         let face = &self.faces[*index];
-        let font = FontRef::try_from_slice_and_index(&face.data, face.index).context("registered font is invalid")?;
+        let font = FontRef::try_from_slice_and_index(&face.data, face.index)
+            .context("registered font is invalid")?;
         let units = font.units_per_em().context("font has no em size")?;
         let scale = em_pixels * font.height_unscaled() / units;
         let id = font.glyph_id(character);
         let advance = font.h_advance_unscaled(id) * em_pixels / units;
-        let Some(outline) = font.outline_glyph(id.with_scale_and_position(scale, point(0.0, 0.0))) else {
-            return Ok(GlyphBitmap { left: 0, top: 0, width: 0, height: 0, advance, coverage: Vec::new() });
+        let Some(outline) = font.outline_glyph(id.with_scale_and_position(scale, point(0.0, 0.0)))
+        else {
+            return Ok(GlyphBitmap {
+                left: 0,
+                top: 0,
+                width: 0,
+                height: 0,
+                advance,
+                coverage: Vec::new(),
+            });
         };
         let bounds = outline.px_bounds();
         let width = bounds.width() as u32;
         let height = bounds.height() as u32;
-        let length = (width as usize).checked_mul(height as usize).filter(|n| *n <= 16_000_000)
+        let length = (width as usize)
+            .checked_mul(height as usize)
+            .filter(|n| *n <= 16_000_000)
             .ok_or_else(|| unsupported("glyph bitmap exceeds size limit"))?;
         let mut coverage = vec![0; length];
-        outline.draw(|x, y, value| { coverage[y as usize * width as usize + x as usize] = (value.clamp(0.0, 1.0) * 255.0).round() as u8; });
-        Ok(GlyphBitmap { left: bounds.min.x as i32, top: bounds.min.y as i32, width, height, advance, coverage })
+        outline.draw(|x, y, value| {
+            coverage[y as usize * width as usize + x as usize] =
+                (value.clamp(0.0, 1.0) * 255.0).round() as u8;
+        });
+        Ok(GlyphBitmap {
+            left: bounds.min.x as i32,
+            top: bounds.min.y as i32,
+            width,
+            height,
+            advance,
+            coverage,
+        })
     }
 }

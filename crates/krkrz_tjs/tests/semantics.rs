@@ -9,10 +9,13 @@ struct Case {
 }
 #[test]
 fn original_startup_builtin_corpus() {
-    let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/startup_builtins.json")).unwrap();
+    let cases: Vec<Case> =
+        serde_json::from_str(include_str!("fixtures/startup_builtins.json")).unwrap();
     for case in cases {
         let program = compile(&case.name, &case.source).unwrap();
-        let value = Vm::default().execute(&program, &mut (), &mut 100_000).unwrap_or_else(|e| panic!("{}: {e:#}", case.name));
+        let value = Vm::default()
+            .execute(&program, &mut (), &mut 100_000)
+            .unwrap_or_else(|e| panic!("{}: {e:#}", case.name));
         assert_eq!(value, case.expected, "{}", case.name);
     }
 }
