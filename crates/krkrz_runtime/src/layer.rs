@@ -3,12 +3,37 @@ use crate::Services;
 use anyhow::{Context, Result, ensure};
 use krkrz_assets::media::Image;
 use krkrz_tjs::{ObjectRef, Value, Vm, unsupported};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 // A restored 1280x720 scene retains 208 MB of live background, portrait and
 // transition layers; changing pose reaches 260 MB before the next PSD buffer.
 // Full GC does not reclaim these script-owned caches. Keep a bounded session
 // allowance large enough for this working set, while retaining the 16 MP limit.
 const MAX_LAYER_IMAGE_BYTES: usize = 512 << 20;
+
+/// Live layer buffers excluding one destination. Shared sources remain charged
+/// when the destination detaches or replaces its image.
+pub(crate) fn image_available(layers: &BTreeMap<usize, Layer>, destination: usize) -> usize {
+    MAX_LAYER_IMAGE_BYTES.saturating_sub(image_bytes(layers, Some(destination)))
+}
+fn image_bytes(layers: &BTreeMap<usize, Layer>, excluded: Option<usize>) -> usize {
+    let mut seen = BTreeSet::new();
+    layers
+        .iter()
+        .filter(|(id, _)| Some(**id) != excluded)
+        .map(|(_, layer)| {
+            let main = layer
+                .image
+                .as_ref()
+                .filter(|image| seen.insert(Arc::as_ptr(image) as usize))
+                .map_or(0, |image| image.rgba.len());
+            main + layer.province.as_ref().map_or(0, |p| p.pixels.len())
+        })
+        .sum()
+}
 
 #[derive(Clone)]
 struct Province {
@@ -48,7 +73,7 @@ pub(crate) struct Layer {
     height: i32,
     image_left: i32,
     image_top: i32,
-    pub(crate) image: Option<Image>,
+    pub(crate) image: Option<Arc<Image>>,
     province: Option<Province>,
     clip: [i32; 4],
     kind: i32,
@@ -100,11 +125,11 @@ impl Default for Layer {
             height: 32,
             image_left: 0,
             image_top: 0,
-            image: Some(Image {
+            image: Some(Arc::new(Image {
                 width: 32,
                 height: 32,
                 rgba: [255, 255, 255, 0].repeat(32 * 32),
-            }),
+            })),
             province: None,
             clip: [0, 0, 32, 32],
             kind: 2,
@@ -183,7 +208,18 @@ fn rgb(color: u32) -> Result<[u8; 3]> {
 }
 impl Layer {
     fn bitmap(&self) -> Result<&Image> {
-        self.image.as_ref().context("layer has no image")
+        self.image.as_deref().context("layer has no image")
+    }
+    // Check before detaching; a failed write leaves the shared pixels intact.
+    fn prepare_image_write(&mut self, available: usize) -> Result<()> {
+        let bytes =
+            self.bitmap()?.rgba.len() + self.province.as_ref().map_or(0, |p| p.pixels.len());
+        ensure!(
+            bytes <= available,
+            "session layer image memory limit exceeded"
+        );
+        Arc::make_mut(self.image.as_mut().unwrap());
+        Ok(())
     }
     fn allocate_province(&mut self, available: usize) -> Result<()> {
         if self.province.is_none() {
@@ -233,11 +269,11 @@ impl Layer {
                 n * if self.province.is_some() { 5 } else { 4 } <= available,
                 "session layer image memory limit exceeded"
             );
-            self.image = Some(Image {
+            self.image = Some(Arc::new(Image {
                 width: self.width as u32,
                 height: self.height as u32,
                 rgba: self.neutral.repeat(n),
-            });
+            }));
             self.image_left = 0;
             self.image_top = 0;
             self.resize_province(self.width as usize, self.height as usize);
@@ -259,11 +295,11 @@ impl Layer {
                 &old.rgba[y * old.width as usize * 4..y * old.width as usize * 4 + len],
             );
         }
-        self.image = Some(Image {
+        self.image = Some(Arc::new(Image {
             width: w as u32,
             height: h as u32,
             rgba,
-        });
+        }));
         self.resize_province(w as usize, h as usize);
         self.image_modified = true;
         self.reset_clip()
@@ -371,7 +407,8 @@ impl Layer {
         } else {
             rgb(args[4].integer()? as u32)?
         };
-        let image = self.image.as_mut().unwrap();
+        self.prepare_image_write(available)?;
+        let image = Arc::make_mut(self.image.as_mut().unwrap());
         for y in top.max(0)..bottom.min(image.height as i32) {
             for x in left.max(0)..right.min(image.width as i32) {
                 let i = (y as usize * image.width as usize + x as usize) * 4;
@@ -643,7 +680,8 @@ impl Layer {
                 self.bitmap()?;
                 if self.inside_clip(x, y) {
                     let index = self.point(x, y)?;
-                    let p = &mut self.image.as_mut().unwrap().rgba[index..index + 4];
+                    self.prepare_image_write(available)?;
+                    let p = &mut Arc::make_mut(self.image.as_mut().unwrap()).rgba[index..index + 4];
                     if op == "setMaskPixel" {
                         p[3] = color as u8;
                     } else {
@@ -697,7 +735,8 @@ impl Layer {
                 } else {
                     rgb(color & 0xffffff)?
                 };
-                let image = self.image.as_mut().context("layer has no image")?;
+                self.prepare_image_write(available)?;
+                let image = Arc::make_mut(self.image.as_mut().unwrap());
                 self.image_modified = true;
                 for y in top.max(0)..bottom.min(image.height as i32) {
                     for x in left.max(0)..right.min(image.width as i32) {
@@ -1034,20 +1073,8 @@ impl Services {
         if op == "loadProvinceImage" {
             return self.layer_load_province(id, args, budget);
         }
-        let bytes: usize = self
-            .layers
-            .iter()
-            .filter(|(key, _)| **key != id)
-            .map(|(_, l)| {
-                l.image.as_ref().map_or(0, |i| i.rgba.len())
-                    + l.province.as_ref().map_or(0, |p| p.pixels.len())
-            })
-            .sum();
-        self.layers.get_mut(&id).unwrap().call(
-            op,
-            args,
-            MAX_LAYER_IMAGE_BYTES.saturating_sub(bytes),
-        )
+        let available = image_available(&self.layers, id);
+        self.layers.get_mut(&id).unwrap().call(op, args, available)
     }
 }
 
@@ -1134,30 +1161,32 @@ impl Layer {
 }
 
 impl Layer {
-    pub(crate) fn set_movie_image(&mut self, image: &Image) -> Result<()> {
-        self.image_size(
-            image.width as i32,
-            image.height as i32,
-            MAX_LAYER_IMAGE_BYTES,
-        )?;
-        self.image = Some(image.clone());
+    pub(crate) fn set_movie_image(&mut self, image: &Image, available: usize) -> Result<()> {
+        ensure!(
+            image.rgba.len() + self.province.as_ref().map_or(0, |p| p.pixels.len()) <= available,
+            "session layer image memory limit exceeded"
+        );
+        self.image_size(image.width as i32, image.height as i32, available)?;
+        self.image = Some(Arc::new(image.clone()));
         self.image_modified = true;
         Ok(())
     }
 }
 
 impl Layer {
-    pub(crate) fn present_alpha_movie(&mut self, image: &Image, left: i32, top: i32) -> Result<()> {
+    pub(crate) fn present_alpha_movie(
+        &mut self,
+        image: &Image,
+        left: i32,
+        top: i32,
+        available: usize,
+    ) -> Result<()> {
         ensure!(
             !self.primary || (left == 0 && top == 0),
             "cannot move primary layer"
         );
-        self.set_movie_image(image)?;
-        self.size(
-            image.width as i32,
-            image.height as i32,
-            MAX_LAYER_IMAGE_BYTES,
-        )?;
+        self.set_movie_image(image, available)?;
+        self.size(image.width as i32, image.height as i32, available)?;
         self.left = left;
         self.top = top;
         Ok(())
@@ -1167,6 +1196,108 @@ impl Layer {
 #[cfg(test)]
 mod memory_tests {
     use super::*;
+
+    #[test]
+    fn assigned_images_share_then_detach_with_atomic_quota_checks() {
+        let project = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        let mut session =
+            crate::Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+        session.services.layers.insert(1, Layer::default());
+        session.services.layers.insert(2, Layer::default());
+        session
+            .services
+            .layer_assign_images(2, &Value::object(1), &mut 100_000)
+            .unwrap();
+        let source = session.services.layers[&1].image.clone().unwrap();
+        assert!(Arc::ptr_eq(
+            &source,
+            session.services.layers[&2].image.as_ref().unwrap()
+        ));
+        assert_eq!(image_bytes(&session.services.layers, None), 4096);
+        assert_eq!(
+            image_available(&session.services.layers, 2),
+            MAX_LAYER_IMAGE_BYTES - 4096
+        );
+        let destination = session.services.layers.get_mut(&2).unwrap();
+        assert!(
+            destination
+                .call(
+                    "setMaskPixel",
+                    &[Value::Integer(0), Value::Integer(0), Value::Integer(255)],
+                    4095
+                )
+                .is_err()
+        );
+        assert!(Arc::ptr_eq(&source, destination.image.as_ref().unwrap()));
+        destination
+            .call(
+                "setMaskPixel",
+                &[Value::Integer(0), Value::Integer(0), Value::Integer(255)],
+                4096,
+            )
+            .unwrap();
+        assert_eq!(source.rgba[3], 0);
+        assert_eq!(destination.bitmap().unwrap().rgba[3], 255);
+        assert!(!Arc::ptr_eq(&source, destination.image.as_ref().unwrap()));
+        assert_eq!(image_bytes(&session.services.layers, None), 8192);
+    }
+
+    #[test]
+    fn shared_clip_alpha_keeps_forward_self_overlap() {
+        let project = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        let mut session =
+            crate::Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+        let mut layer = Layer::default();
+        layer.resize_image(4, 1, 4096).unwrap();
+        layer
+            .call(
+                "fillRect",
+                &[
+                    Value::Integer(0),
+                    Value::Integer(0),
+                    Value::Integer(4),
+                    Value::Integer(1),
+                    Value::Integer(0x80000000),
+                ],
+                4096,
+            )
+            .unwrap();
+        session.services.layers.insert(1, layer);
+        session.services.layers.insert(2, Layer::default());
+        session
+            .services
+            .layer_assign_images(2, &Value::object(1), &mut 100_000)
+            .unwrap();
+        session
+            .services
+            .layer_clip_alpha(
+                1,
+                &[
+                    Value::Integer(1),
+                    Value::Integer(0),
+                    Value::object(1),
+                    Value::Integer(0),
+                    Value::Integer(0),
+                    Value::Integer(3),
+                    Value::Integer(1),
+                ],
+                &mut 100_000,
+            )
+            .unwrap();
+        let alpha = |id| {
+            session.services.layers[&id]
+                .bitmap()
+                .unwrap()
+                .rgba
+                .as_chunks::<4>().0.iter()
+                .map(|p| p[3])
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(alpha(1), [128, 64, 32, 16]);
+        assert_eq!(alpha(2), [128; 4]);
+    }
 
     #[test]
     fn rejected_image_growth_keeps_pixels_dimensions_and_clip() {

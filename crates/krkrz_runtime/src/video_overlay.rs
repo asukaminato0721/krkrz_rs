@@ -649,9 +649,13 @@ impl Services {
         };
         for value in &video.layers {
             if let Value::Object(reference) = value
-                && let Some(layer) = reference.object.and_then(|id| self.layers.get_mut(&id))
+                && let Some(target) = reference.object.filter(|id| self.layers.contains_key(id))
             {
-                layer.set_movie_image(image)?;
+                let available = crate::layer::image_available(&self.layers, target);
+                self.layers
+                    .get_mut(&target)
+                    .unwrap()
+                    .set_movie_image(image, available)?;
             }
         }
         Ok(())

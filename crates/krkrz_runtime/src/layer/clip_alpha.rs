@@ -56,8 +56,10 @@ impl Services {
         } else {
             None
         };
+        let available = image_available(&self.layers, id);
         let dst = self.layers.get_mut(&id).unwrap();
-        let image = dst.image.as_mut().unwrap();
+        dst.prepare_image_write(available)?;
+        let image = Arc::make_mut(dst.image.as_mut().unwrap());
         let mut sample = 0;
         for y in top..bottom {
             for x in left..right {

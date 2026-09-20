@@ -107,13 +107,8 @@ fn original_font_measurement_corpus() {
         source: String,
         expected: Value,
     }
-    let cases: Vec<Case> = [
-        include_str!("fixtures/font_metrics.json"),
-        include_str!("fixtures/layer_text.json"),
-    ]
-    .into_iter()
-    .flat_map(|fixture| serde_json::from_str::<Vec<Case>>(fixture).unwrap())
-    .collect();
+    let cases: Vec<Case> =
+        serde_json::from_str(include_str!("fixtures/font_metrics.json")).unwrap();
     for case in cases {
         let project = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
@@ -130,4 +125,136 @@ fn original_font_measurement_corpus() {
             case.name
         );
     }
+}
+
+/// Keep the Windows reference pixels and hash, and explicitly constrain the
+/// Fontations/Zeno differences. Do not rewrite the native golden on upgrades.
+#[test]
+fn fontations_text_pixels_and_quantified_original_differences() {
+    #[derive(serde::Deserialize)]
+    struct Original {
+        name: String,
+        source: String,
+        expected: Value,
+    }
+    #[derive(serde::Deserialize)]
+    struct Comparison {
+        name: String,
+        fontations_hash: u32,
+        different_pixels: usize,
+        max_channel_delta: u32,
+        absolute_channel_error: u32,
+        original_pixels_rle: Vec<[u32; 3]>,
+    }
+    fn hash(pixels: &[[u32; 2]]) -> u32 {
+        pixels
+            .iter()
+            .flatten()
+            .fold(2166136261u32, |h, v| (h ^ v).wrapping_mul(16777619))
+    }
+    let originals: Vec<Original> =
+        serde_json::from_str(include_str!("fixtures/layer_text.json")).unwrap();
+    let comparisons: Vec<Comparison> =
+        serde_json::from_str(include_str!("fixtures/fontations_layer_text.json")).unwrap();
+    assert_eq!(originals.len(), comparisons.len());
+    for (original, comparison) in originals.into_iter().zip(comparisons) {
+        assert_eq!(original.name, comparison.name);
+        let native: Vec<[u32; 2]> = comparison
+            .original_pixels_rle
+            .iter()
+            .flat_map(|[count, color, alpha]| {
+                std::iter::repeat_n([*color, *alpha], *count as usize)
+            })
+            .collect();
+        assert_eq!(native.len(), 32 * 28);
+        assert_eq!(
+            Value::Integer(hash(&native) as i64),
+            original.expected,
+            "native golden: {}",
+            original.name
+        );
+        let project = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join("synthetic.ttf"), FONT).unwrap();
+        let source = format!(
+            "{}var pixels=[];for(var y=0;y<28;y++)for(var x=0;x<32;x++){{pixels.add(l.getMainPixel(x,y));pixels.add(l.getMaskPixel(x,y));}}return pixels.join(',');",
+            original.source.split_once("var h=").unwrap().0
+        );
+        std::fs::write(project.path().join("case.tjs"), source).unwrap();
+        let mut session =
+            Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+        let output = session.execute_storage("case.tjs").unwrap().text();
+        let values: Vec<u32> = output.split(',').map(|s| s.parse().unwrap()).collect();
+        let actual: Vec<[u32; 2]> = values.as_chunks::<2>().0.to_vec();
+        assert_eq!(actual.len(), native.len());
+        assert_eq!(
+            hash(&actual),
+            comparison.fontations_hash,
+            "Fontations golden: {}",
+            original.name
+        );
+        let mut different = 0;
+        let mut maximum = 0;
+        let mut total = 0;
+        for (actual, native) in actual.iter().zip(&native) {
+            different += usize::from(actual != native);
+            for (a, b) in [
+                (actual[0] & 255, native[0] & 255),
+                ((actual[0] >> 8) & 255, (native[0] >> 8) & 255),
+                ((actual[0] >> 16) & 255, (native[0] >> 16) & 255),
+                (actual[1], native[1]),
+            ] {
+                let delta = a.abs_diff(b);
+                maximum = maximum.max(delta);
+                total += delta;
+            }
+        }
+        assert_eq!(
+            (different, maximum, total),
+            (
+                comparison.different_pixels,
+                comparison.max_channel_delta,
+                comparison.absolute_channel_error
+            ),
+            "native pixel difference: {}",
+            original.name
+        );
+    }
+}
+
+#[test]
+fn collection_face_index_is_used_by_fontations_metrics_and_drawing() {
+    // Two copies of the synthetic sfnt in a TTC, with distinct hmtx advances.
+    // Duplicate names deliberately resolve to face 1, testing its offset rather
+    // than merely accepting a collection that silently always draws face 0.
+    let first = 20usize;
+    let second = (first + FONT.len() + 3) & !3;
+    let mut collection = vec![0; second + FONT.len()];
+    collection[..12].copy_from_slice(b"ttcf\x00\x01\x00\x00\x00\x00\x00\x02");
+    collection[12..16].copy_from_slice(&(first as u32).to_be_bytes());
+    collection[16..20].copy_from_slice(&(second as u32).to_be_bytes());
+    for base in [first, second] {
+        collection[base..base + FONT.len()].copy_from_slice(FONT);
+        let count = u16::from_be_bytes(FONT[4..6].try_into().unwrap()) as usize;
+        for table in 0..count {
+            let record = base + 12 + table * 16;
+            let local = u32::from_be_bytes(collection[record + 8..record + 12].try_into().unwrap())
+                as usize;
+            let offset = base + local;
+            collection[record + 8..record + 12].copy_from_slice(&(offset as u32).to_be_bytes());
+            if base == second && &collection[record..record + 4] == b"hmtx" {
+                collection[offset..offset + 2].copy_from_slice(&900u16.to_be_bytes());
+            }
+        }
+    }
+    let mut book = FontBook::default();
+    assert_eq!(book.add(collection).unwrap(), 2);
+    let glyph = book.rasterize("Kirikiri Synthetic", 'A', 20.0).unwrap();
+    assert_eq!(glyph.advance, 18.0);
+    assert_eq!(
+        book.text_width("Kirikiri Synthetic", &[65], 20, false)
+            .unwrap(),
+        18
+    );
+    assert!(glyph.coverage.iter().any(|v| *v != 0));
 }

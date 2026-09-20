@@ -246,6 +246,7 @@ pub(crate) struct Renderer {
     line_indent: f32,
     next_indent: f32,
     indent_stack: Vec<f32>,
+    hanging_count: usize,
 }
 impl Default for Renderer {
     fn default() -> Self {
@@ -275,6 +276,7 @@ impl Default for Renderer {
             line_indent: 0.0,
             next_indent: 0.0,
             indent_stack: vec![],
+            hanging_count: 0,
         }
     }
 }
@@ -287,6 +289,7 @@ impl Renderer {
         self.line_indent = 0.0;
         self.next_indent = 0.0;
         self.indent_stack.clear();
+        self.hanging_count = 0;
         self.published.clear();
         self.render_text.clear();
         self.count = 0;
@@ -789,6 +792,7 @@ impl Services {
             r.render_text.extend_from_slice(&ch.text);
         }
         r.render_text.push(10);
+        r.hanging_count = 0;
         r.line_indent = r.next_indent;
         r.lines.push(Line {
             characters,
@@ -831,11 +835,14 @@ impl Services {
                 ch.delay = 0.0;
             }
         }
-        if self.renderer(id)?.options.contains_key("kinsoku_max") {
-            return Err(unsupported(
-                "TextRender configurable kinsoku limit is not implemented",
-            ));
-        }
+        let kinsoku_max = self
+            .renderer(id)?
+            .options
+            .get("kinsoku_max")
+            .map(Value::integer)
+            .transpose()?
+            .unwrap_or(1)
+            .max(0) as usize;
         for name in ["word_break", "width_time_scale"] {
             if self
                 .renderer(id)?
@@ -1144,16 +1151,39 @@ impl Services {
             if following
                 && limit > 0.0
                 && r.line_indent + r.pending_width() + r.advance(&ch) > limit
-                && r.pending.last().is_some_and(|c| {
-                    c.text
-                        .first()
-                        .is_some_and(|u| r.option_contains("following", *u))
-                })
             {
-                return Err(unsupported(
-                    "TextRender multiple hanging punctuation characters are not implemented",
-                ));
+                if r.hanging_count >= kinsoku_max && !r.pending.is_empty() {
+                    let normal = r.pending.iter().rposition(|c| {
+                        c.text.first().is_some_and(|u| {
+                            !r.option_contains("following", *u)
+                                && !(auto_indent != 0 && r.option_contains("end", *u))
+                        })
+                    });
+                    let mut carry = normal
+                        .filter(|&index| index > 0)
+                        .map(|index| r.pending.split_off(index))
+                        .unwrap_or_default();
+                    let replay_count = if carry.is_empty() {
+                        r.hanging_count
+                    } else {
+                        carry.len()
+                    };
+                    let extra = replay_count as f32 * step;
+                    for c in &mut carry {
+                        c.delay += extra;
+                    }
+                    delay += extra;
+                    ch.delay = delay;
+                    self.finish_text_line(vm, id, context, budget)?;
+                    let r = self.renderer(id)?;
+                    r.pending.extend(carry);
+                }
+                let r = self.renderer(id)?;
+                if r.line_indent + r.pending_width() + r.advance(&ch) > limit {
+                    r.hanging_count += 1;
+                }
             }
+            let r = self.renderer(id)?;
             if !r.pending.is_empty()
                 && limit > 0.0
                 && r.line_indent + r.pending_width() + r.advance(&ch) > limit

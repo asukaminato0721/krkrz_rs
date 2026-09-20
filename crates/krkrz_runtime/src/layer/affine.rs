@@ -158,6 +158,11 @@ impl Services {
         *budget = budget
             .checked_sub(cost)
             .ok_or_else(|| unsupported("affineCopy execution budget exceeded"))?;
+        ensure!(
+            image.rgba.len() + dst.province.as_ref().map_or(0, |p| p.pixels.len())
+                <= image_available(&self.layers, id),
+            "session layer image memory limit exceeded"
+        );
         let mut output = image.clone();
         let write = |output: &mut Image, x: i64, y: i64, p: [u8; 4]| {
             let i = (y as usize * output.width as usize + x as usize) * 4;
@@ -288,7 +293,7 @@ impl Services {
             }
         }
         let dst = self.layers.get_mut(&id).unwrap();
-        dst.image = Some(output);
+        dst.image = Some(Arc::new(output));
         dst.image_modified = true;
         Ok(Value::Void)
     }

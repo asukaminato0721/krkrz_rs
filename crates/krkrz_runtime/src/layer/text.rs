@@ -94,6 +94,7 @@ impl Services {
             x += glyph.advance[0] as i64;
             y += glyph.advance[1] as i64;
         }
+        let available = image_available(&self.layers, id);
         let layer = self.layers.get_mut(&id).unwrap();
         // All shadows precede all foreground glyphs, including overlapping characters.
         for (x, y, _, shadow) in &draws {
@@ -104,12 +105,12 @@ impl Services {
                     y + shadow_offset[1],
                     shadow_color,
                     opacity,
-                    budget,
+                    (budget, available),
                 )?;
             }
         }
         for (x, y, glyph, _) in &draws {
-            layer.draw_glyph(glyph, *x, *y, color, opacity, budget)?;
+            layer.draw_glyph(glyph, *x, *y, color, opacity, (budget, available))?;
         }
         Ok(Value::Void)
     }
@@ -176,7 +177,7 @@ impl Layer {
         y: i64,
         color: [u8; 3],
         opacity: i32,
-        budget: &mut u64,
+        (budget, available): (&mut u64, usize),
     ) -> Result<()> {
         let (x, y) = (x + glyph.left as i64, y + glyph.top as i64);
         let image = self.bitmap()?;
@@ -193,7 +194,8 @@ impl Layer {
         }
         charge(budget, ((right - left) * (bottom - top)) as u64)?;
         let face = self.draw_face();
-        let image = self.image.as_mut().unwrap();
+        self.prepare_image_write(available)?;
+        let image = Arc::make_mut(self.image.as_mut().unwrap());
         for dy in top..bottom {
             for dx in left..right {
                 let sample = (dy - y) as usize * glyph.width + (dx - x) as usize;

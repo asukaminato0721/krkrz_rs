@@ -23,6 +23,16 @@ fn original_text_render_corpus() {
     }
 }
 #[test]
+fn original_kinsoku_corpus() {
+    let cases: Vec<Case> =
+        serde_json::from_str(include_str!("fixtures/text_kinsoku.json")).unwrap();
+    for case in cases {
+        let result = execute(&case.source, 100_000)
+            .unwrap_or_else(|error| panic!("{}: {error:#}", case.name));
+        assert_eq!(result, case.expected, "{}", case.name);
+    }
+}
+#[test]
 fn pending_reference_cases_fail_explicitly() {
     // These expected reference values document unfinished behavior. Rejecting
     // them is a safety boundary, not reference agreement or slice completion.

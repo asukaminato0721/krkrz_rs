@@ -10,12 +10,16 @@ impl Services {
         let right = layer.clip[2].max(0).min(image.width as i32) as usize;
         let bottom = layer.clip[3].max(0).min(image.height as i32) as usize;
         let count = right.saturating_sub(left) * bottom.saturating_sub(top);
+        // The plugin rejects empty destinations before requesting a writable buffer.
+        ensure!(count > 0, "dest must be Layer.");
         *budget = budget
             .checked_sub(count as u64)
             .ok_or_else(|| unsupported("Layer.fillAlpha execution budget exceeded"))?;
+        let available = image_available(&self.layers, id);
         let layer = self.layers.get_mut(&id).unwrap();
         if right > left && bottom > top {
-            let image = layer.image.as_mut().unwrap();
+            layer.prepare_image_write(available)?;
+            let image = Arc::make_mut(layer.image.as_mut().unwrap());
             for y in top..bottom {
                 let start = (y * image.width as usize + left) * 4;
                 for pixel in image.rgba[start..start + (right - left) * 4]

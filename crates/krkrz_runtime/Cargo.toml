@@ -15,8 +15,8 @@ krkrz_kag.workspace = true
 encoding_rs.workspace = true
 tempfile.workspace = true
 sha2.workspace = true
-ab_glyph = "0.2.32"
 ttf-parser = "0.25.1"
 rustfft = "6.4"
-freetype-rs = "0.38"
 uuid = { version = "1", features = ["v4"] }
+skrifa = "0.47.0"
+zeno = "0.3.3"

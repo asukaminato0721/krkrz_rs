@@ -160,10 +160,14 @@ plugin binary or platform UI code is linked into the Rust engine.
 
 The windowEx state and notification bindings follow miahmie's `wtnbgo/windowEx`,
 revision `88c9be22ff8f9e6d42edbf4787092837f177a89a`, under the Kirikiri license
-reproduced above. Font parsing/rasterization uses `ttf-parser` (MIT/Apache-2.0)
-and `ab_glyph` (Apache-2.0). The test font is a generated synthetic triangle.
+reproduced above. Font metadata uses `ttf-parser` (MIT/Apache-2.0). Glyph
+loading and hinting use Fontations (`skrifa`, `read-fonts`, `font-types`), and
+coverage rasterization uses `zeno`, all under MIT OR Apache-2.0. The runtime
+contains no FreeType FFI or dependency. The test font is a generated synthetic
+triangle, and stored Windows comparison pixels render only that synthetic font.
 
-Text rasterization also uses `freetype-rs` (MIT) with FreeType (FTL/GPLv2).
+Sources: <https://github.com/googlefonts/fontations> and
+<https://github.com/dfrg/zeno>.
 Layer text coverage, shadow convolution, alpha tables and pixel blending follow
 Kirikiri Z `visual/CharacterData.cpp`, `visual/glgen/gengl.pl`, `maketab.c` and
 the historical IA32 colormap implementations at revision

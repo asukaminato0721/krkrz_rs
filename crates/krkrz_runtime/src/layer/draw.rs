@@ -299,14 +299,14 @@ impl Services {
             self.layer_after_completion(vm, source, budget)?;
             pixels
         };
+        let available = image_available(&self.layers, id);
         let dst = self
             .layers
             .get_mut(&id)
             .context("piledCopy destination was invalidated")?;
+        dst.prepare_image_write(available)?;
         copy_region(
-            dst.image
-                .as_mut()
-                .context("piledCopy destination has no image")?,
+            Arc::make_mut(dst.image.as_mut().unwrap()),
             &mut pixels,
             dx + left,
             dy + top,

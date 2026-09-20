@@ -152,8 +152,10 @@ impl Services {
                 output.extend(sum.map(|s| (s / divisor) as u8));
             }
         }
+        let available = image_available(&self.layers, id);
         let dst = self.layers.get_mut(&id).unwrap();
-        let bitmap = dst.image.as_mut().unwrap();
+        dst.prepare_image_write(available)?;
+        let bitmap = Arc::make_mut(dst.image.as_mut().unwrap());
         let width = x.samples.len() * 4;
         if width > 0 {
             for (row, data) in output.chunks_exact(width).enumerate() {

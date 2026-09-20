@@ -121,17 +121,9 @@ impl Services {
         }
         let bytes = src.image.as_ref().map_or(0, |i| i.rgba.len())
             + src.province.as_ref().map_or(0, |p| p.pixels.len());
-        let used: usize = self
-            .layers
-            .iter()
-            .filter(|(key, _)| **key != id)
-            .map(|(_, l)| {
-                l.image.as_ref().map_or(0, |i| i.rgba.len())
-                    + l.province.as_ref().map_or(0, |p| p.pixels.len())
-            })
-            .sum();
+        let used = image_bytes(&self.layers, Some(id));
         ensure!(
-            used + bytes <= MAX_LAYER_IMAGE_BYTES,
+            used + src.province.as_ref().map_or(0, |p| p.pixels.len()) <= MAX_LAYER_IMAGE_BYTES,
             "session layer image memory limit exceeded"
         );
         *budget = budget
@@ -284,15 +276,7 @@ impl Services {
             .suggest_graphic(&format!("{stem}_p"))
             .map(|name| self.read_province(&name, image.width, image.height, budget))
             .transpose()?;
-        let used: usize = self
-            .layers
-            .iter()
-            .filter(|(key, _)| **key != id)
-            .map(|(_, l)| {
-                l.image.as_ref().map_or(0, |i| i.rgba.len())
-                    + l.province.as_ref().map_or(0, |p| p.pixels.len())
-            })
-            .sum();
+        let used = image_bytes(&self.layers, Some(id));
         ensure!(
             used + image.rgba.len() + province.as_ref().map_or(0, |p| p.pixels.len())
                 <= MAX_LAYER_IMAGE_BYTES,
@@ -310,7 +294,7 @@ impl Services {
         }
         layer.image_left = layer.image_left.max(layer.width - w);
         layer.image_top = layer.image_top.max(layer.height - h);
-        layer.image = Some(image);
+        layer.image = Some(Arc::new(image));
         layer.province = province;
         layer.image_modified = true;
         layer.reset_clip()?;
@@ -373,18 +357,11 @@ impl Services {
         };
         let image = self.layers[&id].bitmap()?;
         let (width, height) = (image.width, image.height);
-        let used: usize = self
-            .layers
-            .iter()
-            .map(|(other, l)| {
-                l.image.as_ref().map_or(0, |i| i.rgba.len())
-                    + if *other == id {
-                        0
-                    } else {
-                        l.province.as_ref().map_or(0, |p| p.pixels.len())
-                    }
-            })
-            .sum();
+        let used = image_bytes(&self.layers, None)
+            - self.layers[&id]
+                .province
+                .as_ref()
+                .map_or(0, |p| p.pixels.len());
         ensure!(
             used + width as usize * height as usize <= MAX_LAYER_IMAGE_BYTES,
             "session layer image memory limit exceeded"

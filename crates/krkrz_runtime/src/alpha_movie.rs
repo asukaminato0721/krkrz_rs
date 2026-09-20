@@ -157,10 +157,12 @@ impl Services {
                 .checked_sub(charge)
                 .ok_or_else(|| unsupported("AlphaMovie decode execution budget exceeded"))?;
             if let Some(image) = movie.decode_packet(player.packet)? {
+                let available = crate::layer::image_available(&self.layers, target);
                 self.layers.get_mut(&target).unwrap().present_alpha_movie(
                     &image,
                     player.position.0.saturating_add(packet.left as i32),
                     player.position.1.saturating_add(packet.top as i32),
+                    available,
                 )?;
             }
             player.displayed = packet.sequence;

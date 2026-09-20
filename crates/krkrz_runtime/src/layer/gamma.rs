@@ -57,7 +57,10 @@ impl Services {
                 .checked_sub(((right - left) * (bottom - top) + 768) as u64)
                 .ok_or_else(|| unsupported("Layer.adjustGamma execution budget exceeded"))?;
             let tables = parameters.map(|(g, f, c)| gamma_table(g, f, c));
-            let image = self.layers.get_mut(&id).unwrap().image.as_mut().unwrap();
+            let available = image_available(&self.layers, id);
+            let layer = self.layers.get_mut(&id).unwrap();
+            layer.prepare_image_write(available)?;
+            let image = Arc::make_mut(layer.image.as_mut().unwrap());
             for y in top..bottom {
                 let start = (y * image.width as usize + left) * 4;
                 for pixel in image.rgba[start..start + (right - left) * 4]
@@ -67,17 +70,14 @@ impl Services {
                     let alpha = pixel[3] as u32;
                     if additive && alpha < 255 {
                         let adjusted = alpha + (alpha >> 7);
-                        let reciprocal = if alpha == 0 {
-                            32767
-                        } else {
-                            (65536 / alpha).min(32767)
-                        };
+                        let reciprocal = 65536_u32.checked_div(alpha).unwrap_or(32767).min(32767);
                         for c in 0..3 {
                             let color = pixel[c] as u32;
                             pixel[c] = if color > alpha {
-                                ((tables[c][255] as u32 * adjusted >> 8) + color - alpha) as u8
+                                (((tables[c][255] as u32 * adjusted) >> 8) + color - alpha) as u8
                             } else {
-                                (tables[c][(reciprocal * color >> 8) as usize] as u32 * adjusted
+                                ((tables[c][((reciprocal * color) >> 8) as usize] as u32
+                                    * adjusted)
                                     >> 8) as u8
                             };
                         }

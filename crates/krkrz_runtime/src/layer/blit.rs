@@ -94,21 +94,14 @@ impl Services {
             }
         }
         let has_province = source.province.is_some();
-        let used: usize = self
-            .layers
-            .iter()
-            .filter(|(key, _)| **key != id)
-            .map(|(_, l)| {
-                l.image.as_ref().map_or(0, |i| i.rgba.len())
-                    + l.province.as_ref().map_or(0, |p| p.pixels.len())
-            })
-            .sum();
+        let used = image_bytes(&self.layers, Some(id));
         let dst = self.layers.get_mut(&id).unwrap();
         if op == "copyRect" && face == 3 && has_province {
             dst.allocate_province(MAX_LAYER_IMAGE_BYTES.saturating_sub(used))?;
         }
         let hold = dst.hold_alpha;
-        let image = dst.image.as_mut().unwrap();
+        dst.prepare_image_write(MAX_LAYER_IMAGE_BYTES.saturating_sub(used))?;
+        let image = Arc::make_mut(dst.image.as_mut().unwrap());
         let mut sample = 0;
         for y in top..bottom {
             let start = ((dy + y) * image.width as i64 + dx + left) as usize * 4;

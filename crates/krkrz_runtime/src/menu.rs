@@ -420,7 +420,7 @@ impl Services {
                     *budget = budget
                         .checked_sub((image.rgba.len() / 4) as u64)
                         .ok_or_else(|| unsupported("menu bitmap copy execution budget exceeded"))?;
-                    let mut image = image.clone();
+                    let mut image = image.as_ref().clone();
                     for pixel in image.rgba.as_chunks_mut::<4>().0.iter_mut() {
                         pixel[3] = if pixel[3] >= 64 { 255 } else { 0 };
                     }

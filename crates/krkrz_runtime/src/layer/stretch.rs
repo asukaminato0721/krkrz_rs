@@ -246,8 +246,10 @@ impl Services {
                 output[y * (right - left) as usize + x] = sample(ys, |i| column[i]);
             }
         }
+        let available = image_available(&self.layers, id);
         let dst = self.layers.get_mut(&id).unwrap();
-        let image = dst.image.as_mut().unwrap();
+        dst.prepare_image_write(available)?;
+        let image = Arc::make_mut(dst.image.as_mut().unwrap());
         let mut pixels = output.iter();
         for y in top..bottom {
             for x in left..right {

@@ -1,5 +1,4 @@
-//! Session-private OpenType fonts and CPU glyph coverage via ab_glyph/ttf-parser.
-use ab_glyph::{Font, FontRef, point};
+//! Session-private OpenType fonts and CPU glyph coverage via Fontations/Zeno.
 use anyhow::{Context, Result, ensure};
 use krkrz_tjs::unsupported;
 use sha2::{Digest, Sha256};
@@ -113,7 +112,7 @@ impl FontBook {
             let Ok(face) = ttf_parser::Face::parse(&data, index) else {
                 return Ok(0);
             };
-            if FontRef::try_from_slice_and_index(&data, index).is_err() {
+            if skrifa::FontRef::from_index(&data, index).is_err() {
                 return Ok(0);
             }
             for name in face.names() {
@@ -150,42 +149,6 @@ impl FontBook {
             "font size is outside supported range"
         );
         let face = self.resolve_face(name)?;
-        let font = FontRef::try_from_slice_and_index(&face.data, face.index)
-            .context("registered font is invalid")?;
-        let units = font.units_per_em().context("font has no em size")?;
-        let scale = em_pixels * font.height_unscaled() / units;
-        let id = font.glyph_id(character);
-        let advance = font.h_advance_unscaled(id) * em_pixels / units;
-        let Some(outline) = font.outline_glyph(id.with_scale_and_position(scale, point(0.0, 0.0)))
-        else {
-            return Ok(GlyphBitmap {
-                left: 0,
-                top: 0,
-                width: 0,
-                height: 0,
-                advance,
-                coverage: Vec::new(),
-            });
-        };
-        let bounds = outline.px_bounds();
-        let width = bounds.width() as u32;
-        let height = bounds.height() as u32;
-        let length = (width as usize)
-            .checked_mul(height as usize)
-            .filter(|n| *n <= 16_000_000)
-            .ok_or_else(|| unsupported("glyph bitmap exceeds size limit"))?;
-        let mut coverage = vec![0; length];
-        outline.draw(|x, y, value| {
-            coverage[y as usize * width as usize + x as usize] =
-                (value.clamp(0.0, 1.0) * 255.0).round() as u8;
-        });
-        Ok(GlyphBitmap {
-            left: bounds.min.x as i32,
-            top: bounds.min.y as i32,
-            width,
-            height,
-            advance,
-            coverage,
-        })
+        raster::rasterize(face, character, em_pixels)
     }
 }

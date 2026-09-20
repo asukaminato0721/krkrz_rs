@@ -126,8 +126,10 @@ impl Services {
                 }
             }
         }
+        let available = image_available(&self.layers, id);
         let layer = self.layers.get_mut(&id).unwrap();
-        let image = layer.image.as_mut().unwrap();
+        layer.prepare_image_write(available)?;
+        let image = Arc::make_mut(layer.image.as_mut().unwrap());
         for (row, data) in output.chunks_exact((right - left) * 4).enumerate() {
             let pos = ((top + row) * width + left) * 4;
             image.rgba[pos..pos + data.len()].copy_from_slice(data);
@@ -151,11 +153,11 @@ mod tests {
         session.services.layers.insert(
             123,
             Layer {
-                image: Some(Image {
+                image: Some(Arc::new(Image {
                     width: 2,
                     height: 1,
                     rgba: pixels.clone(),
-                }),
+                })),
                 clip: [0, 0, 2, 1],
                 image_modified: false,
                 ..Layer::default()
