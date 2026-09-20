@@ -65,18 +65,35 @@ impl Storage {
     /// Normalize a storage name without requiring the file or directory to
     /// exist. Auto paths and patch selection belong to `resolve`, not this API.
     pub fn full_path(&self, name: &str) -> Result<String> {
-        if name.is_empty() { return Ok(String::new()); }
+        if name.is_empty() {
+            return Ok(String::new());
+        }
         ensure!(!name.contains('\0'), "NUL in storage name");
         let name = name.replace('\\', "/").to_ascii_lowercase();
         let name = krkrz_core::local_storage_path(&name);
-        ensure!(!name.contains(':'), "unsupported storage medium or drive path");
-        let (outer, member) = name.split_once('>').map_or((name, None), |(a,b)| (a, Some(b)));
-        ensure!(!outer.is_empty(), "archive storage requires an archive name");
-        let absolute = if outer.starts_with('/') { outer.to_owned() } else { format!("{}/{outer}", self.project.display()) };
+        ensure!(
+            !name.contains(':'),
+            "unsupported storage medium or drive path"
+        );
+        let (outer, member) = name
+            .split_once('>')
+            .map_or((name, None), |(a, b)| (a, Some(b)));
+        ensure!(
+            !outer.is_empty(),
+            "archive storage requires an archive name"
+        );
+        let absolute = if outer.starts_with('/') {
+            outer.to_owned()
+        } else {
+            format!("{}/{outer}", self.project.display())
+        };
         let outer = normalize_full_component(&absolute, true)?;
         let mut result = format!("file://.{outer}");
         if let Some(member) = member {
-            ensure!(!member.contains('>'), "nested archive storage is not supported");
+            ensure!(
+                !member.contains('>'),
+                "nested archive storage is not supported"
+            );
             result.push('>');
             result.push_str(&normalize_full_component(member, false)?);
         }
@@ -107,7 +124,11 @@ impl Storage {
             };
             Ok(format!("{archive}>{member}"))
         } else {
-            storage_name(name)
+            if directory && (name.is_empty() || name == "." || name == "./") {
+                Ok(String::new())
+            } else {
+                storage_name(name)
+            }
         }
     }
     fn archive_location<'a>(&self, name: &'a str) -> Option<(usize, &'a str)> {
@@ -135,7 +156,11 @@ impl Storage {
         }
         if !name.contains('>') {
             for path in self.search_paths.iter().rev() {
-                let separator = if path.ends_with('>') { "" } else { "/" };
+                let separator = if path.is_empty() || path.ends_with('>') {
+                    ""
+                } else {
+                    "/"
+                };
                 let candidate = format!("{path}{separator}{name}");
                 if self.contains(&candidate)? {
                     return Ok(candidate);
@@ -264,7 +289,9 @@ fn normalize_full_component(path: &str, absolute: bool) -> Result<String> {
     let mut directory = path.ends_with('/');
     let mut components = path.split('/').peekable();
     while let Some(part) = components.next() {
-        if part.is_empty() { continue; }
+        if part.is_empty() {
+            continue;
+        }
         // The installed engine collapses dot segments only when another path
         // separator follows. A final dot segment remains literal.
         if components.peek().is_some() && part.bytes().all(|c| c == b'.') {
@@ -277,9 +304,15 @@ fn normalize_full_component(path: &str, absolute: bool) -> Result<String> {
             directory = false;
         }
     }
-    let mut result = if absolute { String::from("/") } else { String::new() };
+    let mut result = if absolute {
+        String::from("/")
+    } else {
+        String::new()
+    };
     result.push_str(&parts.join("/"));
-    if (directory || path.ends_with('/')) && !result.is_empty() && !result.ends_with('/') { result.push('/'); }
+    if (directory || path.ends_with('/')) && !result.is_empty() && !result.ends_with('/') {
+        result.push('/');
+    }
     Ok(result)
 }
 fn archive_priority(path: &Path) -> (bool, u64, String) {

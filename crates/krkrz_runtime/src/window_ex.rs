@@ -423,10 +423,17 @@ impl Services {
         match operation {
             // The terminal/headless host has no TTVPConsoleForm. windowEx
             // explicitly returns void/false when this optional window is absent.
-            "Debug.console.getPlacement" | "Debug.console.getRect" | "Debug.console.bringAfter" => return Ok(Value::Void),
-            "Debug.console.maximize" | "Debug.console.restoreMaximize" => return Ok(Value::Integer(0)),
+            "Debug.console.getPlacement" | "Debug.console.getRect" | "Debug.console.bringAfter" => {
+                return Ok(Value::Void);
+            }
+            "Debug.console.maximize" | "Debug.console.restoreMaximize" => {
+                return Ok(Value::Integer(0));
+            }
             "Debug.console.setPlacement" => {
-                ensure!(matches!(arg(0)?, Value::Object(_)), "console placement requires an Object");
+                ensure!(
+                    matches!(arg(0)?, Value::Object(_)),
+                    "console placement requires an Object"
+                );
                 return Ok(Value::Integer(0));
             }
             "Debug.console.setPos" => {

@@ -462,8 +462,13 @@ impl Layer {
             "set:callOnPaint" => self.call_on_paint = arg(0)?.truth()?,
             "update" => {
                 if !args.is_empty() {
-                    ensure!(args.len() >= 4, "Layer.update requires 0 or at least 4 arguments");
-                    for value in &args[..4] { int(value)?; }
+                    ensure!(
+                        args.len() >= 4,
+                        "Layer.update requires 0 or at least 4 arguments"
+                    );
+                    for value in &args[..4] {
+                        int(value)?;
+                    }
                 }
                 self.call_on_paint = true;
             }
@@ -938,6 +943,15 @@ impl Services {
             }
             _ => {}
         }
+        if op == "loadImages" {
+            return self.layer_load_images(vm, id, args, budget);
+        }
+        if matches!(op, "copyRect" | "operateRect") {
+            return self.layer_blit(id, op, args, budget);
+        }
+        if op == "loadProvinceImage" {
+            return self.layer_load_province(id, args, budget);
+        }
         let bytes: usize = self
             .layers
             .iter()
@@ -954,7 +968,9 @@ impl Services {
     }
 }
 
+mod blit;
 mod focus;
+mod images;
 
 // Match TVPOpacityOnOpacityTable's single-precision construction rather than
 // replacing its 8-bit interpolation with a different compositing formula.
@@ -987,17 +1003,32 @@ impl crate::Session {
     /// requests the next completion. Invisible children also receive onPaint.
     pub fn prepare_window_paint(&mut self, window: &Value) -> Result<()> {
         let window = object(window)?.context("paint requires a Window")?;
-        let window = self.services.windows.get(&window).filter(|w| w.constructed).context("paint requires a constructed Window")?;
+        let window = self
+            .services
+            .windows
+            .get(&window)
+            .filter(|w| w.constructed)
+            .context("paint requires a constructed Window")?;
         let mut pending: Vec<_> = object(&window.primary_layer)?.into_iter().collect();
         let mut visited = std::collections::BTreeSet::new();
         while let Some(id) = pending.pop() {
-            self.budget = self.budget.checked_sub(1).ok_or_else(|| unsupported("Layer paint execution budget exceeded"))?;
-            if !visited.insert(id) { continue; }
-            let Some(layer) = self.services.layers.get_mut(&id) else { continue; };
-            if std::mem::take(&mut layer.call_on_paint) {
-                self.services.layer_event(&mut self.vm, id, "onPaint", &[], &mut self.budget)?;
+            self.budget = self
+                .budget
+                .checked_sub(1)
+                .ok_or_else(|| unsupported("Layer paint execution budget exceeded"))?;
+            if !visited.insert(id) {
+                continue;
             }
-            if let Some(layer) = self.services.layers.get(&id) { pending.extend(layer.children.iter().rev()); }
+            let Some(layer) = self.services.layers.get_mut(&id) else {
+                continue;
+            };
+            if std::mem::take(&mut layer.call_on_paint) {
+                self.services
+                    .layer_event(&mut self.vm, id, "onPaint", &[], &mut self.budget)?;
+            }
+            if let Some(layer) = self.services.layers.get(&id) {
+                pending.extend(layer.children.iter().rev());
+            }
         }
         Ok(())
     }

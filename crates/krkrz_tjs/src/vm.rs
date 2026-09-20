@@ -377,7 +377,9 @@ impl Default for Vm {
             vm.register_native_method(&array, method, &format!("Array.{method}"))
                 .expect("initial Array member");
             let array_id = vm.object_id(&array).expect("Array class");
-            vm.objects[array_id].member_flags.insert(method.encode_utf16().collect(), crate::scripts_ex::HIDDEN);
+            vm.objects[array_id]
+                .member_flags
+                .insert(method.encode_utf16().collect(), crate::scripts_ex::HIDDEN);
         }
         let dictionary = vm.globals["Dictionary"].clone();
         for method in ["assign", "clear"] {
@@ -1214,7 +1216,10 @@ impl Vm {
                     self.array_assign(&context, args, budget)
                 }
                 "Array.split" => {
-                    let context = reference.context.map(Value::object).unwrap_or_else(|| context.clone());
+                    let context = reference
+                        .context
+                        .map(Value::object)
+                        .unwrap_or_else(|| context.clone());
                     self.array_split(&context, args, host, budget)
                 }
                 "Dictionary.assign" | "Dictionary.clear" => {

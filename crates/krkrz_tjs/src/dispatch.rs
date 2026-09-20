@@ -16,27 +16,55 @@ fn index(key: &Value) -> Option<i64> {
     }
 }
 impl Vm {
-    pub(crate) fn array_split(&mut self, receiver: &Value, args: &[Value], host: &mut impl Host, budget: &mut u64) -> Result<Value> {
+    pub(crate) fn array_split(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+        host: &mut impl Host,
+        budget: &mut u64,
+    ) -> Result<Value> {
         let id = self.object_id(receiver)?;
-        let ObjectKind::Array(items) = &mut self.objects[id].kind else { bail!("Array.split requires an Array native instance"); };
-        ensure!(args.len() >= 2, "Array.split requires a delimiter and a string");
+        let ObjectKind::Array(items) = &mut self.objects[id].kind else {
+            bail!("Array.split requires an Array native instance");
+        };
+        ensure!(
+            args.len() >= 2,
+            "Array.split requires a delimiter and a string"
+        );
         items.clear();
         let subject = units(&args[1])?;
         let purge = args.get(3).map(Value::truth).transpose()?.unwrap_or(false);
         let parts = if let Value::Object(reference) = args[0]
             && let Some(regex) = reference.object
-            && matches!(self.objects.get(regex).map(|o| &o.kind), Some(ObjectKind::RegExp { .. }))
-        {
-            let result = self.regexp_method(&args[0], "split", &[Value::String(subject), Value::Void, Value::Integer(purge.into())], host, budget)?;
+            && matches!(
+                self.objects.get(regex).map(|o| &o.kind),
+                Some(ObjectKind::RegExp { .. })
+            ) {
+            let result = self.regexp_method(
+                &args[0],
+                "split",
+                &[
+                    Value::String(subject),
+                    Value::Void,
+                    Value::Integer(purge.into()),
+                ],
+                host,
+                budget,
+            )?;
             let result = self.object_id(&result)?;
-            let ObjectKind::Array(parts) = &mut self.objects[result].kind else { unreachable!(); };
+            let ObjectKind::Array(parts) = &mut self.objects[result].kind else {
+                unreachable!();
+            };
             std::mem::take(parts)
         } else {
             let separators = units(&args[0])?;
             split_characters(&subject, &separators, purge, budget)?
         };
         self.objects[id].kind = ObjectKind::Array(parts);
-        Ok(Value::Object(crate::ObjectRef { object: Some(id), context: Some(id) }))
+        Ok(Value::Object(crate::ObjectRef {
+            object: Some(id),
+            context: Some(id),
+        }))
     }
     pub fn dictionary_assign(
         &mut self,
@@ -656,17 +684,33 @@ impl Vm {
     }
 }
 
-fn split_characters(subject: &[u16], separators: &[u16], purge: bool, budget: &mut u64) -> Result<Vec<Value>> {
-    let subject = &subject[..subject.iter().position(|unit| *unit == 0).unwrap_or(subject.len())];
-    let separators = &separators[..separators.iter().position(|unit| *unit == 0).unwrap_or(separators.len())];
-    *budget = budget.checked_sub((subject.len() + separators.len()) as u64)
+fn split_characters(
+    subject: &[u16],
+    separators: &[u16],
+    purge: bool,
+    budget: &mut u64,
+) -> Result<Vec<Value>> {
+    let subject = &subject[..subject
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(subject.len())];
+    let separators = &separators[..separators
+        .iter()
+        .position(|unit| *unit == 0)
+        .unwrap_or(separators.len())];
+    *budget = budget
+        .checked_sub((subject.len() + separators.len()) as u64)
         .ok_or_else(|| unsupported("Array.split execution budget exceeded"))?;
     // A bit set avoids quadratic searches through a long delimiter string and
     // preserves individual UTF-16 units, including unmatched surrogates.
     let mut delimiters = [0u64; 1024];
-    for unit in separators { delimiters[*unit as usize / 64] |= 1u64 << (*unit as usize % 64); }
+    for unit in separators {
+        delimiters[*unit as usize / 64] |= 1u64 << (*unit as usize % 64);
+    }
     let mut parts = Vec::new();
-    for part in subject.split(|unit| delimiters[*unit as usize / 64] & (1u64 << (*unit as usize % 64)) != 0) {
+    for part in
+        subject.split(|unit| delimiters[*unit as usize / 64] & (1u64 << (*unit as usize % 64)) != 0)
+    {
         if !purge || !part.is_empty() {
             ensure!(parts.len() < 1_000_000, "Array.split exceeds array limit");
             parts.push(Value::String(part.to_vec()));

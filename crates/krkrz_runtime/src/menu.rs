@@ -421,7 +421,7 @@ impl Services {
                         .checked_sub((image.rgba.len() / 4) as u64)
                         .ok_or_else(|| unsupported("menu bitmap copy execution budget exceeded"))?;
                     let mut image = image.clone();
-                    for pixel in image.rgba.chunks_exact_mut(4) {
+                    for pixel in image.rgba.as_chunks_mut::<4>().0.iter_mut() {
                         pixel[3] = if pixel[3] >= 64 { 255 } else { 0 };
                     }
                     MenuBitmap::Image(Arc::new(image))

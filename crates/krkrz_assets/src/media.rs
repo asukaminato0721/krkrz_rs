@@ -10,7 +10,14 @@ pub struct Image {
     pub height: u32,
     pub rgba: Vec<u8>,
 }
+mod indexed;
+mod metadata;
+pub use indexed::IndexedImage;
+
 impl Image {
+    pub fn metadata(bytes: &[u8]) -> Result<std::collections::BTreeMap<String, String>> {
+        metadata::metadata(bytes)
+    }
     pub fn decode(bytes: &[u8]) -> Result<Self> {
         if bytes.starts_with(b"TLG") {
             return tlg(bytes);
@@ -61,9 +68,12 @@ fn tlg(bytes: &[u8]) -> Result<Image> {
     } else {
         bytes
     };
+    if bytes.starts_with(b"TLG6.0\0raw\x1a") {
+        return tlg6(bytes);
+    }
     ensure!(
         bytes.starts_with(b"TLG5.0\0raw\x1a"),
-        "unsupported TLG image version (TLG5 implemented)"
+        "unsupported TLG image version"
     );
     let mut r = Reader::new(&bytes[11..]);
     let channels = r.take(1)?[0] as usize;
@@ -132,6 +142,63 @@ fn tlg(bytes: &[u8]) -> Result<Image> {
         }
     }
     ensure!(r.done(), "trailing TLG5 raw data");
+    Ok(Image {
+        width,
+        height,
+        rgba,
+    })
+}
+
+fn tlg6(bytes: &[u8]) -> Result<Image> {
+    // Validate allocation sizes and all outer compressed spans before entering
+    // the community decoder. Its safe indexing can panic on malformed entropy
+    // data, so translate that into the same recoverable error as other formats.
+    let mut r = Reader::new(&bytes[11..]);
+    let colors = r.take(1)?[0];
+    ensure!(matches!(colors, 1 | 3 | 4), "invalid TLG6 channel count");
+    ensure!(r.take(3)? == [0, 0, 0], "unsupported TLG6 flags");
+    let width = r.u32()?;
+    let height = r.u32()?;
+    ensure!(
+        width > 0
+            && height > 0
+            && width <= 16384
+            && height <= 16384
+            && width as usize * height as usize <= MAX_PIXELS,
+        "invalid TLG6 dimensions"
+    );
+    let max_bits = r.u32()?;
+    ensure!(
+        max_bits as usize / 8 <= bytes.len() && max_bits <= 64 * 1024 * 1024,
+        "TLG6 bit pool exceeds limit"
+    );
+    let filters = r.u32()? as usize;
+    r.take(filters)?;
+    for _ in 0..height.div_ceil(8) {
+        for _ in 0..colors {
+            let bits = r.u32()?;
+            ensure!(
+                bits >> 30 == 0 && bits <= max_bits,
+                "invalid TLG6 entropy length"
+            );
+            r.take((bits as usize).div_ceil(8))?;
+        }
+    }
+    ensure!(r.done(), "trailing TLG6 raw data");
+    let decoded = std::panic::catch_unwind(|| libtlg_rs::load_tlg(Cursor::new(bytes)))
+        .map_err(|_| anyhow::anyhow!("malformed TLG6 compressed data"))??;
+    let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
+    for p in decoded.data.chunks_exact(colors as usize) {
+        if colors == 1 {
+            rgba.extend_from_slice(&[p[0], p[0], p[0], 255]);
+        } else {
+            rgba.extend_from_slice(&[p[2], p[1], p[0], if colors == 4 { p[3] } else { 255 }]);
+        }
+    }
+    ensure!(
+        rgba.len() == width as usize * height as usize * 4,
+        "invalid TLG6 output size"
+    );
     Ok(Image {
         width,
         height,
