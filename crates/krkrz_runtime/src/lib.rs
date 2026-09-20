@@ -6,9 +6,11 @@ pub mod audio;
 pub mod compositor;
 mod csv;
 mod dialog;
+mod font;
 pub mod fonts;
 mod get_sample;
 pub mod graphics;
+mod layer;
 mod layer_draw;
 mod menu;
 mod plugins;
@@ -56,6 +58,8 @@ pub struct Services {
     async_triggers: async_trigger::State,
     events: scheduler::EventQueue,
     timers: BTreeMap<usize, timer::Timer>,
+    layers: BTreeMap<usize, layer::Layer>,
+    font_objects: BTreeMap<usize, font::Font>,
     csv_parsers: BTreeMap<usize, csv::Parser>,
     sounds: BTreeMap<usize, sound::Sound>,
     psb_files: BTreeMap<usize, Option<psb_file::File>>,
@@ -143,6 +147,12 @@ impl Host for Services {
     ) -> Result<Value> {
         if let Some(operation) = name.strip_prefix("WindowEx.") {
             return self.window_ex_call(vm, operation, context, args, budget);
+        }
+        if let Some(operation) = name.strip_prefix("Layer.") {
+            return self.layer_call(vm, operation, context, args, budget);
+        }
+        if let Some(operation) = name.strip_prefix("Font.") {
+            return self.font_call(operation, context, args);
         }
         if let Some(operation) = name.strip_prefix("Timer.") {
             return self.timer_call(vm, operation, context, args, budget);
@@ -605,6 +615,8 @@ impl Session {
         window::register(&mut vm)?;
         async_trigger::register(&mut vm)?;
         timer::register(&mut vm)?;
+        layer::register(&mut vm)?;
+        font::register(&mut vm)?;
         sound::register(&mut vm)?;
         let system = vm.register_namespace("System")?;
         for name in ["screenWidth", "screenHeight"] {
@@ -665,6 +677,8 @@ impl Session {
                 async_triggers: async_trigger::State::default(),
                 events: scheduler::EventQueue::default(),
                 timers: BTreeMap::new(),
+                layers: BTreeMap::new(),
+                font_objects: BTreeMap::new(),
                 fonts: fonts::FontBook::default(),
                 csv_parsers: BTreeMap::new(),
                 sounds: BTreeMap::new(),

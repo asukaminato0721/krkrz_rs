@@ -241,7 +241,7 @@ fn declared_plugin_exports_do_not_hide_unimplemented_operations() {
     );
     assert_eq!(session.evaluate("Scripts.exec('var p=new CSVParser();p.init(\"a,b\");return p.getNextLine().join(\"/\");')").unwrap(), Value::string("a/b"));
     for call in [
-        "new Layer()",
+        "(new Layer(new Window(),null)).drawText(0,0,\"text\",0)",
         "Layer.light(10,20)",
         "new KAGParser()",
         "new Process()",

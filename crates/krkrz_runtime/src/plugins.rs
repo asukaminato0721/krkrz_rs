@@ -33,8 +33,7 @@ pub(crate) fn declare_class(vm: &mut Vm, name: &str) -> Result<()> {
 }
 
 pub(crate) fn packinone(vm: &mut Vm) -> Result<()> {
-    // Layer is a core class. Until its Rust renderer is bound, construction and
-    // all declared operations fail explicitly at invocation.
+    // Layer is normally registered as a core class before loading plugins.
     if !vm.globals.contains_key("Layer") {
         declare_class(vm, "Layer")?;
     }

@@ -4,7 +4,7 @@ This repository contains an initial implementation toward the Otome Domain
 playable slice. **The game is not playable yet.** Original startup loads the
 framework through `Override.tjs`, registers eight embedded fonts, and constructs
 the game menus, including windowEx system menus. Execution currently stops in
-`MainWindow.tjs` at the missing `Timer` class, before primary-layer creation. The title,
+`MainWindow.tjs` at the missing `Window.drawDevice` property, after primary-layer creation. The title,
 New Game, first choice, scene transition, and original save/load acceptance
 criteria have not been met. Execution failures never count as checkpoints.
 
@@ -111,7 +111,9 @@ the community source and the installed PackinOne component's behavior. Array
 member reflection and octet MD5 remain explicit unsupported operations, as do
 some object kinds in `foreach`. PackinOne registration now combines the three
 implemented components and declares observed exports for unfinished operations.
-Layer/Process/TemporaryFiles construction and unfinished methods fail explicitly.
+Process/TemporaryFiles construction and unfinished methods fail explicitly.
+Layer now supplies image buffers, clipping, pixels, dimensions, sibling ordering,
+parent/child links and Font state. Timer and AsyncTrigger share the session event queue.
 KAGParserEx exports are declared with the same rule; its native operations remain open.
 After PackinOne has loaded, `layerExImage.dll` resolves to its existing exports,
 as in the installed engine. The image-effect operations still need implementation.
