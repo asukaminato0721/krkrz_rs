@@ -61,7 +61,13 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
     Ok(())
 }
 impl Services {
-    pub(crate) fn font_call(&mut self, op: &str, context: &Value, args: &[Value]) -> Result<Value> {
+    pub(crate) fn font_call(
+        &mut self,
+        op: &str,
+        context: &Value,
+        args: &[Value],
+        budget: &mut u64,
+    ) -> Result<Value> {
         let id = object(context)?.context("Font requires non-null context")?;
         if op == "@initialize" {
             self.font_objects.entry(id).or_default();
@@ -107,6 +113,29 @@ impl Services {
             "set:italic" => f.italic = arg(0)?.truth()?,
             "set:underline" => f.underline = arg(0)?.truth()?,
             "set:strikeout" => f.strikeout = arg(0)?.truth()?,
+            "getTextWidth" | "getEscWidthX" | "getEscWidthY" | "getEscHeightX"
+            | "getEscHeightY" => {
+                let Value::String(text) = arg(0)?.unary("string")? else {
+                    unreachable!()
+                };
+                *budget = budget
+                    .checked_sub(text.len() as u64)
+                    .ok_or_else(|| unsupported("Font measurement execution budget exceeded"))?;
+                let angle = f.angle as f64 * (std::f64::consts::PI / 1800.0);
+                let extent = if op.starts_with("getEscHeight") {
+                    f.height.unsigned_abs() as f64
+                } else {
+                    self.fonts
+                        .text_width(&f.face, &text, f.height.unsigned_abs(), f.bold)?
+                        as f64
+                };
+                return Ok(match op {
+                    "getTextWidth" => Value::Integer(extent as i64),
+                    "getEscWidthX" | "getEscHeightY" => Value::Real(angle.cos() * extent),
+                    "getEscWidthY" => Value::Real(angle.sin() * -extent),
+                    _ => Value::Real(angle.sin() * extent),
+                });
+            }
             "getTextHeight" => {
                 arg(0)?;
                 return Ok(Value::Integer(f.height.wrapping_abs().into()));

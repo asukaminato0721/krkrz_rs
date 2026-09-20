@@ -34,6 +34,37 @@ impl FontBook {
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.names.keys().map(String::as_str)
     }
+    /// Kirikiri measures UTF-16 code units separately, with integral advances
+    /// and no kerning. Bold adds the GDI rasterizer's synthetic advance.
+    pub fn text_width(&self, name: &str, text: &[u16], height: u32, bold: bool) -> Result<i32> {
+        ensure!(height <= 4096, "font size is outside supported range");
+        if text.is_empty() || text[0] == 0 {
+            return Ok(0);
+        }
+        let index = name
+            .split(',')
+            .find_map(|name| self.names.get(name.trim()))
+            .with_context(|| format!("private font face not found: {name}"))?;
+        let face = &self.faces[*index];
+        let font = ttf_parser::Face::parse(&face.data, face.index)
+            .context("registered font is invalid")?;
+        let scale = height as f64 / font.units_per_em() as f64;
+        let cell_height =
+            ((font.ascender() as i32 - font.descender() as i32) as f64 * scale).round() as i32;
+        let extra = if bold { cell_height / 50 + 1 } else { 0 };
+        let mut width = 0i32;
+        for unit in text.iter().take_while(|c| **c != 0) {
+            let glyph = char::from_u32((*unit).into())
+                .and_then(|c| font.glyph_index(c))
+                .unwrap_or(ttf_parser::GlyphId(0));
+            let advance =
+                (font.glyph_hor_advance(glyph).unwrap_or(0) as f64 * scale).round() as i32;
+            width = width
+                .checked_add(advance + extra)
+                .context("text width overflow")?;
+        }
+        Ok(width)
+    }
     /// Register complete TTF/OTF/TTC data and return its face count, or zero for invalid data.
     pub fn add(&mut self, data: Vec<u8>) -> Result<u32> {
         let hash: [u8; 32] = Sha256::digest(&data).into();

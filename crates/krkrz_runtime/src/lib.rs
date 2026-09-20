@@ -169,7 +169,7 @@ impl Host for Services {
             return self.layer_call(vm, operation, context, args, budget);
         }
         if let Some(operation) = name.strip_prefix("Font.") {
-            return self.font_call(operation, context, args);
+            return self.font_call(operation, context, args, budget);
         }
         if let Some(operation) = name.strip_prefix("Timer.") {
             return self.timer_call(vm, operation, context, args, budget);

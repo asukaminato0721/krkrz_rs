@@ -66,3 +66,31 @@ fn original_add_font_api_registers_private_font_data() {
             .is_empty()
     );
 }
+
+#[test]
+fn original_font_measurement_corpus() {
+    #[derive(serde::Deserialize)]
+    struct Case {
+        name: String,
+        source: String,
+        expected: Value,
+    }
+    let cases: Vec<Case> =
+        serde_json::from_str(include_str!("fixtures/font_metrics.json")).unwrap();
+    for case in cases {
+        let project = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join("synthetic.ttf"), FONT).unwrap();
+        std::fs::write(project.path().join("case.tjs"), case.source).unwrap();
+        let mut session =
+            Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+        assert_eq!(
+            session
+                .execute_storage("case.tjs")
+                .unwrap_or_else(|e| panic!("{}: {e:#}", case.name)),
+            case.expected,
+            "{}",
+            case.name
+        );
+    }
+}

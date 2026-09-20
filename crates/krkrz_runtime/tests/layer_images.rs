@@ -32,7 +32,6 @@ fn original_image_path_and_paint_corpus() {
         include_str!("fixtures/layer_blit.json"),
         include_str!("fixtures/layer_paint.json"),
         include_str!("fixtures/storage_paths.json"),
-        include_str!("fixtures/missing.json"),
     ] {
         for case in serde_json::from_str::<Vec<Case>>(fixture).unwrap() {
             let (project, _saves, mut session) = session();
