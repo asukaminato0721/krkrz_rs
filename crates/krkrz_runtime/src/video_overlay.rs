@@ -213,6 +213,7 @@ impl Services {
                 .events
                 .push((video.generation, "onStatusChanged", Value::string("stop")));
             self.video_present(id)?;
+            self.video_dispatch_native_events(vm,id,budget)?;
             return Ok(Value::Void);
         }
         if let Some(event) = operation.strip_prefix("on") {
@@ -285,8 +286,11 @@ impl Services {
             return Ok(Value::Void);
         }
         if self.videos[&id].movie.is_some() {
+            let transport = matches!(operation,"play"|"pause"|"stop"|"close"|"finalize"|"prepare");
+            if transport { self.videos.get_mut(&id).unwrap().events.clear(); }
             if let Some(value) = self.video_loaded_call(id, operation, args)? {
-                self.video_present(id)?;
+                if matches!(operation,"set:position"|"set:frame"|"rewind"|"prepare") { self.video_present(id)?; }
+                if transport { self.video_dispatch_native_events(vm,id,budget)?; }
                 return Ok(value);
             }
         }
@@ -488,6 +492,16 @@ impl Video {
     }
 }
 impl Services {
+    fn video_dispatch_native_events(&mut self, vm:&mut Vm,id:usize,budget:&mut u64) -> Result<()> {
+        let events = std::mem::take(&mut self.videos.get_mut(&id).unwrap().events);
+        for (generation,name,argument) in events {
+            if !self.videos.get(&id).is_some_and(|v|v.generation == generation) { break; }
+            let target = Value::object(id);
+            let callback = vm.get_member(&target,&Value::string(name),false)?;
+            vm.call_function(&callback,&target,&[argument],self,budget)?;
+        }
+        Ok(())
+    }
     fn video_loaded_call(
         &mut self,
         id: usize,

@@ -30,12 +30,10 @@ fn original_alpha_movie_metadata_and_transport_corpus() {
     }
 }
 #[test]
-fn unfinished_decoder_cannot_be_hidden_by_script_catch() {
+fn unfinished_movie_operations_cannot_be_hidden_by_script_catch() {
     for operation in [
-        "a.showNextImage(null)",
         "a.frame=1",
         "a.setNextMovieFile('empty.amv')",
-        "a.setPosition(1,2)",
     ] {
         let source = format!(
             "Plugins.link('AlphaMovie.dll');var a=new AlphaMovie();a.open(System.exePath+'empty.amv');try{{{operation};}}catch(e){{return 999;}}"

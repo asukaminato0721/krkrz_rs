@@ -1,6 +1,7 @@
 //! AlphaMovie registration, storage and transport controls. Observed against the
 //! installed DLL with synthetic AJPM resources; see docs/alpha-movie-interface.json.
-//! Pixel decode, queued movies and Layer writes remain explicit unsupported calls.
+//! Pixel reconstruction uses the checked assets decoder. Queued movies and seeks
+//! beyond the first frame remain explicit unsupported calls.
 use crate::Services;
 use anyhow::{Context, Result, ensure};
 use krkrz_assets::amv::Movie;
@@ -12,6 +13,10 @@ pub(crate) struct Player {
     looping: bool,
     next_loop: bool,
     preload: i32,
+    packet: usize,
+    displayed: u32,
+    ready: bool,
+    position: (i32,i32),
 }
 impl Default for Player {
     fn default() -> Self {
@@ -21,6 +26,10 @@ impl Default for Player {
             looping: true,
             next_loop: true,
             preload: 5,
+            packet: 0,
+            displayed: 0,
+            ready: false,
+            position: (0,0),
         }
     }
 }
@@ -103,8 +112,36 @@ impl Services {
                 .checked_sub(charge)
                 .ok_or_else(|| unsupported("AlphaMovie open execution budget exceeded"))?;
             let movie = Movie::parse(data).with_context(|| format!("AlphaMovie.open({name})"))?;
-            self.alpha_movies.get_mut(&id).unwrap().movie = Some(movie);
+            let player=self.alpha_movies.get_mut(&id).unwrap();
+            player.movie = Some(movie);
+            player.packet=0;
+            player.displayed=0;
+            player.ready=false;
             return Ok(Value::Void);
+        }
+        if operation == "showNextImage" {
+            let target=args.first().context("AlphaMovie.showNextImage requires a Layer")?;
+            let Value::Object(target)=target else { anyhow::bail!("AlphaMovie.showNextImage requires a Layer"); };
+            let target=target.object.context("AlphaMovie.showNextImage requires a non-null Layer")?;
+            ensure!(self.layers.contains_key(&target), "AlphaMovie.showNextImage requires a Layer");
+            let player=self.alpha_movies.get_mut(&id).unwrap();
+            if !player.playing || !player.ready { return Ok(Value::Integer(player.displayed as i64)); }
+            let movie=player.movie.as_ref().context("AlphaMovie has no open movie")?;
+            if player.packet >= movie.packets.len() {
+                if !player.looping {return Ok(Value::Integer(player.displayed as i64));}
+                player.packet=0;
+            }
+            let packet=&movie.packets[player.packet];
+            let charge=packet.width as u64 * packet.height as u64 / 64 + 1;
+            *budget=budget.checked_sub(charge).ok_or_else(||unsupported("AlphaMovie decode execution budget exceeded"))?;
+            if let Some(image)=movie.decode_packet(player.packet)? {
+                self.layers.get_mut(&target).unwrap().present_alpha_movie(&image,
+                    player.position.0.saturating_add(packet.left as i32),
+                    player.position.1.saturating_add(packet.top as i32))?;
+            }
+            player.displayed=packet.sequence;
+            player.packet+=1;
+            return Ok(Value::Integer(player.displayed as i64));
         }
         let player = self.alpha_movies.get_mut(&id).unwrap();
         let header = player.movie.as_ref().map(|movie| &movie.header);
@@ -136,6 +173,7 @@ impl Services {
             "play" => {
                 ensure!(player.movie.is_some(), "AlphaMovie has no open movie");
                 player.playing = true;
+                player.ready = true;
                 return Ok(Value::Void);
             }
             "stop" => {
@@ -143,8 +181,8 @@ impl Services {
                 return Ok(Value::Void);
             }
             "clear" => {
-                // The DLL retains metadata, transport and configuration. Once
-                // decoding is implemented this must also discard queued images.
+                // Metadata, transport and configuration are retained.
+                player.ready = false;
                 return Ok(Value::Void);
             }
             "set:frame" => {
@@ -156,18 +194,20 @@ impl Services {
                     return Ok(Value::Void);
                 }
                 return Err(unsupported(
-                    "AlphaMovie frame seek requires the unfinished AMV decoder",
+                    "AlphaMovie random frame seeking is not implemented",
                 ));
             }
-            "setPosition" if args.len() < 2 => {
-                anyhow::bail!("AlphaMovie.setPosition requires two coordinates")
+            "setPosition" => {
+                ensure!(args.len()>=2,"AlphaMovie.setPosition requires two coordinates");
+                player.position=(args[0].integer()? as i32,args[1].integer()? as i32);
+                return Ok(Value::Void);
             }
             "setNextMovieFile" if args.is_empty() => {
                 anyhow::bail!("AlphaMovie.setNextMovieFile requires a storage name")
             }
             _ => {
                 return Err(unsupported(format!(
-                    "AlphaMovie.{operation}: AMV decoding and Layer presentation are not implemented"
+                    "AlphaMovie.{operation}: operation is not implemented"
                 )));
             }
         };
