@@ -512,7 +512,15 @@ impl Vm {
         if let ObjectKind::Super { bases, context } = &object.kind {
             for base in bases.iter().rev() {
                 if let Some(mut value) = self.class_member(*base, &units(key)?, 0)? {
-                    if let Value::Object(reference) = &mut value {
+                    if let Value::Object(reference) = &mut value
+                        && reference.context.is_none()
+                        && reference.object.is_some_and(|id| {
+                            matches!(
+                                self.objects[id].kind,
+                                ObjectKind::Property { .. } | ObjectKind::VariantProperty(_)
+                            )
+                        })
+                    {
                         reference.context = Some(*context);
                     }
                     return Ok(value);

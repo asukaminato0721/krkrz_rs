@@ -66,6 +66,12 @@ enum Command {
         /// Evaluate an expression in the resulting session (repeatable).
         #[arg(long, requires = "runtime")]
         inspect: Vec<String>,
+        /// Write the completed native layer tree to a new PNG file.
+        #[arg(long, requires = "runtime")]
+        frame: Option<PathBuf>,
+        /// Window expression used by --frame.
+        #[arg(long, default_value = "Window.mainWindow", requires = "runtime")]
+        frame_window: String,
         #[arg(long, default_value_t = 100000)]
         budget: u64,
     },
@@ -179,6 +185,8 @@ fn run() -> Result<()> {
             advance_ms,
             step_ms,
             inspect,
+            frame,
+            frame_window,
         } => {
             if runtime {
                 let mut session = krkrz_runtime::Session::open(
@@ -201,6 +209,19 @@ fn run() -> Result<()> {
                                 .context(format!("session at {} ms", session.services.time_ms)));
                         }
                     }
+                }
+                if let Some(output) = frame {
+                    let parent = output
+                        .parent()
+                        .filter(|p| !p.as_os_str().is_empty())
+                        .unwrap_or(std::path::Path::new("."))
+                        .canonicalize()?;
+                    anyhow::ensure!(
+                        !parent.starts_with(&session.services.storage.project),
+                        "frame output must be outside the game installation"
+                    );
+                    let window = session.evaluate(&frame_window)?;
+                    session.capture_window(&window)?.write_png(&output)?;
                 }
                 if inspect.is_empty() {
                     serde_json::to_writer_pretty(&mut out, &value)?;

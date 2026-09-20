@@ -220,7 +220,7 @@
   },
   {
     "name": "string_utf16_length",
-    "source": "return \"a\ud83d\ude00\".length;",
+    "source": "return \"a😀\".length;",
     "expected": {
       "Integer": 3
     }
@@ -1510,6 +1510,27 @@
     "source": "var x=3;class A {property p {getter(){return x;}setter(v){x=v;}}}A.p=9;return A.p*10+x;",
     "expected": {
       "Integer": 99
+    }
+  },
+  {
+    "name": "super_cached_constructor",
+    "source": "class A{var x;function A(n){x=n;}}class B extends A{function B(n){if(typeof B.ctor=='undefined')B.ctor=super.A;var f=B.ctor;f(n);}}var a=new B(3);invalidate a;var b=new B(7);return b.x;",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "super_extracted_method_context",
+    "source": "var x=19;class A{var x=3;function f(){return x;}}class B extends A{function get(){return super.f;}}var b=new B();var f=b.get();return f();",
+    "expected": {
+      "Integer": 19
+    }
+  },
+  {
+    "name": "super_property_keeps_call_context",
+    "source": "class A{var x=3;property p{getter(){return x;}setter(v){x=v;}}}class B extends A{function f(){super.p=7;return super.p;}}return (new B()).f();",
+    "expected": {
+      "Integer": 7
     }
   }
 ]

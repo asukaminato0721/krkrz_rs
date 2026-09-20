@@ -4,9 +4,9 @@ This repository contains an initial implementation toward the Otome Domain
 playable slice. **The game is not playable yet.** The original `startup.tjs`
 now completes framework initialization, including game menus, embedded fonts,
 message layers and audio objects. Deterministic ticks deliver timer, asynchronous,
-continuous and paint callbacks. The original scripts reach `custom.ks` after
-one second of deterministic ticks; further execution reaches the first
-`Layer.beginTransition` call, whose rendering is still unimplemented.
+continuous and paint callbacks. CPU layer composition and crossfade transitions now render the warning screens
+after ten seconds of deterministic ticks. Further execution enters `title.ks`
+and currently stops at the missing TJS `Date` class during autosave.
 Native presentation, required movies/effects, title interaction, New Game,
 first choice and original save/load acceptance remain incomplete.
 
@@ -52,6 +52,7 @@ command or `exec NAME --runtime`. The runtime option uses the same Session as
 the engine, including plugin registration and shared execution budgets.
 Add `--advance-ms 1000 --step-ms 16` to deliver deterministic host ticks after
 execution, and repeat `--inspect EXPRESSION` to inspect resulting script state.
+Use `--frame NEW_PNG` to capture the completed layer tree (`--frame-window EXPRESSION` selects a window).
 Use `exec NAME --runtime --save-dir PATH` to select a separate writable directory.
 
 An unfiltered `verify` deliberately returns failure for the installation's

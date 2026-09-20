@@ -163,7 +163,19 @@ impl Vm {
                         if let Some(mut value) =
                             self.resolve_class_member(*base, units, host, budget, 0)?
                         {
-                            if let Value::Object(reference) = &mut value {
+                            // A superclass method remains an unbound closure.
+                            // Only property dispatch receives the current this;
+                            // caching a method must not retain this instance.
+                            if let Value::Object(reference) = &mut value
+                                && reference.context.is_none()
+                                && reference.object.is_some_and(|id| {
+                                    matches!(
+                                        self.objects[id].kind,
+                                        ObjectKind::Property { .. }
+                                            | ObjectKind::VariantProperty(_)
+                                    )
+                                })
+                            {
                                 reference.context = Some(context);
                             }
                             found = Some(value);
