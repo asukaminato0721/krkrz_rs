@@ -1,8 +1,10 @@
 //! Sound control and fade timing from Kirikiri SoundBufferBaseIntf.cpp.
-//! Decoded streams and device playback are not yet attached to these objects.
-use crate::Services;
+//! Decoding and source-rate pulls share the headless session; device mixing is separate.
+use crate::{Services, audio::SoundStream};
 use anyhow::{Context, Result, ensure};
+use krkrz_assets::media::Audio;
 use krkrz_tjs::{ObjectRef, Value, Vm, unsupported};
+use std::sync::Arc;
 
 const BEAT_MS: u64 = 60;
 
@@ -13,15 +15,27 @@ struct Fade {
     delay: u64,
 }
 
+pub(crate) struct Loaded {
+    pub audio: Arc<Audio>,
+    pub stream: SoundStream,
+    pub ended: bool,
+}
 pub(crate) struct Sound {
+    pub(crate) loaded: Option<Loaded>,
+    pub(crate) status: &'static str,
+    pub(crate) generation: u64,
+    pub(crate) events: Vec<(u64, &'static str, Value)>,
+    output_rate: u32,
+    output_channels: u8,
+    pub(crate) frequency: i32,
     owner: Value,
     constructed: bool,
     volume: i32,
     volume2: i32,
     pan: i32,
-    paused: bool,
-    looping: bool,
-    use_vis_buffer: bool,
+    pub(crate) paused: bool,
+    pub(crate) looping: bool,
+    pub(crate) use_vis_buffer: bool,
     fade: Option<Fade>,
     pub(crate) fade_pending: bool,
 }
@@ -29,6 +43,13 @@ pub(crate) struct Sound {
 impl Default for Sound {
     fn default() -> Self {
         Self {
+            loaded: None,
+            status: "unload",
+            generation: 0,
+            events: vec![],
+            output_rate: 0,
+            output_channels: 0,
+            frequency: 0,
             owner: Value::NULL,
             constructed: false,
             volume: 100_000,
@@ -180,10 +201,19 @@ impl Services {
             self.sample_plugin.instances.remove(&id);
             return Ok(Value::Void);
         }
-        let sound = self
-            .sounds
-            .get_mut(&id)
-            .context("context has no WaveSoundBuffer native instance")?;
+        ensure!(
+            self.sounds.contains_key(&id),
+            "context has no WaveSoundBuffer native instance"
+        );
+        if operation == "open" {
+            ensure!(
+                self.sounds[&id].constructed,
+                "WaveSoundBuffer constructor has not run"
+            );
+            let storage = arg(0)?.text();
+            return self.sound_open(vm, context, id, &storage, budget);
+        }
+        let sound = self.sounds.get_mut(&id).unwrap();
         if operation == "WaveSoundBuffer" {
             let owner = arg(0)?;
             ensure!(
@@ -205,22 +235,89 @@ impl Services {
             "set:useVisBuffer" => sound.use_vis_buffer = arg(0)?.truth()?,
             "getVisBuffer" => {
                 ensure!(args.len() >= 3, "getVisBuffer requires three arguments");
-                // An unloaded source has no visualization data. Once audio is
-                // attached, only handles allocated by getSample may be written.
-                return Ok(Value::Integer(0));
+                let handle = arg(0)?.integer()?;
+                let ahead = args.get(3).map_or(Ok(0), Value::integer)? as i32;
+                let frames = arg(1)?.integer()? as i32;
+                let channels = arg(2)?.integer()? as i32;
+                return self.sound_visualization(id, handle, frames, channels, ahead);
             }
-            "get:status" => return Ok(Value::string("unload")),
-            "get:position" | "get:samplePosition" | "get:bits" | "get:channels" => {
-                return Ok(Value::Integer(0));
+            "get:status" => return Ok(Value::string(sound.status)),
+            "get:frequency" => return Ok(Value::Integer(sound.frequency.into())),
+            "set:frequency" => {
+                let frequency = arg(0)?.integer()? as i32;
+                ensure!(
+                    frequency > 0 && frequency <= 768_000,
+                    "sound frequency exceeds supported range"
+                );
+                sound.frequency = frequency;
+            }
+            "get:bits" => return Ok(Value::Integer(if sound.output_rate == 0 { 0 } else { 16 })),
+            "get:channels" => return Ok(Value::Integer(sound.output_channels.into())),
+            "get:position" | "get:samplePosition" => {
+                let position = if sound.output_rate == 0 {
+                    0
+                } else {
+                    sound.loaded.as_ref().map_or(0, |s| s.stream.position())
+                };
+                return Ok(Value::Integer(
+                    if operation == "get:position" && sound.output_rate != 0 {
+                        (position * 1000 / sound.output_rate as u64) as i64
+                    } else {
+                        position as i64
+                    },
+                ));
+            }
+            "get:totalTime" => {
+                // The original can divide by zero before creating an output buffer.
+                ensure!(
+                    sound.output_rate != 0,
+                    "sound output format is not initialized"
+                );
+                let frames = sound.loaded.as_ref().map_or(0, |s| s.audio.frames());
+                return Ok(Value::Integer(
+                    (frames as u64 * 1000 / sound.output_rate as u64) as i64,
+                ));
+            }
+            "set:position" | "set:samplePosition" => {
+                let mut position = arg(0)?.integer()? as u64;
+                if operation == "set:position" {
+                    position = position.wrapping_mul(sound.output_rate as u64) / 1000;
+                }
+                let loaded = sound
+                    .loaded
+                    .as_mut()
+                    .context("cannot seek an unloaded sound")?;
+                if position < loaded.audio.frames() as u64 {
+                    loaded.stream.seek(position)?;
+                    loaded.ended = false;
+                    sound.generation += 1;
+                    sound.events.clear();
+                }
             }
             "set:volume" => sound.volume = (arg(0)?.integer()? as i32).clamp(0, 100_000),
             "set:volume2" => sound.volume2 = (arg(0)?.integer()? as i32).clamp(0, 100_000),
             "set:pan" => sound.pan = (arg(0)?.integer()? as i32).clamp(-100_000, 100_000),
             "set:paused" => sound.paused = arg(0)?.truth()?,
-            "set:looping" => sound.looping = arg(0)?.truth()?,
-            // Upstream's unloaded play/stop and totalTime setter do nothing.
-            // open remains an explicit error, so no loaded stream is hidden.
-            "play" | "stop" | "finalize" | "set:totalTime" => {}
+            "set:looping" => {
+                sound.looping = arg(0)?.truth()?;
+                if let Some(loaded) = &mut sound.loaded {
+                    loaded.stream.loop_at_end = sound.looping;
+                }
+            }
+            "play" => {
+                if sound.status != "play"
+                    && let Some(loaded) = &mut sound.loaded
+                {
+                    sound.output_rate = loaded.audio.sample_rate;
+                    sound.output_channels = loaded.audio.channels;
+                    loaded.ended = false;
+                    sound.generation += 1;
+                    sound.events.clear();
+                    self.sound_status(vm, context, id, "play", budget)?;
+                }
+            }
+            "stop" => self.sound_stop(vm, context, id, budget)?,
+            "finalize" | "set:totalTime" => {}
             "stopFade" => {
                 if let Some(fade) = sound.fade.take() {
                     sound.volume = fade.target.clamp(0, 100_000);

@@ -1,0 +1,209 @@
+[
+  {
+    "name": "wave_open",
+    "source": "var w=new WaveSoundBuffer(null);w.paused=1;w.volume=123;w.looping=1;w.open(System.exePath+\"tone.wav\");return w.status+\",\"+w.paused+\",\"+w.volume+\",\"+w.looping+\",\"+w.frequency;",
+    "expected": {
+      "String": [
+        115,
+        116,
+        111,
+        112,
+        44,
+        48,
+        44,
+        49,
+        50,
+        51,
+        44,
+        49,
+        44,
+        52,
+        52,
+        49,
+        48,
+        48
+      ]
+    }
+  },
+  {
+    "name": "wave_before_play",
+    "source": "var w=new WaveSoundBuffer(null);w.open(System.exePath+\"tone.wav\");w.samplePosition=17;return w.bits+\",\"+w.channels+\",\"+w.samplePosition+\",\"+w.position;",
+    "expected": {
+      "String": [
+        48,
+        44,
+        48,
+        44,
+        48,
+        44,
+        48
+      ]
+    }
+  },
+  {
+    "name": "wave_status_callbacks",
+    "source": "var w=new WaveSoundBuffer(null);var events=\"\";w.onStatusChanged=function(s){events+=s+\",\";};w.open(System.exePath+\"tone.wav\");w.open(System.exePath+\"tone.wav\");w.stop();return events;",
+    "expected": {
+      "String": [
+        115,
+        116,
+        111,
+        112,
+        44,
+        117,
+        110,
+        108,
+        111,
+        97,
+        100,
+        44,
+        115,
+        116,
+        111,
+        112,
+        44
+      ]
+    }
+  },
+  {
+    "name": "wave_failed_open",
+    "source": "var w=new WaveSoundBuffer(null);w.open(System.exePath+\"tone.wav\");var events=\"\";w.onStatusChanged=function(s){events+=s+\",\";};try {w.open(\"does-not-exist.wav\");}catch(e){events+=\"error,\";}return events+w.status;",
+    "expected": {
+      "String": [
+        117,
+        110,
+        108,
+        111,
+        97,
+        100,
+        44,
+        101,
+        114,
+        114,
+        111,
+        114,
+        44,
+        117,
+        110,
+        108,
+        111,
+        97,
+        100
+      ]
+    }
+  },
+  {
+    "name": "wave_paused_play",
+    "source": "var w=new WaveSoundBuffer(null);w.open(System.exePath+\"tone.wav\");w.paused=1;w.play();return w.status+\",\"+w.bits+\",\"+w.channels+\",\"+w.totalTime;",
+    "expected": {
+      "String": [
+        112,
+        108,
+        97,
+        121,
+        44,
+        49,
+        54,
+        44,
+        49,
+        44,
+        49,
+        48,
+        48
+      ]
+    }
+  },
+  {
+    "name": "wave_play_callbacks",
+    "source": "var w=new WaveSoundBuffer(null);var events=\"\";w.onStatusChanged=function(s){events+=s+\",\";};w.open(System.exePath+\"tone.wav\");w.paused=1;w.play();w.play();w.stop();w.stop();return events;",
+    "expected": {
+      "String": [
+        115,
+        116,
+        111,
+        112,
+        44,
+        112,
+        108,
+        97,
+        121,
+        44,
+        115,
+        116,
+        111,
+        112,
+        44
+      ]
+    }
+  },
+  {
+    "name": "wave_reopen_playing",
+    "source": "var w=new WaveSoundBuffer(null);w.open(System.exePath+\"tone.wav\");w.paused=1;w.play();var events=\"\";w.onStatusChanged=function(s){events+=s+\",\";};w.open(System.exePath+\"tone.wav\");return events+w.paused;",
+    "expected": {
+      "String": [
+        115,
+        116,
+        111,
+        112,
+        44,
+        117,
+        110,
+        108,
+        111,
+        97,
+        100,
+        44,
+        115,
+        116,
+        111,
+        112,
+        44,
+        48
+      ]
+    }
+  },
+  {
+    "name": "wave_sample_stopped",
+    "source": "Plugins.link(\"getSample.dll\");var w=new WaveSoundBuffer(null);w.open(System.exePath+\"tone.wav\");return (typeof w.sampleValue)+\",\"+w.useVisBuffer+\",\"+(w.sampleValue==0);",
+    "expected": {
+      "String": [
+        82,
+        101,
+        97,
+        108,
+        44,
+        49,
+        44,
+        49
+      ]
+    }
+  },
+  {
+    "name": "wave_sample_paused",
+    "source": "Plugins.link(\"getSample.dll\");var w=new WaveSoundBuffer(null);w.open(System.exePath+\"tone.wav\");w.sampleCount=4;w.paused=1;w.play();return (w.sampleValue==0)+\",\"+w.status;",
+    "expected": {
+      "String": [
+        49,
+        44,
+        112,
+        108,
+        97,
+        121
+      ]
+    }
+  },
+  {
+    "name": "wave_sample_peak",
+    "source": "Plugins.link(\"getSample.dll\");var w=new WaveSoundBuffer(null);w.open(System.exePath+\"tone.wav\");w.looping=1;w.useVisBuffer=1;w.play();var v=w.sampleValue;return int(v>0.9999 && v<1);",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "wave_sample_legacy",
+    "source": "Plugins.link(\"getSample.dll\");var w=new WaveSoundBuffer(null);w.open(System.exePath+\"tone.wav\");w.looping=1;w.useVisBuffer=1;w.play();var v=w.getSample(400);return int(v>13000 && v<14000);",
+    "expected": {
+      "Integer": 1
+    }
+  }
+]

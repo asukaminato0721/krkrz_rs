@@ -9,6 +9,7 @@ mod plugins;
 mod save_storage;
 pub mod scheduler;
 mod sound;
+mod sound_stream;
 pub mod window;
 use anyhow::{Context, Result, ensure};
 use krkrz_assets::{cx::CxEncryption, storage::Storage, text};
@@ -524,6 +525,12 @@ impl Session {
     /// Deliver one pending batch. Events posted by callbacks wait for the next
     /// batch, preventing native recursion and preserving the shared VM budget.
     pub fn dispatch_events(&mut self) -> Result<()> {
+        let pending_audio = self
+            .services
+            .sounds
+            .iter_mut()
+            .map(|(id, sound)| (*id, std::mem::take(&mut sound.events)))
+            .collect::<Vec<_>>();
         let pending_sounds = self
             .services
             .sounds
@@ -552,6 +559,35 @@ impl Session {
                 &mut self.services,
                 &mut self.budget,
             )?;
+        }
+        for (id, events) in pending_audio {
+            for (generation, name, argument) in events {
+                if !self
+                    .services
+                    .sounds
+                    .get(&id)
+                    .is_some_and(|s| s.generation == generation)
+                {
+                    break;
+                }
+                if name == "onStatusChanged" {
+                    self.services.sound_status(
+                        &mut self.vm,
+                        &Value::object(id),
+                        id,
+                        "stop",
+                        &mut self.budget,
+                    )?;
+                } else {
+                    self.services.sound_event(
+                        &mut self.vm,
+                        &Value::object(id),
+                        name,
+                        &[argument],
+                        &mut self.budget,
+                    )?;
+                }
+            }
         }
         for id in pending_sounds {
             if self.services.sounds.contains_key(&id) {

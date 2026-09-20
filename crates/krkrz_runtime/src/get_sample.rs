@@ -154,16 +154,19 @@ impl Services {
             .buffers
             .remove(&handle)
             .expect("scoped sample buffer");
-        let written = result?.integer()? as i32;
+        let result = result?;
         if legacy {
             // The original can read unwritten malloc bytes. Zero initialization
             // gives deterministic results without reproducing that memory bug.
             let (sum, n) = buffer
                 .iter()
                 .filter(|n| **n >= 0)
-                .fold((0i64, 0i64), |(sum, n), v| (sum + *v as i64, n + 1));
-            return Ok(Value::Integer(if n == 0 { 0 } else { sum / n }));
+                .fold((0i32, 0i32), |(sum, n), v| {
+                    (sum.wrapping_add(*v as i32), n + 1)
+                });
+            return Ok(Value::Integer(if n == 0 { 0 } else { (sum / n).into() }));
         }
+        let written = result.integer()? as i32;
         let written = if written < 0 || written > settings.count {
             settings.count
         } else {

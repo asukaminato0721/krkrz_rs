@@ -64,6 +64,10 @@ SLI parsing and PCM loop mixing are adapted from Kirikiri Z
 `sound/WaveLoopManager.cpp` and `sound/WaveLoopManager.h`. Sound control state
 and fades follow `sound/WaveIntf.cpp`, `sound/SoundBufferBaseIntf.cpp`,
 `sound/win32/WaveImpl.cpp` and `sound/win32/SoundBufferBaseImpl.h`.
+The getSample replacement follows Kirikiroid2
+`src/plugins/getSample.cpp`, revision `d1c2b1259423542c893e0b65eaeb46c848848f2b`,
+under the Kirikiri notice below. Visualization downmix follows Kirikiri Z
+`sound/WaveIntf.cpp`. No original plugin binary is bundled or executed by Rust.
 Original TLG copyright: Copyright (C) 2000-2005 W.Dee and contributors.
 C# TLG port by morkt. The applicable Kirikiri notice follows.
 

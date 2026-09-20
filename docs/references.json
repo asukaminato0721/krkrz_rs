@@ -28,5 +28,20 @@
     "name": "krkrz-historical",
     "url": "https://github.com/krkrz/krkrz",
     "revision": "49c4d53506edecb824cd7b2cff8d32959b1f1b70"
+  },
+  {
+    "name": "Habakiri",
+    "url": "https://github.com/habakiri/habakiri",
+    "revision": "4152a23c0e87d1ae43e35107a0482062668a6a55"
+  },
+  {
+    "name": "krkr2-plugins",
+    "url": "https://github.com/krkrz/krkr2",
+    "revision": "dec49af97e174d31059c3ccd7efc700ba3c6b788"
+  },
+  {
+    "name": "layerExImage",
+    "url": "https://github.com/wamsoft/layerExImage",
+    "revision": "c8e9e71f5ce475340732888ddda7270f77e19122"
   }
 ]

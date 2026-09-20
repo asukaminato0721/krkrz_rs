@@ -143,5 +143,20 @@
     "expected": {
       "Integer": 0
     }
+  },
+  {
+    "name": "sample_legacy_ignores_callback_result",
+    "source": "Plugins.link(\"getSample.dll\");var w=new WaveSoundBuffer(null);w.getVisBuffer=function(p,n,c){return <%00%>;};return typeof w.getSample(1);",
+    "expected": {
+      "String": [
+        73,
+        110,
+        116,
+        101,
+        103,
+        101,
+        114
+      ]
+    }
   }
 ]

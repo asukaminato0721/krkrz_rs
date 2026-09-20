@@ -80,19 +80,14 @@ fn deterministic_fade_beats_and_invalidation() {
 }
 
 #[test]
-fn sound_playback_is_explicit_until_streams_are_bound() {
+fn missing_sound_is_a_script_exception() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
     std::fs::write(
         project.path().join("startup.tjs"),
-        "var w=new WaveSoundBuffer(null);try{w.open('missing.ogg');}catch(e){return 99;}",
+        "var w=new WaveSoundBuffer(null);try{w.open('missing.ogg');}catch(e){return w.status;}",
     )
     .unwrap();
     let mut session = Session::open(project.path(), Some(saves.path()), false, 1000).unwrap();
-    let error = session.startup().unwrap_err();
-    assert!(
-        error.downcast_ref::<krkrz_tjs::VmAbort>().is_some(),
-        "{error:#}"
-    );
-    assert!(format!("{error:#}").contains("WaveSoundBuffer.open is not implemented"));
+    assert_eq!(session.startup().unwrap(), Value::string("unload"));
 }

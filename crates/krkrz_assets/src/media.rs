@@ -1,4 +1,4 @@
-//! Bounded image and Vorbis decoding. TLG5 is adapted from GARbro ImageTLG.cs.
+//! Bounded image, integer WAVE PCM, and Vorbis decoding. TLG5 is adapted from GARbro ImageTLG.cs.
 use crate::binary::Reader;
 use anyhow::{Result, ensure};
 use serde::Serialize;
@@ -209,34 +209,59 @@ impl Audio {
                     let byte_rate = f.u32()?;
                     let align = f.u16()?;
                     let bits = f.u16()?;
-                    ensure!(codec == 1 && [8, 16, 24, 32].contains(&bits), "unsupported wave PCM format");
-                    ensure!((1..=8).contains(&channels) && (1..=768_000).contains(&rate), "invalid wave channel count or rate");
-                    ensure!(align == channels * (bits / 8) && byte_rate == rate * align as u32, "invalid wave block alignment");
+                    ensure!(
+                        codec == 1 && [8, 16, 24, 32].contains(&bits),
+                        "unsupported wave PCM format"
+                    );
+                    ensure!(
+                        (1..=8).contains(&channels) && (1..=768_000).contains(&rate),
+                        "invalid wave channel count or rate"
+                    );
+                    ensure!(
+                        align == channels * (bits / 8) && byte_rate == rate * align as u32,
+                        "invalid wave block alignment"
+                    );
                     format = Some((channels as u8, rate, align as usize, bits));
                 }
-                b"data" => { ensure!(data.is_none(), "duplicate wave data chunk"); data = Some(body); }
+                b"data" => {
+                    ensure!(data.is_none(), "duplicate wave data chunk");
+                    data = Some(body);
+                }
                 _ => {}
             }
-            if length % 2 != 0 { chunks.take(1)?; }
+            if !length.is_multiple_of(2) {
+                chunks.take(1)?;
+            }
         }
-        let (channels, sample_rate, align, bits) = format.ok_or_else(|| anyhow::anyhow!("wave format chunk missing"))?;
+        let (channels, sample_rate, align, bits) =
+            format.ok_or_else(|| anyhow::anyhow!("wave format chunk missing"))?;
         let data = data.ok_or_else(|| anyhow::anyhow!("wave data chunk missing"))?;
-        ensure!(data.len().is_multiple_of(align) && data.len() / align <= max_frames, "wave frame count is invalid or exceeds limit");
-        let samples = data.chunks_exact((bits / 8) as usize).map(|s| match bits {
-            8 => (s[0] as i16 - 128) << 8,
-            16 => i16::from_le_bytes([s[0], s[1]]),
-            24 => i16::from_le_bytes([s[1], s[2]]),
-            32 => i16::from_le_bytes([s[2], s[3]]),
-            _ => unreachable!(),
-        }).collect();
-        Ok(Self { channels, sample_rate, samples })
+        ensure!(
+            data.len().is_multiple_of(align) && data.len() / align <= max_frames,
+            "wave frame count is invalid or exceeds limit"
+        );
+        let samples = data
+            .chunks_exact((bits / 8) as usize)
+            .map(|s| match bits {
+                8 => (s[0] as i16 - 128) << 8,
+                16 => i16::from_le_bytes([s[0], s[1]]),
+                24 => i16::from_le_bytes([s[1], s[2]]),
+                32 => i16::from_le_bytes([s[2], s[3]]),
+                _ => unreachable!(),
+            })
+            .collect();
+        Ok(Self {
+            channels,
+            sample_rate,
+            samples,
+        })
     }
     pub fn decode_vorbis(bytes: &[u8], max_frames: usize) -> Result<Self> {
         let mut stream = lewton::inside_ogg::OggStreamReader::new(Cursor::new(bytes))?;
         let channels = stream.ident_hdr.audio_channels;
         let sample_rate = stream.ident_hdr.audio_sample_rate;
         ensure!(
-            channels > 0 && sample_rate > 0,
+            (1..=8).contains(&channels) && (1..=768_000).contains(&sample_rate),
             "invalid Vorbis stream format"
         );
         let limit = max_frames
@@ -267,6 +292,78 @@ impl Audio {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn wave(bits: u16, data: &[u8]) -> Vec<u8> {
+        let mut bytes = b"RIFF".to_vec();
+        bytes.extend((36u32 + data.len() as u32 + data.len() as u32 % 2).to_le_bytes());
+        bytes.extend(b"WAVEfmt ");
+        bytes.extend(16u32.to_le_bytes());
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend(1u16.to_le_bytes());
+        bytes.extend(44100u32.to_le_bytes());
+        bytes.extend((44100u32 * (bits as u32 / 8)).to_le_bytes());
+        bytes.extend((bits / 8).to_le_bytes());
+        bytes.extend(bits.to_le_bytes());
+        bytes.extend(b"data");
+        bytes.extend((data.len() as u32).to_le_bytes());
+        bytes.extend(data);
+        if !data.len().is_multiple_of(2) {
+            bytes.push(0);
+        }
+        bytes
+    }
+    #[test]
+    fn wave_pcm_depths_and_bounds() {
+        for (bits, data, expected) in [
+            (8, vec![0, 128, 255], vec![-32768, 0, 32512]),
+            (16, vec![0, 128, 0, 0, 255, 127], vec![-32768, 0, 32767]),
+            (
+                24,
+                vec![0, 0, 128, 255, 255, 255, 255, 255, 127],
+                vec![-32768, -1, 32767],
+            ),
+            (
+                32,
+                vec![0, 0, 0, 128, 255, 255, 255, 255, 255, 255, 255, 127],
+                vec![-32768, -1, 32767],
+            ),
+        ] {
+            let bytes = wave(bits, &data);
+            let decoded = Audio::decode_wave(&bytes, 3).unwrap();
+            assert_eq!(decoded.samples, expected);
+            assert_eq!((decoded.channels, decoded.sample_rate), (1, 44100));
+            assert!(Audio::decode_wave(&bytes, 2).is_err());
+            for end in 0..bytes.len() {
+                assert!(Audio::decode_wave(&bytes[..end], 3).is_err());
+            }
+        }
+        assert!(Audio::decode_wave(&wave(16, &[0]), 3).is_err());
+        let mut bytes = wave(16, &[0, 0]);
+        bytes[32] = 1; // invalid block alignment
+        assert!(Audio::decode_wave(&bytes, 3).is_err());
+        bytes[32] = 2;
+        bytes[20] = 3; // IEEE float is not integer PCM
+        assert!(Audio::decode_wave(&bytes, 3).is_err());
+    }
+    #[test]
+    fn wave_chunk_order_padding_and_duplicates() {
+        let bytes = wave(8, &[128]);
+        let mut reordered = bytes[..12].to_vec();
+        reordered.extend(&bytes[36..]);
+        reordered.extend(b"JUNK");
+        reordered.extend(1u32.to_le_bytes());
+        reordered.extend([23, 0]);
+        reordered.extend(&bytes[12..36]);
+        let size = (reordered.len() as u32 - 8).to_le_bytes();
+        reordered[4..8].copy_from_slice(&size);
+        assert_eq!(Audio::decode_wave(&reordered, 1).unwrap().samples, [0]);
+        reordered.extend(&bytes[36..]);
+        let size = (reordered.len() as u32 - 8).to_le_bytes();
+        reordered[4..8].copy_from_slice(&size);
+        assert!(Audio::decode_wave(&reordered, 2).is_err());
+        let mut no_data = bytes[..36].to_vec();
+        no_data[4..8].copy_from_slice(&28u32.to_le_bytes());
+        assert!(Audio::decode_wave(&no_data, 3).is_err());
+    }
     #[test]
     fn tlg5_pixels_and_truncation() {
         let mut bytes = b"TLG5.0\0raw\x1a\x03".to_vec();

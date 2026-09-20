@@ -74,3 +74,38 @@ fn original_startup_reaches_framework_handoff() -> Result<()> {
     assert_eq!(host.storage.as_deref(), Some("system/Initialize.tjs"));
     Ok(())
 }
+
+#[test]
+#[ignore = "requires the installed Otome Domain game and KRKRZ_PROJECT_DIR"]
+fn native_sound_reads_archive_pcm_and_sli() -> Result<()> {
+    use krkrz_runtime::Session;
+    use krkrz_tjs::Value;
+    let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
+    let saves = tempfile::tempdir()?;
+    let mut session = Session::open(Path::new(&project), Some(saves.path()), true, 10_000)?;
+    session
+        .evaluate(r#"Scripts.exec('var w=new WaveSoundBuffer(null); w.open("bgm/bgm01.ogg");')"#)?;
+    let sound = session.evaluate("w")?;
+    assert_eq!(session.evaluate("w.frequency")?, Value::Integer(44_100));
+    let audio = Arc::new(Audio::decode_vorbis(
+        &session.services.storage.read("bgm/bgm01.ogg")?,
+        10_000_000,
+    )?);
+    let info = LoopInfo::parse(&text::decode(
+        &session.services.storage.read("bgm/bgm01.ogg.sli")?,
+    )?)?;
+    let (from, to) = (info.links[0].from, info.links[0].to);
+    let mut expected = SoundStream::new(audio, info)?;
+    expected.seek(from - 1200)?;
+    session.evaluate(&format!("w.samplePosition={}", from - 1200))?;
+    session.evaluate("w.play()")?;
+    assert_eq!(
+        session.render_sound_source(&sound, 2400)?,
+        expected.render(2400)?
+    );
+    assert_eq!(
+        session.evaluate("w.samplePosition")?,
+        Value::Integer((to + 1200) as i64)
+    );
+    Ok(())
+}
