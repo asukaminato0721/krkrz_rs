@@ -18,6 +18,7 @@ pub mod scheduler;
 mod sound;
 mod sound_stream;
 mod text_render;
+mod timer;
 pub mod window;
 mod window_ex;
 use anyhow::{Context, Result, ensure};
@@ -53,6 +54,8 @@ pub struct Services {
     pub fonts: fonts::FontBook,
     app_locks: app_lock::AppLocks,
     async_triggers: async_trigger::State,
+    events: scheduler::EventQueue,
+    timers: BTreeMap<usize, timer::Timer>,
     csv_parsers: BTreeMap<usize, csv::Parser>,
     sounds: BTreeMap<usize, sound::Sound>,
     psb_files: BTreeMap<usize, Option<psb_file::File>>,
@@ -140,6 +143,9 @@ impl Host for Services {
     ) -> Result<Value> {
         if let Some(operation) = name.strip_prefix("WindowEx.") {
             return self.window_ex_call(vm, operation, context, args, budget);
+        }
+        if let Some(operation) = name.strip_prefix("Timer.") {
+            return self.timer_call(vm, operation, context, args, budget);
         }
         if let Some(operation) = name.strip_prefix("AsyncTrigger.") {
             return self.async_call(vm, operation, context, args, budget);
@@ -598,6 +604,7 @@ impl Session {
         vm.execute(&constants, &mut (), &mut 100_000)?;
         window::register(&mut vm)?;
         async_trigger::register(&mut vm)?;
+        timer::register(&mut vm)?;
         sound::register(&mut vm)?;
         let system = vm.register_namespace("System")?;
         for name in ["screenWidth", "screenHeight"] {
@@ -656,6 +663,8 @@ impl Session {
                 image_cache: graphics::ImageCache::new(graphics::automatic_limit()),
                 app_locks: app_lock::AppLocks::default(),
                 async_triggers: async_trigger::State::default(),
+                events: scheduler::EventQueue::default(),
+                timers: BTreeMap::new(),
                 fonts: fonts::FontBook::default(),
                 csv_parsers: BTreeMap::new(),
                 sounds: BTreeMap::new(),
@@ -698,6 +707,7 @@ impl Session {
             time_ms >= self.services.time_ms,
             "session clock cannot move backwards"
         );
+        self.services.advance_timers(time_ms)?;
         self.services.sound_advance(time_ms);
         self.services.time_ms = time_ms;
         self.dispatch_events()?;
@@ -706,10 +716,10 @@ impl Session {
     /// Deliver one pending batch. Events posted by callbacks wait for the next
     /// batch, preventing native recursion and preserving the shared VM budget.
     pub fn dispatch_events(&mut self) -> Result<()> {
-        let through = self.services.async_triggers.begin_batch();
+        let through = self.services.events.begin_batch();
         self.services
             .dispatch_async(&mut self.vm, through, 1, &mut self.budget)?;
-        if self.services.async_triggers.exclusive_posted() {
+        if self.services.events.exclusive_posted() {
             return Ok(());
         }
         let pending_menus = std::mem::take(&mut self.services.menus.pending);
@@ -805,7 +815,7 @@ impl Session {
         }
         self.services
             .dispatch_async(&mut self.vm, through, 0, &mut self.budget)?;
-        if !self.services.async_triggers.exclusive_posted() {
+        if !self.services.events.exclusive_posted() {
             self.services
                 .dispatch_async(&mut self.vm, through, 2, &mut self.budget)?;
         }

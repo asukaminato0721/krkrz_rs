@@ -1,8 +1,9 @@
 //! AsyncTrigger and deferred event priority, following Kirikiri EventIntf.cpp.
 use crate::Services;
+use crate::scheduler::EventKind;
 use anyhow::{Context, Result, ensure};
 use krkrz_tjs::{ObjectRef, Value, Vm, unsupported};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 
 struct Trigger {
     constructed: bool,
@@ -22,37 +23,9 @@ impl Default for Trigger {
         }
     }
 }
-#[derive(Clone, Copy)]
-struct Event {
-    target: usize,
-    sequence: u64,
-    priority: i32,
-}
 #[derive(Default)]
 pub(crate) struct State {
     triggers: BTreeMap<usize, Trigger>,
-    pending: VecDeque<Event>,
-    sequence: u64,
-    exclusive_posted: bool,
-}
-impl State {
-    fn cancel(&mut self, id: usize) {
-        self.pending.retain(|event| event.target != id);
-    }
-    pub(crate) fn begin_batch(&mut self) -> u64 {
-        self.exclusive_posted = false;
-        self.sequence
-    }
-    pub(crate) fn exclusive_posted(&self) -> bool {
-        self.exclusive_posted
-    }
-    fn pop(&mut self, through: u64, priority: i32) -> Option<usize> {
-        let index = self
-            .pending
-            .iter()
-            .position(|event| event.sequence <= through && event.priority == priority)?;
-        Some(self.pending.remove(index)?.target)
-    }
 }
 pub(crate) fn register(vm: &mut Vm) -> Result<()> {
     let class = vm.register_native_class("AsyncTrigger")?;
@@ -94,7 +67,7 @@ impl Services {
             return Ok(Value::Void);
         }
         if operation == "@invalidate" {
-            self.async_triggers.cancel(id);
+            self.events.cancel(id, EventKind::Trigger);
             self.async_triggers.triggers.remove(&id);
             return Ok(Value::Void);
         }
@@ -127,17 +100,17 @@ impl Services {
                 let value = arg(0)?.truth()?;
                 if trigger.cached != value {
                     trigger.cached = value;
-                    self.async_triggers.cancel(id);
+                    self.events.cancel(id, EventKind::Trigger);
                 }
             }
             "set:mode" => {
                 let value = arg(0)?.integer()? as i32;
                 if trigger.mode != value {
                     trigger.mode = value;
-                    self.async_triggers.cancel(id);
+                    self.events.cancel(id, EventKind::Trigger);
                 }
             }
-            "cancel" => self.async_triggers.cancel(id),
+            "cancel" => self.events.cancel(id, EventKind::Trigger),
             "trigger" => {
                 let cached = trigger.cached;
                 let priority = match trigger.mode {
@@ -146,23 +119,9 @@ impl Services {
                     _ => 0,
                 };
                 if cached {
-                    self.async_triggers.cancel(id);
+                    self.events.cancel(id, EventKind::Trigger);
                 }
-                if self.async_triggers.pending.len() >= 100_000 {
-                    return Err(unsupported("AsyncTrigger pending event limit exceeded"));
-                }
-                let sequence = self
-                    .async_triggers
-                    .sequence
-                    .checked_add(1)
-                    .context("AsyncTrigger event sequence overflow")?;
-                self.async_triggers.sequence = sequence;
-                self.async_triggers.pending.push_back(Event {
-                    target: id,
-                    sequence,
-                    priority,
-                });
-                self.async_triggers.exclusive_posted |= priority == 1;
+                self.events.post(id, EventKind::Trigger, priority)?;
             }
             "onFire" => {
                 let owner = trigger.owner.clone();
@@ -203,15 +162,26 @@ impl Services {
         priority: i32,
         budget: &mut u64,
     ) -> Result<()> {
-        while let Some(id) = self.async_triggers.pop(through, priority) {
+        while let Some(event) = self.events.pop(through, priority) {
+            let id = event.target;
             *budget = budget
                 .checked_sub(1)
-                .ok_or_else(|| unsupported("AsyncTrigger execution budget exceeded"))?;
-            if !self.async_triggers.triggers.contains_key(&id) {
+                .ok_or_else(|| unsupported("posted event execution budget exceeded"))?;
+            if match event.kind {
+                EventKind::Trigger => !self.async_triggers.triggers.contains_key(&id),
+                EventKind::Timer => !self.timers.contains_key(&id),
+            } {
                 continue;
             }
             let target = Value::object(id);
-            let callback = vm.get_member(&target, &Value::string("onFire"), false)?;
+            let callback = vm.get_property(
+                &target,
+                &Value::string(event.kind.method()),
+                false,
+                false,
+                self,
+                budget,
+            )?;
             vm.call_function(&callback, &target, &[], self, budget)?;
         }
         Ok(())

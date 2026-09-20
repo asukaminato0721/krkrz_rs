@@ -1,0 +1,150 @@
+[
+  {
+    "name": "timer_defaults",
+    "source": "var t=new Timer(null);return [typeof t.interval,t.interval,t.enabled,t.capacity,t.mode].join(\"|\");",
+    "expected": {
+      "String": [
+        82,
+        101,
+        97,
+        108,
+        124,
+        48,
+        46,
+        48,
+        49,
+        53,
+        50,
+        53,
+        56,
+        55,
+        56,
+        57,
+        48,
+        54,
+        50,
+        53,
+        124,
+        48,
+        124,
+        54,
+        124,
+        48
+      ]
+    }
+  },
+  {
+    "name": "timer_constructor",
+    "source": "var r=[];for(var i=0;i<4;i++){try{var t=i==0?new Timer():i==1?new Timer(void):i==2?new Timer(1):new Timer(null);r.add(\"ok\");}catch(e){r.add(\"error\");}}return r.join(\"|\");",
+    "expected": {
+      "String": [
+        111,
+        107,
+        124,
+        101,
+        114,
+        114,
+        111,
+        114,
+        124,
+        101,
+        114,
+        114,
+        111,
+        114,
+        124,
+        111,
+        107
+      ]
+    }
+  },
+  {
+    "name": "timer_props",
+    "source": "var t=new Timer(null),r=[];t.interval=10.1;r.add(t.interval);t.interval=-1;r.add(t.interval);t.enabled=0.5;r.add(t.enabled);t.capacity=-1;r.add(t.capacity);t.mode=4294967297;r.add(t.mode);return r.join(\"|\");",
+    "expected": {
+      "String": [
+        49,
+        48,
+        46,
+        49,
+        48,
+        48,
+        48,
+        48,
+        54,
+        49,
+        48,
+        51,
+        53,
+        49,
+        53,
+        54,
+        124,
+        50,
+        56,
+        49,
+        52,
+        55,
+        52,
+        57,
+        55,
+        54,
+        55,
+        49,
+        48,
+        54,
+        53,
+        53,
+        124,
+        49,
+        124,
+        45,
+        49,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "timer_action",
+    "source": "global.r=[];global.o=%[];o.action=function(e){global.r.add(e.type);global.r.add(e.target===global.t);return 77;};global.t=new Timer(o);var v=t.onTimer();return r.join(\"|\")+\"|\"+typeof v+\"|\"+v;",
+    "expected": {
+      "String": [
+        111,
+        110,
+        84,
+        105,
+        109,
+        101,
+        114,
+        124,
+        49,
+        124,
+        73,
+        110,
+        116,
+        101,
+        103,
+        101,
+        114,
+        124,
+        55,
+        55
+      ]
+    }
+  },
+  {
+    "name": "timer_constructor_repeat",
+    "source": "global.r=[];global.o=%[action:function(e){global.r.add(\"first\");}];var t=new Timer(o);t.Timer(%[action:function(e){global.r.add(\"second\");}]);t.interval=0;t.enabled=true;t.onTimer();return r.join(\"|\");",
+    "expected": {
+      "String": [
+        115,
+        101,
+        99,
+        111,
+        110,
+        100
+      ]
+    }
+  }
+]

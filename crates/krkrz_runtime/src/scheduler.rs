@@ -1,6 +1,81 @@
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum EventKind {
+    Trigger,
+    Timer,
+}
+impl EventKind {
+    pub(crate) fn method(self) -> &'static str {
+        match self {
+            Self::Trigger => "onFire",
+            Self::Timer => "onTimer",
+        }
+    }
+}
+#[derive(Clone, Copy)]
+pub(crate) struct PostedEvent {
+    pub target: usize,
+    pub kind: EventKind,
+    sequence: u64,
+    priority: i32,
+}
+#[derive(Default)]
+pub(crate) struct EventQueue {
+    pending: std::collections::VecDeque<PostedEvent>,
+    sequence: u64,
+    exclusive_posted: bool,
+}
+impl EventQueue {
+    pub fn cancel(&mut self, target: usize, kind: EventKind) {
+        self.pending
+            .retain(|e| e.target != target || e.kind != kind);
+    }
+    pub fn count(&self, target: usize, kind: EventKind) -> usize {
+        self.pending
+            .iter()
+            .filter(|e| e.target == target && e.kind == kind)
+            .count()
+    }
+    pub fn begin_batch(&mut self) -> u64 {
+        self.exclusive_posted = false;
+        self.sequence
+    }
+    pub fn exclusive_posted(&self) -> bool {
+        self.exclusive_posted
+    }
+    pub fn post(&mut self, target: usize, kind: EventKind, mode: i32) -> Result<()> {
+        if self.pending.len() >= 100_000 {
+            return Err(krkrz_tjs::unsupported("pending event limit exceeded"));
+        }
+        self.sequence = self
+            .sequence
+            .checked_add(1)
+            .ok_or_else(|| krkrz_tjs::unsupported("event sequence overflow"))?;
+        let priority = match mode {
+            1 => 1,
+            2 => 2,
+            _ => 0,
+        };
+        self.pending.push_back(PostedEvent {
+            target,
+            kind,
+            priority,
+            sequence: self.sequence,
+        });
+        self.exclusive_posted |= priority == 1;
+        Ok(())
+    }
+    pub fn pop(&mut self, through: u64, priority: i32) -> Option<PostedEvent> {
+        let index = self
+            .pending
+            .iter()
+            .position(|e| e.sequence <= through && e.priority == priority)?;
+        self.pending.remove(index)
+    }
+}
 /// Stable order for simultaneous timer and transition completion callbacks.
 #[derive(Default, Clone, Debug, Serialize, Deserialize)]
 pub struct Scheduler {
