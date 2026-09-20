@@ -1013,6 +1013,9 @@ impl Services {
         if op == "assignImages" {
             return self.layer_assign_images(id, arg(0)?, budget);
         }
+        if op == "doGrayScale" {
+            return self.layer_grayscale(id, budget);
+        }
         if op == "drawText" {
             return self.layer_draw_text(id, args, budget);
         }
@@ -1048,6 +1051,7 @@ mod blur;
 mod clip_alpha;
 mod draw;
 mod focus;
+mod grayscale;
 mod images;
 pub(crate) mod input;
 mod save;
