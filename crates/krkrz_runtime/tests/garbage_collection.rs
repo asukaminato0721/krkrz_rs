@@ -124,3 +124,54 @@ fn window_registry_does_not_retain_abandoned_windows() {
     assert_eq!(session.evaluate("finalized").unwrap(), Value::Integer(1));
     assert_eq!(session.evaluate("Window.mainWindow").unwrap(), Value::NULL);
 }
+
+#[test]
+fn original_layer_lifetime_corpus_with_collection_between_ticks() {
+    // Reference: original executable 1.2.0.3, SHA-256
+    // 8f50f48489647638a6d14639c1398fa7f731d262c1d4edc7a65d4362be2a9768.
+    // Synthetic fixtures use idle callbacks and System.doCompact so the original
+    // engine releases temporary dispatch references before observing lifetimes.
+    // Reproduce with tools/check_original_tjs.py --runtime --fixtures
+    // crates/krkrz_runtime/tests/fixtures/layer_lifetime.json.
+    // Fixture SHA-256: a7d19137437e485cacad0387691537e374b23164491e5b25f51273f22c0d41bc.
+    // Its original results match all ten expectations. This test forces the Rust
+    // collections that the CLI oracle driver only performs at its heap threshold.
+    #[derive(serde::Deserialize)]
+    struct Case {
+        name: String,
+        source: String,
+        result: String,
+        expected: Value,
+        advance_ms: u64,
+        #[serde(rename = "await")]
+        ready: String,
+    }
+    let cases: Vec<Case> =
+        serde_json::from_str(include_str!("fixtures/layer_lifetime.json")).unwrap();
+    for case in cases {
+        let (_project, _saves, mut session) = session(&case.source);
+        session
+            .collect_garbage(&[])
+            .unwrap_or_else(|error| panic!("{} after startup: {error:#}", case.name));
+        for now in (16..case.advance_ms).step_by(16).chain([case.advance_ms]) {
+            session
+                .tick(now)
+                .unwrap_or_else(|error| panic!("{} at {now} ms: {error:#}", case.name));
+            // No host-held object handles exist here. Collection is explicit:
+            // System.doCompact inside a script is not a safe VM collection point.
+            session
+                .collect_garbage(&[])
+                .unwrap_or_else(|error| panic!("{} after {now} ms: {error:#}", case.name));
+        }
+        assert_eq!(
+            session.evaluate(&case.ready).unwrap(),
+            Value::Integer(1),
+            "{} did not complete its idle callbacks",
+            case.name
+        );
+        let result = session
+            .evaluate(&case.result)
+            .unwrap_or_else(|error| panic!("{} result: {error:#}", case.name));
+        assert_eq!(result, case.expected, "{}", case.name);
+    }
+}

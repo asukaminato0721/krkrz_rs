@@ -1,0 +1,158 @@
+[
+  {
+    "name": "child_weak",
+    "source": "global.events=''; class L extends Layer { function L(w,p){super.Layer(w,p);} function finalize(){global.events+='L';} } global.w=new Window(); global.p=new Layer(w,null); function build(){var c=new L(w,p);} build(); global.waits=0;function waittick(){global.waits++;System.doCompact();if(global.waits>=3)System.removeContinuousHandler(waittick);}System.addContinuousHandler(waittick);",
+    "result": "events+':'+p.children.count",
+    "expected": {
+      "String": [
+        76,
+        58,
+        48
+      ]
+    },
+    "advance_ms": 1000,
+    "await": "waits>=3"
+  },
+  {
+    "name": "primary_weak",
+    "source": "global.events=''; class L extends Layer { function L(w,p){super.Layer(w,p);} function finalize(){global.events+='L';} } global.w=new Window(); function build(){var p=new L(w,null);} build(); global.waits=0;function waittick(){global.waits++;System.doCompact();if(global.waits>=3)System.removeContinuousHandler(waittick);}System.addContinuousHandler(waittick);",
+    "result": "(function(){var absent=false;try{w.primaryLayer;}catch(e){absent=true;}return events+':'+absent;})()",
+    "expected": {
+      "String": [
+        76,
+        58,
+        49
+      ]
+    },
+    "advance_ms": 1000,
+    "await": "waits>=3"
+  },
+  {
+    "name": "parent_weak",
+    "source": "global.events=''; class L extends Layer { function L(w,p){super.Layer(w,p);} function finalize(){global.events+='L';} } global.w=new Window(); global.c=null; function build(){var p=new L(w,null);c=new Layer(w,p);} build(); global.waits=0;function waittick(){global.waits++;System.doCompact();if(global.waits>=3)System.removeContinuousHandler(waittick);}System.addContinuousHandler(waittick);",
+    "result": "events+':'+(c.parent===null)+':'+isvalid c",
+    "expected": {
+      "String": [
+        76,
+        58,
+        49,
+        58,
+        49
+      ]
+    },
+    "advance_ms": 1000,
+    "await": "waits>=3"
+  },
+  {
+    "name": "children_array_strong",
+    "source": "global.events=''; class L extends Layer { function L(w,p){super.Layer(w,p);} function finalize(){global.events+='L';} } global.w=new Window(); global.p=new Layer(w,null);function build(){var c=new L(w,p);var a=p.children;}build();global.waits=0;function waittick(){global.waits++;System.doCompact();if(global.waits>=3)System.removeContinuousHandler(waittick);}System.addContinuousHandler(waittick);",
+    "result": "events+':'+p.children.count",
+    "expected": {
+      "String": [
+        58,
+        49
+      ]
+    },
+    "advance_ms": 1000,
+    "await": "waits>=3"
+  },
+  {
+    "name": "children_array_clear",
+    "source": "global.events=''; class L extends Layer { function L(w,p){super.Layer(w,p);} function finalize(){global.events+='L';} } global.w=new Window(); global.p=new Layer(w,null);function build(){var c=new L(w,p);var a=p.children;}build();p.children.clear();global.waits=0;function waittick(){global.waits++;System.doCompact();if(global.waits>=3)System.removeContinuousHandler(waittick);}System.addContinuousHandler(waittick);",
+    "result": "events+':'+p.children.count",
+    "expected": {
+      "String": [
+        76,
+        58,
+        48
+      ]
+    },
+    "advance_ms": 1000,
+    "await": "waits>=3"
+  },
+  {
+    "name": "focused_strong",
+    "source": "global.events=''; class L extends Layer { function L(w,p){super.Layer(w,p);} function finalize(){global.events+='L';} } global.w=new Window(); global.p=new Layer(w,null);p.visible=true;function build(){var c=new L(w,p);c.visible=true;c.focusable=true;c.focus();}build();global.waits=0;function waittick(){global.waits++;System.doCompact();if(global.waits>=3)System.removeContinuousHandler(waittick);}System.addContinuousHandler(waittick);",
+    "result": "events+':'+p.children.count",
+    "expected": {
+      "String": [
+        58,
+        49
+      ]
+    },
+    "advance_ms": 1000,
+    "await": "waits>=3"
+  },
+  {
+    "name": "modal_strong",
+    "source": "global.events=''; class L extends Layer { function L(w,p){super.Layer(w,p);} function finalize(){global.events+='L';} } global.w=new Window(); global.p=new Layer(w,null);p.visible=true;function build(){var c=new L(w,p);c.visible=true;c.setMode();}build();global.waits=0;function waittick(){global.waits++;System.doCompact();if(global.waits>=3)System.removeContinuousHandler(waittick);}System.addContinuousHandler(waittick);",
+    "result": "events+':'+p.children.count",
+    "expected": {
+      "String": [
+        58,
+        49
+      ]
+    },
+    "advance_ms": 1000,
+    "await": "waits>=3"
+  },
+  {
+    "name": "parent_weak_getters",
+    "source": "global.events=''; class L extends Layer { function L(w,p){super.Layer(w,p);} function finalize(){global.events+='L';} } global.w=new Window(); global.c=null;function build(){var p=new L(w,null);c=new Layer(w,p);c.visible=true;}build();global.waits=0;function waittick(){global.waits++;System.doCompact();if(global.waits>=3)System.removeContinuousHandler(waittick);}System.addContinuousHandler(waittick);",
+    "result": "events+':'+c.nodeVisible+':'+c.nodeEnabled+':'+c.focused+':'+c.hasImage",
+    "expected": {
+      "String": [
+        76,
+        58,
+        49,
+        58,
+        49,
+        58,
+        48,
+        58,
+        49
+      ]
+    },
+    "advance_ms": 1000,
+    "await": "waits>=3"
+  },
+  {
+    "name": "orphan_focus",
+    "source": "global.w=new Window();global.p=new Layer(w,null);global.c=new Layer(w,p);c.visible=true;c.focusable=true;invalidate p;global.waits=0;function waittick(){global.waits++;System.doCompact();if(waits>=3)System.removeContinuousHandler(waittick);}System.addContinuousHandler(waittick);",
+    "result": "(function(){var a=[c.parent===null,c.nodeVisible,c.nodeEnabled,c.focused];a.add(c.focus());a.add(c.focused);a.add(w.focusedLayer===c);return a.join(':');})()",
+    "expected": {
+      "String": [
+        49,
+        58,
+        49,
+        58,
+        49,
+        58,
+        48,
+        58,
+        49,
+        58,
+        49,
+        58,
+        48
+      ]
+    },
+    "advance_ms": 1000,
+    "await": "waits>=3"
+  },
+  {
+    "name": "focused_release",
+    "source": "global.events='';global.before='missing';class L extends Layer{function L(w,p){super.Layer(w,p);}function finalize(){events+='L';}}global.w=new Window();global.p=new Layer(w,null);p.visible=true;function build(){var c=new L(w,p);c.visible=true;p.focusable=true;c.focusable=true;c.focus();}build();global.waits=0;function waittick(){waits++;if(waits==3){before=events;p.focus();}System.doCompact();if(waits>=6)System.removeContinuousHandler(waittick);}System.addContinuousHandler(waittick);",
+    "result": "before+':'+events+':'+p.children.count",
+    "expected": {
+      "String": [
+        58,
+        76,
+        58,
+        48
+      ]
+    },
+    "advance_ms": 1000,
+    "await": "waits>=6"
+  }
+]

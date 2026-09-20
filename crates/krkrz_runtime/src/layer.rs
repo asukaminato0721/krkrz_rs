@@ -8,10 +8,9 @@ use std::{
     sync::Arc,
 };
 
-// A restored 1280x720 scene retains 208 MB of live background, portrait and
-// transition layers; changing pose reaches 260 MB before the next PSD buffer.
-// Full GC does not reclaim these script-owned caches. Keep a bounded session
-// allowance large enough for this working set, while retaining the 16 MP limit.
+// Bound the unique buffers retained by all live layers. Portrait caches and
+// transitions can overlap; shared images count once until a write detaches them.
+// Each individual image is also limited to 16 megapixels.
 const MAX_LAYER_IMAGE_BYTES: usize = 512 << 20;
 
 /// Live layer buffers excluding one destination. Shared sources remain charged
@@ -42,18 +41,24 @@ struct Province {
     pixels: Vec<u8>,
 }
 
-pub(crate) struct Layer {
-    constructed: bool,
-    transition: Option<transition::Transition>,
-    focusable: bool,
-    join_focus_chain: bool,
-    focus_work: Option<usize>,
+/// A native manager outlives its primary Layer when a detached child survives.
+/// It owns focused/modal targets, but stores the primary and tree edges weakly.
+#[derive(Default)]
+pub(crate) struct Manager {
     focused_layer: Option<usize>,
     modal_layers: Vec<usize>,
     modal_removing: Vec<usize>,
     enabled_notify_depth: usize,
     enabled_snapshot: Vec<(usize, bool)>,
     focus_lock: bool,
+}
+
+pub(crate) struct Layer {
+    constructed: bool,
+    transition: Option<transition::Transition>,
+    focusable: bool,
+    join_focus_chain: bool,
+    focus_work: Option<usize>,
     action_owner: Value,
     primary: bool,
     window: usize,
@@ -100,12 +105,6 @@ impl Default for Layer {
             focusable: false,
             join_focus_chain: true,
             focus_work: None,
-            focused_layer: None,
-            modal_layers: Vec::new(),
-            modal_removing: Vec::new(),
-            enabled_notify_depth: 0,
-            enabled_snapshot: Vec::new(),
-            focus_lock: false,
             action_owner: Value::NULL,
             primary: false,
             window: 0,
@@ -856,6 +855,26 @@ impl Services {
             self.layer_invalidate_transition(vm, id, budget)?;
             self.layer_remove_modes(vm, id, true, budget)?;
             self.layer_forget_focus(id);
+            if let Some(layer) = self.layers.get(&id)
+                && let Some(window) = self.windows.get(&layer.window)
+            {
+                let window_id = layer.window;
+                let capture = window
+                    .input
+                    .capture
+                    .is_some_and(|c| self.layer_descendant(c, id));
+                let hover = window
+                    .input
+                    .hover
+                    .is_some_and(|c| self.layer_descendant(c, id));
+                let window = self.windows.get_mut(&window_id).unwrap();
+                if capture {
+                    window.input.capture = None;
+                }
+                if hover {
+                    window.input.hover = None;
+                }
+            }
             if let Some(layer) = self.layers.remove(&id) {
                 if let Some(parent) = layer.parent.and_then(|p| self.layers.get_mut(&p)) {
                     parent.children.retain(|c| *c != id);
@@ -873,6 +892,13 @@ impl Services {
                 }
                 if let Some(font) = layer.font {
                     vm.invalidate(&font, self, budget)?;
+                }
+                if !self
+                    .layers
+                    .values()
+                    .any(|l| l.constructed && l.root == layer.root)
+                {
+                    self.layer_managers.remove(&layer.root);
                 }
             }
             return Ok(Value::Void);
@@ -925,6 +951,7 @@ impl Services {
             layer.root = root;
             layer.window = tree_window;
             if parent.is_none() {
+                self.layer_managers.insert(id, Manager::default());
                 layer.primary = true;
                 layer.kind = 1;
                 layer.visible = true;
@@ -1174,8 +1201,10 @@ impl Layer {
             transition.gc_trace(out);
         }
     }
+}
 
-    pub(crate) fn gc_trace_manager(&self, out: &mut Vec<Value>) {
+impl Manager {
+    fn gc_trace(&self, out: &mut Vec<Value>) {
         out.extend(self.focused_layer.map(Value::object));
         out.extend(self.modal_layers.iter().copied().map(Value::object));
     }
@@ -1185,14 +1214,20 @@ impl Services {
     pub(crate) fn layer_manager_gc_trace(&self, window: usize, out: &mut Vec<Value>) {
         // Windows retain managers, whose focus/modal references own their
         // targets. The manager's Primary pointer does not own the root Layer.
-        for layer in self.layers.values().filter(|l| l.primary && l.window == window) {
-            layer.gc_trace_manager(out);
+        for layer in self
+            .layers
+            .values()
+            .filter(|l| l.primary && l.window == window)
+        {
+            if let Some(manager) = self.layer_managers.get(&layer.root) {
+                manager.gc_trace(out);
+            }
         }
     }
 
     pub(crate) fn layer_shared_manager_gc_trace(&self, id: usize, out: &mut Vec<Value>) {
-        if let Some(manager) = self.layers.get(&self.layers[&id].root) {
-            manager.gc_trace_manager(out);
+        if let Some(manager) = self.layer_managers.get(&self.layers[&id].root) {
+            manager.gc_trace(out);
         }
     }
 }

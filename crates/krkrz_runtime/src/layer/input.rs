@@ -5,7 +5,7 @@ use super::*;
 pub(crate) struct State {
     pub capture: Option<usize>,
     pub release_capture: bool,
-    hover: Option<usize>,
+    pub(super) hover: Option<usize>,
     hit: bool,
     pub keys: std::collections::BTreeSet<u32>,
     pub pressed: std::collections::BTreeSet<u32>,
@@ -493,9 +493,9 @@ impl crate::Session {
             | InputEvent::Text(_)
             | InputEvent::Wheel { .. } => {
                 if let Some(root) = primary
-                    && let Some(layer) = s.layers.get(&root)
+                    && let Some(manager) = s.layer_managers.get(&root)
                 {
-                    let focused = layer.focused_layer;
+                    let focused = manager.focused_layer;
                     let mut args = args;
                     if !matches!(event, InputEvent::Wheel { .. }) {
                         args.push(Value::Integer(1));

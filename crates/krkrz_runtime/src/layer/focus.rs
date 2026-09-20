@@ -7,7 +7,7 @@ fn value(id: Option<usize>) -> Value {
 impl Services {
     fn layer_begin_enabled(&mut self, root: usize) {
         let first = self
-            .layers
+            .layer_managers
             .get(&root)
             .is_some_and(|l| l.enabled_notify_depth == 0);
         let snapshot = if first {
@@ -15,7 +15,7 @@ impl Services {
         } else {
             Vec::new()
         };
-        if let Some(manager) = self.layers.get_mut(&root) {
+        if let Some(manager) = self.layer_managers.get_mut(&root) {
             if first {
                 manager.enabled_snapshot = snapshot;
             }
@@ -23,7 +23,7 @@ impl Services {
         }
     }
     fn layer_end_enabled(&mut self, vm: &mut Vm, root: usize, budget: &mut u64) -> Result<()> {
-        let Some(manager) = self.layers.get_mut(&root) else {
+        let Some(manager) = self.layer_managers.get_mut(&root) else {
             return Ok(());
         };
         manager.enabled_notify_depth = manager.enabled_notify_depth.saturating_sub(1);
@@ -73,7 +73,11 @@ impl Services {
         let root = layer.root;
         self.layer_begin_enabled(root);
         let result = (|| -> Result<()> {
-            if let Some(&current) = self.layers.get(&root).and_then(|l| l.modal_layers.last()) {
+            if let Some(&current) = self
+                .layer_managers
+                .get(&root)
+                .and_then(|l| l.modal_layers.last())
+            {
                 ensure!(
                     !self.layer_descendant(id, current),
                     "cannot set mode to a descendant of the current modal Layer"
@@ -102,7 +106,7 @@ impl Services {
                 .layers
                 .get(&id)
                 .is_some_and(|l| l.constructed && l.root == root)
-                && let Some(manager) = self.layers.get_mut(&root)
+                && let Some(manager) = self.layer_managers.get_mut(&root)
                 && !manager.modal_layers.contains(&id)
             {
                 manager.modal_layers.push(id);
@@ -124,7 +128,7 @@ impl Services {
         };
         let root = layer.root;
         let modes: Vec<_> = self
-            .layers
+            .layer_managers
             .get(&root)
             .into_iter()
             .flat_map(|l| {
@@ -141,7 +145,7 @@ impl Services {
         self.layer_begin_enabled(root);
         let result = (|| -> Result<()> {
             for mode in modes {
-                if let Some(manager) = self.layers.get_mut(&root) {
+                if let Some(manager) = self.layer_managers.get_mut(&root) {
                     manager.modal_removing.push(mode);
                 }
                 let focus = (|| -> Result<()> {
@@ -152,7 +156,7 @@ impl Services {
                     Ok(())
                 })();
                 let removed = !self.layers.contains_key(&mode);
-                if let Some(manager) = self.layers.get_mut(&root) {
+                if let Some(manager) = self.layer_managers.get_mut(&root) {
                     manager.modal_removing.retain(|&entry| entry != mode);
                     if focus.is_ok() || removed {
                         manager.modal_layers.retain(|&entry| entry != mode);
@@ -169,7 +173,7 @@ impl Services {
         if let Some(modal) = self
             .layers
             .get(&id)
-            .and_then(|l| self.layers.get(&l.root))
+            .and_then(|l| self.layer_managers.get(&l.root))
             .and_then(|l| l.modal_layers.last())
             && !self.layer_descendant(id, *modal)
         {
@@ -190,7 +194,7 @@ impl Services {
     fn layer_node_focusable(&self, id: usize) -> bool {
         self.layers.get(&id).is_some_and(|l| l.focusable) && self.layer_node_enabled(id, true)
     }
-    fn layer_descendant(&self, id: usize, ancestor: usize) -> bool {
+    pub(super) fn layer_descendant(&self, id: usize, ancestor: usize) -> bool {
         let mut current = Some(id);
         while let Some(id) = current {
             if id == ancestor {
@@ -212,14 +216,14 @@ impl Services {
         nodes
     }
     fn layer_focused(&self, root: usize) -> Option<usize> {
-        self.layers
+        self.layer_managers
             .get(&root)
             .and_then(|l| l.focused_layer)
             .filter(|id| self.layers.contains_key(id))
     }
     pub(super) fn layer_forget_focus(&mut self, id: usize) {
         let roots: Vec<_> = self
-            .layers
+            .layer_managers
             .iter()
             .filter_map(|(&root, layer)| {
                 layer
@@ -229,7 +233,7 @@ impl Services {
             })
             .collect();
         for root in roots {
-            self.layers.get_mut(&root).unwrap().focused_layer = None;
+            self.layer_managers.get_mut(&root).unwrap().focused_layer = None;
         }
         for layer in self.layers.values_mut() {
             if layer.focus_work == Some(id) {
@@ -341,7 +345,7 @@ impl Services {
                 return Ok(false);
             }
         }
-        let Some(manager) = self.layers.get_mut(&root) else {
+        let Some(manager) = self.layer_managers.get_mut(&root) else {
             return Ok(false);
         };
         if manager.focused_layer == target {
@@ -369,7 +373,7 @@ impl Services {
             }
             Ok(true)
         })();
-        if let Some(manager) = self.layers.get_mut(&root) {
+        if let Some(manager) = self.layer_managers.get_mut(&root) {
             manager.focus_lock = false;
         }
         result

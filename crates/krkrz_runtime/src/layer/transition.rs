@@ -303,6 +303,9 @@ impl Services {
         let old_root = self.layers[&a].root;
         let root = swap(old_root);
         if root != old_root {
+            if let Some(manager) = self.layer_managers.remove(&old_root) {
+                self.layer_managers.insert(root, manager);
+            }
             for layer in self.layers.values_mut().filter(|l| l.root == old_root) {
                 layer.root = root;
                 layer.primary = false;
