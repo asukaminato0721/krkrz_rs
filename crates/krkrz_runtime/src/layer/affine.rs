@@ -230,6 +230,19 @@ impl Services {
                         write(&mut output, x, y, dst.neutral);
                     }
                 }
+                let valid = |x: i64| {
+                    let px = (pos[0] + (x - l) * steps[0] + 32768) >> 16;
+                    let py = (pos[1] + (x - l) * steps[1] + 32768) >> 16;
+                    px >= sx && px < sx + sw && py >= sy && py < sy + sh
+                };
+                let (mut sample_left, mut sample_right) = (l, r);
+                while sample_left < sample_right && !valid(sample_left) {
+                    sample_left += 1;
+                }
+                while sample_left < sample_right && !valid(sample_right - 1) {
+                    sample_right -= 1;
+                }
+                let color_tail = sample_right - (sample_right - sample_left) % 4;
                 for x in l..r {
                     let nearest = pos.map(|v| (v + 32768) >> 16);
                     if nearest[0] >= sx
@@ -242,7 +255,20 @@ impl Services {
                         } else {
                             pixel(src, nearest[0], nearest[1])
                         };
-                        write(&mut output, x, y, p);
+                        if hold && steps[1] == 0 && x >= color_tail {
+                            // 1.2.0.3 TVPStretchColorCopy's scalar tail uses
+                            // 0xff0000 (red), rather than the alpha mask.
+                            let i = (y as usize * output.width as usize + x as usize) * 4;
+                            let red = output.rgba[i] as u16 + p[0] as u16;
+                            output.rgba[i..i + 4].copy_from_slice(&[
+                                red as u8,
+                                p[1],
+                                p[2],
+                                (red >> 8) as u8,
+                            ]);
+                        } else {
+                            write(&mut output, x, y, p);
+                        }
                     }
                     for i in 0..2 {
                         pos[i] += steps[i];

@@ -390,3 +390,17 @@ fn affine_invalid_geometry_and_budget_leave_destination_intact() {
         Value::Integer(0x123456)
     );
 }
+
+#[test]
+fn original_stretch_copy_pixels() {
+    let cases: Vec<Case> =
+        serde_json::from_str(include_str!("fixtures/layer_stretch.json")).unwrap();
+    for case in cases {
+        let (project, _saves, mut session) = session("", 1_000_000);
+        std::fs::write(project.path().join("test.tjs"), &case.source).unwrap();
+        let value = session
+            .execute_storage("test.tjs")
+            .unwrap_or_else(|e| panic!("{}: {e:#}", case.name));
+        assert_eq!(value.text(), case.expected.text(), "{}", case.name);
+    }
+}

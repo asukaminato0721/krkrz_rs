@@ -86,6 +86,10 @@ and palette dithering follow `visual/GraphicsLoaderIntf.cpp` and `visual/tvpgl.c
 Universal transitions also follow `visual/TransIntf.cpp` and the historical
 `src/core/visual/IA32/univtrans.nas` at revision
 `516eae6decd3d3b58bdde24907d408aece38699a`.
+Affine and stretch copies follow `visual/LayerBitmapIntf.cpp`, the historical
+IA32 affine/stretch pixel arithmetic, and `visual/Resampler.cpp` at revision
+`a97583ee80deb8e29e0848d68ede28be43cdc52d`. That resampler credits
+"Filtered Image Rescaling" by Dale Schumacher in Graphics Gems III.
 Original TLG copyright: Copyright (C) 2000-2005 W.Dee and contributors.
 C# TLG port by morkt. The applicable Kirikiri notice follows.
 
