@@ -7,7 +7,8 @@ message layers and audio objects. Deterministic ticks deliver timer, asynchronou
 continuous and paint callbacks. Native winit/wgpu presentation, mouse/keyboard
 input and CPAL output now share the headless session. Startup renders the warning
 screens, writes the title autosave, and enters the animated pretitle sequence.
-The game is still under API integration; New Game, first choice, required movies,
+The original title animation and menu render, and mouse input on New Game enters
+the opening scenario. Story playback, choices, required movies within the game,
 and original save/load acceptance remain incomplete.
 
 ## Build and verify
@@ -137,7 +138,7 @@ outside the installation.
 |---|---|---|
 | `krkrz_core` | Storage-name normalization, resource limits, source/input types, separate save path selection | Full Kirikiri URI/media normalization |
 | `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5/TLG6, integer WAVE/Vorbis PCM, SLI loops and labels, checked AlphaMovie containers | MPEG/AlphaMovie pixel decoding |
-| `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, switch/do/while/for control flow, comma/swap and eager logical-assignment operators, global unary-dot lookup, ordered class initializers and deferred base resolution, explicit invalidation/finalization, interpolation, default parameters, argument forwarding/rest/spread, octet values, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting, automatic object finalization/collection, original bytecode loader |
+| `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, switch/do/while/for control flow, comma/swap and eager logical-assignment operators, global unary-dot lookup, ordered class initializers and deferred base resolution, explicit invalidation/finalization, interpolation, default parameters, argument forwarding/rest/spread, octet values, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting, exact reference-counted finalization timing, original bytecode loader |
 | `krkrz_kag` | UTF-16 KAGParserEx tokenization, ordered attributes, labels, escaped brackets and multiline tags; runtime bindings provide expressions, macros, conditions, jumps/calls and label-based state restoration | Complete game-framework integration and replay validation |
 | `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, TextRenderBase layout/timing, GdiPlus geometry, AlphaMovie metadata/transport controls, MenuItem state/tree/click dispatch, WIN32Dialog templates/bounded buffers/closed state, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, private FreeType font rasterization and Layer.drawText, image loading/blits, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, remaining transitions/effects/callback integration, SLI label expressions, original saves and replay |
 | `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, static inventory, primitive evaluation, startup diagnostics | Deterministic interactive replay, input-driven checkpoints, frame/audio comparison, native play |
@@ -150,6 +151,13 @@ mix, including gain, pan, resampling, SLI labels and EOF callbacks. The separate
 The getSample replacement adds lazy sample settings and peak-square/legacy
 measurements through scoped visualization buffers. Script-visible SLI flags and cached label dictionaries are connected to the
 source streams. Negative look-ahead, 3D controls and hardware playback remain open.
+
+The interactive and replay hosts collect unreachable TJS objects between ticks.
+Collection traces script graphs and native references, runs finalizers, and keeps
+object IDs unique for the session. The 100,000-object limit applies to live
+objects. Embedders call `Session::collect_garbage` explicitly and must supply any
+Values they retain outside the session. Collection is deferred to host safe
+points; it does not reproduce immediate reference-counted finalization timing.
 The interpreter deliberately rejects unsupported constructs; it does
 not replace TJS with JavaScript. KAG cursor restoration is not a game save.
 

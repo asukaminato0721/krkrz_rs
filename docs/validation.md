@@ -1,5 +1,23 @@
 # Validation record
 
+## 2026-09-21 integration update
+
+The optimized runtime completed the unmodified warning and pretitle sequences,
+rendered the title menu at 1280×720, and accepted native-order mouse events on
+New Game (110,650). At 28–32 seconds the original scenario was `start.ks`, label
+`*envplay`. This is a navigation checkpoint, not a completed story playthrough.
+The subsequent 33.728-second run reached `Math.RandomGenerator` in `Action.tjs`.
+
+The former lifetime allocation ceiling is replaced by a live-object arena and
+explicit safe-point garbage collection. Monotonic object IDs prevent reclaimed
+handles from aliasing new objects. Script graph, native references, external host
+roots and finalizers are covered by focused VM/runtime tests. Native and replay
+hosts collect between ticks; Session embedders explicitly provide retained Values.
+Finalizer timing is deferred, rather than immediate reference counting.
+
+The older sections below are historical component records. Their original startup
+failure locations and missing-feature lists do not supersede this update.
+
 Recorded on 2026-09-20 against the installation at
 `/home/w/.wine/drive_c/otome_domain`. Installation files and Windows saves were
 read only. Research and decoded samples are outside the repository.

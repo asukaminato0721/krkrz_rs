@@ -152,7 +152,7 @@ impl Services {
             "get:numOfFrame" => header.map_or(0, |h| h.frame_count as i64),
             "get:FPSRate" => header.map_or(0, |h| h.fps_rate as i64),
             "get:FPSScale" => header.map_or(0, |h| h.fps_scale as i64),
-            "get:frame" => 0,
+            "get:frame" => player.movie.as_ref().and_then(|m|m.packets.get(player.packet)).map_or(player.displayed,|p|p.sequence) as i64,
             "get:loop" => player.looping.into(),
             "get:nextLoop" => player.next_loop.into(),
             "get:preloadSamples" => player.preload.into(),

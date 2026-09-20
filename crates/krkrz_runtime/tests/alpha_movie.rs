@@ -55,3 +55,14 @@ fn open_obeys_session_budget() {
         "{error:#}"
     );
 }
+
+#[test]
+fn decoded_frame_updates_layer_pixels_geometry_and_transport() {
+    let project=tempfile::tempdir().unwrap();
+    let saves=tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("dc.amv"),include_bytes!("../../krkrz_assets/tests/fixtures/amv/dc.amv")).unwrap();
+    std::fs::write(project.path().join("case.tjs"),
+        "Plugins.link('AlphaMovie.dll');var w=new Window();var primary=new Layer(w,null);var l=new Layer(w,primary);var a=new AlphaMovie();a.open(System.exePath+'dc.amv');a.setPosition(7,-3);a.play();var n=a.showNextImage(l);var result=[n,l.left,l.top,l.width,l.height,l.imageWidth,l.imageHeight,l.getMainPixel(0,0),l.getMaskPixel(0,0),l.getMainPixel(8,8),l.getMaskPixel(8,8)];a.stop();result.add(a.showNextImage(l));return result.join('|');").unwrap();
+    let result=Session::open(project.path(),Some(saves.path()),false,100_000).unwrap().execute_storage("case.tjs").unwrap();
+    assert_eq!(result,Value::string("0|7|-3|16|16|16|16|8880517|153|9867412|180|0"));
+}

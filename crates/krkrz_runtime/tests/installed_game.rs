@@ -6,6 +6,55 @@ use std::{path::Path, sync::Arc};
 
 #[test]
 #[ignore = "requires the installed Otome Domain game and KRKRZ_PROJECT_DIR"]
+fn original_title_accepts_new_game_input() -> Result<()> {
+    use krkrz_runtime::{InputEvent, Session};
+    use krkrz_tjs::Value;
+    let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
+    let saves = tempfile::tempdir()?;
+    let mut session = Session::open(Path::new(&project), Some(saves.path()), true, 50_000_000_000)?;
+    session.services.epoch_ms = 0;
+    session.startup()?;
+    let window = session.evaluate("kag")?;
+    let roots = std::slice::from_ref(&window);
+    let mut collected = 0;
+    for time in (0..=26000).step_by(16) {
+        if session.vm.should_collect_garbage() {
+            collected += session.collect_garbage(roots)?;
+        }
+        session.tick(time).with_context(|| format!("title tick {time}"))?;
+    }
+    session.tick(26000)?;
+    assert_eq!(session.evaluate("kag.currentStorage")?, Value::string("title.ks"));
+    assert_eq!(session.evaluate("kag.currentLabel")?, Value::string("*wait"));
+    let title = session.capture_window(&window)?;
+    assert_eq!((title.width, title.height), (1280, 720));
+    // Use the same event order as the native host, targeting the original
+    // title menu's New Game button. No script jump or replacement scenario.
+    for event in [
+        InputEvent::PointerMove { x: 110, y: 650, shift: 0 },
+        InputEvent::PointerDown { x: 110, y: 650, button: 0, shift: 8 },
+        InputEvent::Click { x: 110, y: 650 },
+        InputEvent::PointerUp { x: 110, y: 650, button: 0, shift: 0 },
+    ] {
+        session.input(&window, event)?;
+    }
+    for time in (26016..=32000).step_by(16) {
+        if session.vm.should_collect_garbage() {
+            collected += session.collect_garbage(roots)?;
+        }
+        session.tick(time).with_context(|| format!("new game tick {time}"))?;
+    }
+    session.tick(32000)?;
+    assert_eq!(session.evaluate("kag.currentStorage")?, Value::string("start.ks"));
+    assert_eq!(session.evaluate("kag.currentLabel")?, Value::string("*envplay"));
+    assert!(collected > 10_000, "test must exercise transient object collection");
+    assert!(session.vm.live_objects() < 100_000);
+    assert!(saves.path().join("data_anchor.ksd").is_file());
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires the installed Otome Domain game and KRKRZ_PROJECT_DIR"]
 fn original_startup_completes_framework_initialization() -> Result<()> {
     use krkrz_runtime::Session;
     use krkrz_tjs::Value;

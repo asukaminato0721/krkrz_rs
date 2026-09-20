@@ -161,6 +161,10 @@ impl Movie {
         // decoding every intervening frame. FFmpeg performs accurate output seek.
         if self.decoder.is_none() || frame < self.next_frame || frame > self.next_frame + 120 {
             self.stop_decoder();
+            // MPEG program streams can omit timestamps in the final GOP.
+            // Decode a pre-roll before the accurate output seek.
+            let seconds = frame as f64 / self.fps;
+            let coarse = (seconds - 2.0).max(0.0);
             self.decoder = Some(
                 Command::new("ffmpeg")
                     .args([
@@ -170,11 +174,13 @@ impl Movie {
                         "-threads",
                         "1",
                         "-ss",
-                        &format!("{:.9}", frame as f64 / self.fps),
+                        &format!("{coarse:.9}"),
                         "-i",
                     ])
                     .arg(self.file.path())
                     .args([
+                        "-ss",
+                        &format!("{:.9}", seconds - coarse),
                         "-map",
                         "0:v:0",
                         "-an",
