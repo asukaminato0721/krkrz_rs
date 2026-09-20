@@ -1,12 +1,22 @@
-//! VideoOverlay object state before a movie is opened.
+//! VideoOverlay state, FFmpeg media decoding, and session-clock playback.
 //! Follows visual/VideoOvlIntf.cpp and visual/win32/VideoOvlImpl.cpp.
-//! Opening a movie requires the media backend and remains an explicit error.
-use crate::Services;
+//! Frames and PCM share the host clock used by timers and sound buffers.
+use crate::{Services, Session};
+#[path = "movie_decoder.rs"]
+mod decoder;
 use anyhow::{Context, Result, ensure};
 use krkrz_tjs::{Value, Vm, unsupported};
 
 pub(crate) struct Video {
     owner: Value,
+    movie: Option<decoder::Movie>,
+    status: &'static str,
+    position: f64,
+    rate: f64,
+    volume: i32,
+    balance: i32,
+    generation: u64,
+    events: Vec<(u64, &'static str, Value)>,
     bounds: [i32; 4],
     visible: bool,
     looping: bool,
@@ -19,6 +29,14 @@ impl Default for Video {
     fn default() -> Self {
         Self {
             owner: Value::NULL,
+            movie: None,
+            status: "unload",
+            position: 0.0,
+            rate: 1.0,
+            volume: 100_000,
+            balance: 0,
+            generation: 0,
+            events: vec![],
             bounds: [0, 0, 320, 240],
             visible: false,
             looping: false,
@@ -182,10 +200,17 @@ impl Services {
             let name = storage.split('?').next().unwrap_or(&storage);
             // Missing storage is an ordinary script exception. A valid movie
             // must not silently disappear behind KAG's fallback exception handler.
-            self.read_storage(name)?;
-            return Err(unsupported(format!(
-                "VideoOverlay movie decoding is not implemented: {storage}"
-            )));
+            let bytes = self.read_storage(name)?;
+            let mut movie = decoder::Movie::open(&bytes).map_err(|e| unsupported(format!("VideoOverlay {storage}: {e:#}")))?;
+            movie.frame(0)?;
+            let video = self.videos.get_mut(&id).unwrap();
+            video.generation += 1;
+            video.movie = Some(movie);
+            video.position = 0.0;
+            video.status = "stop";
+            video.events.push((video.generation, "onStatusChanged", Value::string("stop")));
+            self.video_present(id)?;
+            return Ok(Value::Void);
         }
         if let Some(event) = operation.strip_prefix("on") {
             let names: &[&str] = match event {
@@ -239,6 +264,12 @@ impl Services {
                     layer;
             }
             return Ok(Value::Void);
+        }
+        if self.videos[&id].movie.is_some() {
+            if let Some(value) = self.video_loaded_call(id, operation, args)? {
+                self.video_present(id)?;
+                return Ok(value);
+            }
         }
         let video = self.videos.get_mut(&id).unwrap();
         let color_control = |name: &str| {
@@ -372,5 +403,159 @@ impl Services {
             _ => anyhow::bail!("unknown VideoOverlay operation: {operation}"),
         }
         Ok(Value::Void)
+    }
+}
+
+impl Video {
+    fn event(&mut self, name: &'static str, argument: Value) {
+        self.events.push((self.generation, name, argument));
+    }
+    fn status(&mut self, status: &'static str) {
+        if self.status != status { self.status = status; self.event("onStatusChanged", Value::string(status)); }
+    }
+    fn seek(&mut self, position: f64) -> Result<()> {
+        let movie = self.movie.as_mut().unwrap();
+        self.position = position.clamp(0.0, movie.duration_ms);
+        movie.frame((self.position * movie.fps / 1000.0).floor() as u64)?;
+        Ok(())
+    }
+    pub(crate) fn has_audio(&self) -> bool {
+        self.status == "play" && self.movie.as_ref().is_some_and(|m| !m.audio.is_empty())
+    }
+    pub(crate) fn mix_audio(&self, output: &mut [f32]) {
+        if !self.has_audio() { return; }
+        let movie = self.movie.as_ref().unwrap();
+        let volume = self.volume as f32 / 100_000.0;
+        let gain = [volume * (1.0 - self.balance.max(0) as f32 / 100_000.0), volume * (1.0 + self.balance.min(0) as f32 / 100_000.0)];
+        for (i, frame) in output.chunks_exact_mut(2).enumerate() {
+            let mut position = self.position + i as f64 / 48.0 * self.rate;
+            if self.segment[1] > 0 {
+                let end = self.segment[1] as f64 * 1000.0/movie.fps;
+                let start = self.segment[0].max(0) as f64 * 1000.0/movie.fps;
+                if position >= end && end > start { position = start + (position-end) % (end-start); }
+            } else if self.looping { position %= movie.duration_ms; }
+            let at = (position * 48.0) as usize;
+            for channel in 0..2 { frame[channel] += movie.audio.get(at*2+channel).copied().unwrap_or(0.0) * gain[channel]; }
+        }
+    }
+    /// Window overlay frames are composed by the same host as Layer surfaces.
+    pub(crate) fn overlay(&self, window: usize) -> Option<(&krkrz_assets::media::Image, [i32;4])> {
+        if self.mode == 1 || !self.visible || self.owner != Value::object(window) { return None; }
+        self.movie.as_ref()?.image.as_ref().map(|image| (image, self.bounds))
+    }
+}
+impl Services {
+    fn video_loaded_call(&mut self, id: usize, operation: &str, args: &[Value]) -> Result<Option<Value>> {
+        let video = self.videos.get_mut(&id).unwrap();
+        let arg = || args.first().context("VideoOverlay: missing argument");
+        let movie = video.movie.as_ref().unwrap();
+        let value = match operation {
+            "get:position" => Value::Integer(video.position as i64),
+            "get:frame" => Value::Integer((video.position*movie.fps/1000.0).floor().min((movie.frames-1) as f64) as i64),
+            "get:originalWidth" => Value::Integer(movie.width.into()),
+            "get:originalHeight" => Value::Integer(movie.height.into()),
+            "get:fps" => Value::Real(movie.fps),
+            "get:numberOfFrame" => Value::Integer(movie.frames as i64),
+            "get:totalTime" => Value::Integer(movie.duration_ms as i64),
+            "get:playRate" => Value::Real(video.rate),
+            "get:audioVolume" => Value::Integer(video.volume.into()),
+            "get:audioBalance" => Value::Integer(video.balance.into()),
+            "get:numberOfAudioStream" => Value::Integer((!movie.audio.is_empty()).into()),
+            "get:enabledAudioStream" => Value::Integer(if movie.audio.is_empty() {-1} else {0}),
+            "get:numberOfVideoStream" => Value::Integer(1),
+            "get:enabledVideoStream" => Value::Integer(0),
+            "set:position" => { video.seek(arg()?.integer()? as f64)?; Value::Void }
+            "set:frame" => { video.seek(arg()?.integer()? as f64 * 1000.0/movie.fps)?; Value::Void }
+            "set:playRate" => {
+                let rate = arg()?.real()?;
+                ensure!(rate.is_finite() && rate > 0.0 && rate <= 16.0, "unsupported movie playback rate");
+                video.rate = rate; Value::Void
+            }
+            "set:audioVolume" => { video.volume = arg()?.integer()?.clamp(0,100_000) as i32; Value::Void }
+            "set:audioBalance" => { video.balance = arg()?.integer()?.clamp(-100_000,100_000) as i32; Value::Void }
+            "play" => { video.status("play"); Value::Void }
+            "pause" => { video.status("pause"); Value::Void }
+            "stop" => { video.status("stop"); Value::Void }
+            "rewind" => { video.seek(0.0)?; Value::Void }
+            "prepare" => {
+                video.seek(0.0)?;
+                video.event("onFrameUpdate",Value::Integer(0));
+                video.event("onPeriod",Value::Integer(2));
+                video.status("pause"); Value::Void
+            }
+            "close" | "finalize" => {
+                video.generation += 1;
+                video.events.clear();
+                video.movie = None;
+                video.position = 0.0;
+                video.status("unload"); Value::Void
+            }
+            "set:enabledAudioStream" | "selectAudioStream" => {
+                ensure!(arg()?.integer()? == 0 && !movie.audio.is_empty(), "unsupported movie audio stream selection"); Value::Void
+            }
+            "set:enabledVideoStream" => { ensure!(arg()?.integer()? == 0, "unsupported movie video stream selection"); Value::Void }
+            "setMixingLayer" | "resetMixingLayer" | "set:mixingMovieAlpha" | "set:mixingMovieBGColor" | "set:contrast" | "set:brightness" | "set:hue" | "set:saturation" => return Err(unsupported(format!("VideoOverlay {operation}"))),
+            _ => return Ok(None),
+        };
+        Ok(Some(value))
+    }
+    fn video_present(&mut self, id: usize) -> Result<()> {
+        let video = &self.videos[&id];
+        if video.mode != 1 { return Ok(()); }
+        let Some(image) = video.movie.as_ref().and_then(|m| m.image.as_ref()) else { return Ok(()); };
+        for value in &video.layers {
+            if let Value::Object(reference) = value
+                && let Some(layer) = reference.object.and_then(|id| self.layers.get_mut(&id)) {
+                layer.image = Some(image.clone());
+            }
+        }
+        Ok(())
+    }
+    pub(crate) fn video_advance(&mut self, time_ms: u64) -> Result<()> {
+        let delta = time_ms.saturating_sub(self.time_ms) as f64;
+        let ids: Vec<_> = self.videos.keys().copied().collect();
+        for id in ids {
+            let video = self.videos.get_mut(&id).unwrap();
+            if video.status != "play" { continue; }
+            let Some(movie) = &video.movie else { continue; };
+            let duration = movie.duration_ms;
+            let fps = movie.fps;
+            let old_frame = movie.image_frame;
+            let mut position = video.position + delta*video.rate;
+            let segment_end = video.segment[1] as f64*1000.0/fps;
+            let segment_start = video.segment[0].max(0) as f64*1000.0/fps;
+            if video.segment[1] > 0 && segment_end > segment_start && position >= segment_end {
+                position = segment_start + (position-segment_end)%(segment_end-segment_start);
+                video.event("onPeriod",Value::Integer(3));
+            } else if position >= duration && video.looping {
+                position %= duration;
+                video.event("onPeriod",Value::Integer(0));
+            }
+            let ended = position >= duration;
+            video.seek(position)?;
+            let frame = video.movie.as_ref().unwrap().image_frame.unwrap();
+            if old_frame != Some(frame) { video.event("onFrameUpdate",Value::Integer(frame as i64)); }
+            if video.period >= 0 && frame >= video.period as u64 {
+                video.period = -1;
+                video.event("onPeriod",Value::Integer(1));
+            }
+            if ended { video.status("stop"); }
+            self.video_present(id)?;
+        }
+        Ok(())
+    }
+}
+impl Session {
+    pub(crate) fn dispatch_video_events(&mut self) -> Result<()> {
+        let pending: Vec<_> = self.services.videos.iter_mut().map(|(id,v)|(*id,std::mem::take(&mut v.events))).collect();
+        for (id, events) in pending {
+            for (generation,name,value) in events {
+                if !self.services.videos.get(&id).is_some_and(|v|v.generation == generation) { break; }
+                let target = Value::object(id);
+                let callback = self.vm.get_member(&target,&Value::string(name),false)?;
+                self.vm.call_function(&callback,&target,&[value],&mut self.services,&mut self.budget)?;
+            }
+        }
+        Ok(())
     }
 }

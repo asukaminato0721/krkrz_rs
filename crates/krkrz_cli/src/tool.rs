@@ -207,19 +207,17 @@ fn run() -> Result<()> {
                 if let Some(epoch) = epoch_ms {
                     session.services.epoch_ms = epoch;
                 }
-                let replay = replay
-                    .as_deref()
-                    .map(replay::Replay::read)
-                    .transpose()?;
+                let replay = replay.as_deref().map(replay::Replay::read).transpose()?;
                 if let Some(replay) = &replay {
                     replay.validate(&session, advance_ms)?;
                 }
+                let has_replay = replay.is_some();
                 let value = session.execute_storage(&name)?;
                 if let Some(replay) = replay {
                     replay.run(&mut session, step_ms)?;
                 }
                 if let Some(end) = advance_ms {
-                    if session.services.time_ms == 0 {
+                    if !has_replay {
                         replay::tick(&mut session, 0)?;
                     }
                     replay::advance(&mut session, end, step_ms)?;

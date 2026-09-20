@@ -36,6 +36,7 @@ impl Session {
             .sounds
             .values()
             .any(|s| s.status == "play" && !s.paused && s.loaded.as_ref().is_some_and(|l| !l.ended))
+            && !self.services.videos.values().any(|v| v.has_audio())
         {
             return Ok(());
         }
@@ -139,6 +140,9 @@ impl Session {
                     .events
                     .push((sound.generation, "onStatusChanged", Value::string("stop")));
             }
+        }
+        for video in self.services.videos.values() {
+            video.mix_audio(&mut self.audio_output);
         }
         for sample in &mut self.audio_output {
             *sample = sample.clamp(-1.0, 1.0);

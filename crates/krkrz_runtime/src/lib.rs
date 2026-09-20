@@ -973,6 +973,7 @@ impl Session {
         );
         self.services.advance_timers(time_ms)?;
         self.services.sound_advance(time_ms);
+        self.services.video_advance(time_ms)?;
         self.services.time_ms = time_ms;
         self.dispatch_window_commands()?;
         self.dispatch_events()?;
@@ -1009,6 +1010,7 @@ impl Session {
     /// Deliver one pending batch. Events posted by callbacks wait for the next
     /// batch, preventing native recursion and preserving the shared VM budget.
     pub fn dispatch_events(&mut self) -> Result<()> {
+        self.dispatch_video_events()?;
         let through = self.services.events.begin_batch();
         self.services
             .dispatch_async(&mut self.vm, through, 1, &mut self.budget)?;

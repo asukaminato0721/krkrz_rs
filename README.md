@@ -55,6 +55,51 @@ execution, and repeat `--inspect EXPRESSION` to inspect resulting script state.
 Use `--frame NEW_PNG` to capture the completed layer tree (`--frame-window EXPRESSION` selects a window).
 Use `exec NAME --runtime --save-dir PATH` to select a separate writable directory.
 
+For reproducible input, add `--replay /tmp/replay.json --epoch-ms 0`. The replay
+file is a JSON array with absolute session timestamps in milliseconds. Actions
+at equal timestamps run in file order. The host ticks at time zero and advances
+in steps of at most `--step-ms`, ending exactly at each action timestamp. An
+optional `--advance-ms` must be at least the final action timestamp and advances
+the session after the replay.
+
+For example, save this as `/tmp/replay.json`:
+
+```json
+[
+  {"at_ms": 1000, "action": "checkpoint", "name": "before", "inspect": ["Window.mainWindow.visible"], "frame": "before.png"},
+  {"at_ms": 1100, "action": "pointer_move", "x": 640, "y": 360},
+  {"at_ms": 1120, "action": "pointer_down", "x": 640, "y": 360, "shift": 8},
+  {"at_ms": 1140, "action": "click", "x": 640, "y": 360},
+  {"at_ms": 1140, "action": "pointer_up", "x": 640, "y": 360},
+  {"at_ms": 2000, "action": "checkpoint", "name": "after", "frame": "after.png"},
+  {"at_ms": 2000, "action": "assert", "expression": "Window.mainWindow.visible"}
+]
+```
+
+```sh
+cargo run -p krkrz_cli --bin krkrz_tool -- \
+  --project-dir /path/to/otome_domain --profile otome-domain \
+  exec startup.tjs --runtime --save-dir /tmp/replay-save --budget 1000000000 \
+  --epoch-ms 0 --replay /tmp/replay.json --advance-ms 2200
+```
+
+Coordinates are client pixels; choose them from the captured frame for the
+screen being tested. Every action accepts `window` (a TJS expression, default
+`Window.mainWindow`). Pointer actions use `x`, `y`, optional `shift` (default
+zero), and down/up accept `button` (0 left, 1 right, 2 middle; default 0).
+`click` and `double_click` are explicit events; down/up do not synthesize them.
+The example follows the native host's down, click, up ordering. Other actions
+are `pointer_leave`, `wheel` (`x`, `y`, `delta`, optional `shift`),
+`key_down`/`key_up` (numeric Kirikiri virtual `key`, optional `shift`),
+`text` (`text` string), and `focus` (`focused` boolean).
+Each `checkpoint` emits and flushes one JSON line to stderr, including the
+evaluated `inspect` expressions and optional PNG `frame` path. Relative frame
+paths resolve beside the replay file. Frame files must be new and outside the
+game installation; parent directories must exist. An `assert` evaluates its
+TJS `expression` and fails the command if false. Checkpoints preserve evidence
+before a later failure; stdout retains the usual result or `--inspect` output.
+Replay syntax, timestamp order, and frame destinations are checked before startup.
+
 An unfiltered `verify` deliberately returns failure for the installation's
 malformed protection-notice entry. It verifies all other resolved resources
 before reporting the failure. The entry is not hidden or treated as valid.
