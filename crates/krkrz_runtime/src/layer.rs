@@ -1133,6 +1133,7 @@ mod blit;
 mod blur;
 mod clip_alpha;
 mod draw;
+pub use draw::WindowFrameState;
 mod fill_alpha;
 mod focus;
 mod gamma;

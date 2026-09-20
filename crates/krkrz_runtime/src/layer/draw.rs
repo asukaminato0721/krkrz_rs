@@ -2,6 +2,43 @@
 //! surface; display type/opacity/parent bounds affect tree composition.
 use super::*;
 
+/// One native window's last completed visual state. Does not retain pixel
+/// buffers or script objects. Use a separate state for each Session/window.
+#[derive(Default)]
+pub struct WindowFrameState {
+    snapshot: Option<FrameSnapshot>,
+}
+
+#[derive(PartialEq)]
+struct FrameSnapshot {
+    root: usize,
+    rect: [i32; 4],
+    layers: Vec<LayerSnapshot>,
+}
+
+// A Weak keeps the allocation identity unique without retaining the bitmap.
+// Arc::make_mut dissociates weak references even for an otherwise unique image,
+// so in-place drawing also changes this identity, without copying pixel bytes.
+struct ImageIdentity(std::sync::Weak<Image>);
+impl PartialEq for ImageIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.ptr_eq(&other.0)
+    }
+}
+
+#[derive(PartialEq)]
+struct LayerSnapshot {
+    id: usize,
+    children: Vec<usize>,
+    bounds: [i32; 4],
+    image_origin: [i32; 2],
+    image: Option<ImageIdentity>,
+    kind: i32,
+    opacity: i32,
+    visible: bool,
+    neutral: [u8; 4],
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct Rect {
     pub x: i64,
@@ -342,6 +379,67 @@ fn copy_region(target: &mut Image, piece: &mut Image, x: i64, y: i64, write: boo
 }
 
 impl crate::Session {
+    /// Run paint callbacks, then complete only changed visual state. Timers,
+    /// audio and transition callbacks still run through the normal host tick.
+    /// Active transitions and video overlays conservatively complete every frame.
+    pub fn capture_window_if_changed(
+        &mut self,
+        window: &Value,
+        state: &mut WindowFrameState,
+    ) -> Result<Option<Image>> {
+        self.prepare_window_paint(window)?;
+        let id = object(window)?.context("capture requires a Window")?;
+        let window_state = self
+            .services
+            .windows
+            .get(&id)
+            .context("capture requires a Window")?;
+        let root = object(&window_state.primary_layer)?.context("window has no primary Layer")?;
+        let root_layer = &self.services.layers[&root];
+        let dynamic = self
+            .services
+            .layers
+            .values()
+            .any(|l| l.window == id && l.transition.is_some())
+            || self
+                .services
+                .videos
+                .values()
+                .any(|v| v.overlay(id).is_some());
+        let snapshot = (!dynamic).then(|| FrameSnapshot {
+            root,
+            rect: window_state.draw_rect(root_layer.width, root_layer.height),
+            layers: self
+                .services
+                .layers
+                .iter()
+                .filter(|(_, l)| l.window == id)
+                .map(|(&id, l)| LayerSnapshot {
+                    id,
+                    children: l.children.clone(),
+                    bounds: [l.left, l.top, l.width, l.height],
+                    image_origin: [l.image_left, l.image_top],
+                    image: l
+                        .image
+                        .as_ref()
+                        .map(|image| ImageIdentity(Arc::downgrade(image))),
+                    kind: l.kind,
+                    opacity: l.opacity,
+                    visible: l.visible,
+                    neutral: l.neutral,
+                })
+                .collect(),
+        });
+        if snapshot.is_some() && snapshot == state.snapshot {
+            return Ok(None);
+        }
+        let image = self.capture_window_prepared(window)?;
+        // Completion callbacks can change the tree. Keep the pre-completion
+        // snapshot so those changes cause another frame on the next tick.
+        state.snapshot = snapshot;
+        Ok(Some(image))
+    }
+
     /// Complete the native Layer tree into an RGBA surface shared by replay and
     /// native presentation. The root's own opacity and visibility are ignored.
     pub fn capture_window(&mut self, window: &Value) -> Result<Image> {

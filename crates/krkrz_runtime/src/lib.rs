@@ -35,6 +35,7 @@ use anyhow::{Context, Result, ensure};
 use krkrz_assets::{cx::CxEncryption, storage::Storage, text};
 use krkrz_core::{Limits, save_directory};
 use krkrz_tjs::{Host, Instruction, ObjectRef, Value, Vm, compile_with_preprocessor, unsupported};
+pub use layer::WindowFrameState;
 pub use layer::input::InputEvent;
 pub use menu::{MenuAppearance, MenuBitmap};
 use serde::Serialize;

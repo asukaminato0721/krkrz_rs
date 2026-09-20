@@ -1,6 +1,6 @@
 use crate::{audio_output::AudioOutput, presenter::Presenter};
 use anyhow::{Context, Result};
-use krkrz_runtime::{InputEvent, Session, display::Monitor, window::WindowState};
+use krkrz_runtime::{InputEvent, Session, WindowFrameState, display::Monitor, window::WindowState};
 use krkrz_tjs::Value;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -32,6 +32,17 @@ struct NativeWindow {
     pressed_at: Option<[i32; 2]>,
     last_click: Option<(Instant, [i32; 2])>,
     suspended: bool,
+    frame_state: WindowFrameState,
+    frame: Option<krkrz_assets::media::Image>,
+}
+impl NativeWindow {
+    fn refresh_frame(&mut self, session: &mut Session, target: &Value) -> Result<bool> {
+        if let Some(image) = session.capture_window_if_changed(target, &mut self.frame_state)? {
+            self.frame = Some(image);
+            return Ok(true);
+        }
+        Ok(false)
+    }
 }
 pub fn load_icon(path: &std::path::Path) -> Result<Icon> {
     use std::io::Read;
@@ -234,6 +245,8 @@ impl Host<'_> {
                     pressed_at: None,
                     last_click: None,
                     suspended: false,
+                    frame_state: WindowFrameState::default(),
+                    frame: None,
                 });
             }
             let native = self.windows.get_mut(&id).unwrap();
@@ -242,6 +255,9 @@ impl Host<'_> {
             }
             if state.visible != native.state.visible {
                 native.window.set_visible(state.visible);
+                if state.visible {
+                    native.window.request_redraw();
+                }
             }
             if state.minimized != native.state.minimized {
                 native.window.set_minimized(state.minimized);
@@ -444,10 +460,18 @@ impl Host<'_> {
                     && !state.minimized
                     && state.primary_layer != Value::NULL
                 {
-                    let image = self.session.capture_window(&target)?;
+                    // OS exposure/resize redraws reuse the last completed frame.
+                    // Completing again here would run transition callbacks twice.
+                    if native.frame.is_none() {
+                        native.refresh_frame(self.session, &target)?;
+                    }
+                    let image = native
+                        .frame
+                        .as_ref()
+                        .context("window frame was not captured")?;
                     if let Some(state) = self.session.services.windows.get(&id) {
                         native.presenter.present(
-                            &image,
+                            image,
                             state.draw_rect(image.width as i32, image.height as i32),
                         )?;
                     }
@@ -490,7 +514,8 @@ impl ApplicationHandler for Host<'_> {
         if self.error.is_some() || !self.started {
             return;
         }
-        if Instant::now() >= self.next_tick {
+        let tick_started = Instant::now();
+        if tick_started >= self.next_tick {
             if self.session.vm.should_collect_garbage() {
                 let mut roots = Vec::new();
                 for (&id, native) in &self.windows {
@@ -508,18 +533,24 @@ impl ApplicationHandler for Host<'_> {
                 if let Some(audio) = &mut self.audio {
                     audio.submit(&samples)?;
                 }
-                self.sync_windows(event_loop)
+                self.sync_windows(event_loop)?;
+                for (&id, native) in &mut self.windows {
+                    if native.state.visible
+                        && !native.state.minimized
+                        && !native.suspended
+                        && native.state.primary_layer != Value::NULL
+                        && native.refresh_frame(self.session, &Value::object(id))?
+                    {
+                        native.window.request_redraw();
+                    }
+                }
+                Ok(())
             });
             if let Err(error) = result {
                 self.fail(event_loop, error);
                 return;
             }
-            for native in self.windows.values() {
-                if native.state.visible && !native.state.minimized && !native.suspended {
-                    native.window.request_redraw();
-                }
-            }
-            self.next_tick = Instant::now() + Duration::from_millis(16);
+            self.next_tick = tick_started + Duration::from_millis(16);
             self.flush_messages();
         }
         event_loop.set_control_flow(ControlFlow::WaitUntil(self.next_tick));

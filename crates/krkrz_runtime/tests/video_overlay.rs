@@ -196,3 +196,31 @@ fn installed_movie_decodes_seeks_and_finishes() {
     session.tick(400).unwrap();
     assert_eq!(session.evaluate("last").unwrap(), Value::string("stop"));
 }
+
+#[test]
+fn frame_change_detection_keeps_overlay_video_live_and_removes_hidden_frames() {
+    let (mut session, _project, _saves) = movie_session();
+    session.evaluate("Scripts.exec('v.close();v.mode=vomOverlay;v.open(\"movie.mpg\");l.fillRect(0,0,32,24,0xff00ff00);v.visible=true;v.play();')").unwrap();
+    let window = session.evaluate("w").unwrap();
+    let mut state = krkrz_runtime::WindowFrameState::default();
+    for time in [0, 120, 240] {
+        session.tick(time).unwrap();
+        let image = session
+            .capture_window_if_changed(&window, &mut state)
+            .unwrap()
+            .unwrap();
+        assert_eq!(image.rgba, session.capture_window(&window).unwrap().rgba);
+    }
+    session.evaluate("v.visible=false").unwrap();
+    let image = session
+        .capture_window_if_changed(&window, &mut state)
+        .unwrap()
+        .unwrap();
+    assert_eq!(image.rgba, [0, 255, 0, 255].repeat(32 * 24));
+    assert!(
+        session
+            .capture_window_if_changed(&window, &mut state)
+            .unwrap()
+            .is_none()
+    );
+}

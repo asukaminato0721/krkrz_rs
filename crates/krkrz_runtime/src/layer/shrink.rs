@@ -9,6 +9,40 @@ struct Axis {
     dest: f64,
     size: f64,
 }
+struct Span {
+    offset: usize,
+    count: u32,
+    source: f64,
+    extent: f64,
+}
+impl Axis {
+    fn spans(&self) -> Vec<Span> {
+        let begin = self.offset as f64;
+        let end = begin + self.count as f64;
+        let mut cuts = [
+            begin,
+            self.dest.ceil().clamp(begin, end),
+            (self.dest + self.size).floor().clamp(begin, end),
+            end,
+        ];
+        cuts.sort_by(f64::total_cmp);
+        cuts.windows(2)
+            .filter_map(|p| {
+                if p[1] <= p[0] {
+                    return None;
+                }
+                let first = ((p[0] - self.dest) / self.size * self.extent).clamp(0.0, self.extent);
+                let last = ((p[1] - self.dest) / self.size * self.extent).clamp(0.0, self.extent);
+                Some(Span {
+                    offset: p[0] as usize - self.offset,
+                    count: (p[1] - p[0]) as u32,
+                    source: self.source + first,
+                    extent: last - first,
+                })
+            })
+            .collect()
+    }
+}
 fn axis(
     mut dest: f64,
     mut size: f64,
@@ -44,8 +78,8 @@ fn axis(
     Some(Axis {
         offset: begin as usize,
         count: (end - begin) as u32,
-        source: src as f64 + first,
-        extent: last - first,
+        source: src as f64,
+        extent: count as f64,
         dest,
         size,
     })
@@ -88,14 +122,35 @@ impl Services {
         let Some(y) = axis(d[1], d[3], sy, sh, source.height, dest.height) else {
             return Ok(Value::Void);
         };
-        let mut output = super::stretch::resize(
-            source,
-            [x.source, y.source, x.extent, y.extent],
-            x.count,
-            y.count,
-            fast_image_resize::FilterType::Box,
-            budget,
-        )?;
+        // Keep the requested scale when the enclosing integer rectangle has
+        // partial edge pixels. Resizing the entire crop to x.count/y.count
+        // would shift interior samples as well as the two fractional edges.
+        let pixels = x.count as u64 * y.count as u64;
+        let intermediate = source.width as u64 * y.count as u64;
+        let tables =
+            (source.width as u64 + source.height as u64 + x.count as u64 + y.count as u64) * 128;
+        ensure!(
+            (pixels * 2 + intermediate) * 4 + tables <= MAX_LAYER_IMAGE_BYTES as u64,
+            "shrinkCopy temporary memory limit exceeded"
+        );
+        let mut output = vec![0u8; pixels as usize * 4];
+        for ys in y.spans() {
+            for xs in x.spans() {
+                let part = super::stretch::resize(
+                    source,
+                    [xs.source, ys.source, xs.extent, ys.extent],
+                    xs.count,
+                    ys.count,
+                    fast_image_resize::FilterType::Box,
+                    budget,
+                )?;
+                let row_bytes = xs.count as usize * 4;
+                for (row, data) in part.chunks_exact(row_bytes).enumerate() {
+                    let start = ((ys.offset + row) * x.count as usize + xs.offset) * 4;
+                    output[start..start + row_bytes].copy_from_slice(data);
+                }
+            }
+        }
         // Fractional destination edges cover only part of the boundary pixel.
         // Preserve coverage in alpha instead of stretching an opaque edge across
         // the entire enclosing integer rectangle.
