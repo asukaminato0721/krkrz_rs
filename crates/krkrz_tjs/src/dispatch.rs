@@ -18,7 +18,7 @@ fn index(key: &Value) -> Option<i64> {
 impl Vm {
     pub(crate) fn delete_member(&mut self, receiver: &Value, key: &Value) -> Result<Value> {
         let id = self.object_handle(receiver)?;
-        if !self.objects[id].valid {
+        if !self.objects[id].valid || matches!(self.objects[id].kind, ObjectKind::ReadOnly(_)) {
             return Ok(Value::Integer(0));
         }
         self.objects[id].member_flags.remove(&units(key)?);
@@ -52,6 +52,7 @@ impl Vm {
             return Ok(true);
         }
         match &self.objects[id].kind {
+            ObjectKind::ReadOnly(view) => view.has(key),
             ObjectKind::Class { .. } => Ok(self.class_member(id, &units(key)?, 0)?.is_some()),
             ObjectKind::Super { bases, .. } => {
                 for base in bases {
@@ -139,6 +140,9 @@ impl Vm {
                 .or_else(|| optional.then_some(Value::Void))
                 .with_context(|| format!("member not found: {name}"));
         }
+        if let ObjectKind::ReadOnly(view) = &self.objects[id].kind {
+            return self.readonly_member(view.clone(), key, optional);
+        }
         if self.objects[id].hash_generation != self.hash_generation {
             let count = self.objects[id].members.len();
             self.objects[id].member_layout.rehash(count);
@@ -199,6 +203,10 @@ impl Vm {
     }
     pub fn set_member(&mut self, receiver: &Value, key: &Value, value: Value) -> Result<()> {
         let id = self.object_id(receiver)?;
+        ensure!(
+            !matches!(self.objects[id].kind, ObjectKind::ReadOnly(_)),
+            "native data is read-only"
+        );
         self.objects[id].member_flags.remove(&units(key)?);
         if id == 0 {
             self.globals.insert(key.unary("string")?.text(), value);

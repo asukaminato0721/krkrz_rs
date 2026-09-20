@@ -55,6 +55,16 @@ impl Vm {
 
     fn reflection_keys(&self, value: &Value, visible_only: bool) -> Result<Vec<Vec<u16>>> {
         let id = self.object_id(value)?;
+        if let ObjectKind::ReadOnly(view) = &self.objects[id].kind {
+            return view
+                .keys()?
+                .into_iter()
+                .map(|key| match key.unary("string")? {
+                    Value::String(units) => Ok(units),
+                    _ => unreachable!(),
+                })
+                .collect();
+        }
         if matches!(self.objects[id].kind, ObjectKind::Array(_)) {
             return Err(unsupported(
                 "ScriptsEx Array member reflection requires the complete native Array member table",
@@ -193,6 +203,7 @@ impl Vm {
                 let callback = arg(1)?;
                 let id = self.object_id(receiver)?;
                 let keys: Vec<Value> = match &self.objects[id].kind {
+                    ObjectKind::ReadOnly(view) => view.keys()?,
                     ObjectKind::Array(items) => (0..items.len())
                         .map(|index| Value::Integer(index as i64))
                         .collect(),
@@ -220,7 +231,9 @@ impl Vm {
                     {
                         continue;
                     }
-                    let value = if let Value::String(units) = &key {
+                    let value = if matches!(self.objects[id].kind, ObjectKind::ReadOnly(_)) {
+                        self.get_member(receiver, &key, false)?
+                    } else if let Value::String(units) = &key {
                         self.objects[id]
                             .members
                             .get(units)
@@ -262,6 +275,13 @@ impl Vm {
             }
             let aid = self.object_id(left)?;
             let bid = self.object_id(right)?;
+            if matches!(self.objects[aid].kind, ObjectKind::ReadOnly(_))
+                || matches!(self.objects[bid].kind, ObjectKind::ReadOnly(_))
+            {
+                let left = self.clone_structure(left, host, budget, depth + 1)?;
+                let right = self.clone_structure(right, host, budget, depth + 1)?;
+                return self.equal_structure(&left, &right, numeric_loose, host, budget, depth + 1);
+            }
             match (
                 self.objects[aid].kind.clone(),
                 self.objects[bid].kind.clone(),
@@ -337,6 +357,19 @@ impl Vm {
         {
             let id = self.object_id(source)?;
             match self.objects[id].kind.clone() {
+                ObjectKind::ReadOnly(view) => {
+                    let result = if matches!(view.data.as_ref(), crate::ReadOnlyData::Array(_)) {
+                        self.new_array(vec![])?
+                    } else {
+                        self.new_dictionary()?
+                    };
+                    for key in view.keys()? {
+                        let value = self.get_member(source, &key, false)?;
+                        let value = self.clone_structure(&value, host, budget, depth + 1)?;
+                        self.set_member(&result, &key, value)?;
+                    }
+                    return Ok(result);
+                }
                 ObjectKind::Array(items) => {
                     let mut result = Vec::with_capacity(items.len());
                     for item in items {

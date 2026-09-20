@@ -6,6 +6,7 @@ mod csv;
 mod get_sample;
 pub mod graphics;
 mod plugins;
+mod psb_file;
 mod save_storage;
 pub mod scheduler;
 mod sound;
@@ -40,6 +41,7 @@ pub struct Services {
     app_locks: app_lock::AppLocks,
     csv_parsers: BTreeMap<usize, csv::Parser>,
     sounds: BTreeMap<usize, sound::Sound>,
+    psb_files: BTreeMap<usize, Option<psb_file::File>>,
     sound_global_volume: i32,
     sample_plugin: get_sample::State,
     pub arguments: BTreeMap<String, String>,
@@ -117,6 +119,9 @@ impl Host for Services {
     ) -> Result<Value> {
         if let Some(operation) = name.strip_prefix("WaveSoundBuffer.") {
             return self.sound_call(vm, operation, context, args, budget);
+        }
+        if let Some(operation) = name.strip_prefix("PSBFile.") {
+            return self.psb_call(vm, operation, context, args, budget);
         }
         if let Some(operation) = name.strip_prefix("CSVParser.") {
             return self.csv_call(vm, operation, context, args, budget);
@@ -277,6 +282,13 @@ impl Host for Services {
                         if !self.loaded_plugins.contains("savestruct.dll") {
                             vm.register_save_struct()?;
                             self.loaded_plugins.insert("savestruct.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
+                    "psbfile.dll" => {
+                        if !self.loaded_plugins.contains("psbfile.dll") {
+                            psb_file::register(vm)?;
+                            self.loaded_plugins.insert("psbfile.dll".into());
                         }
                         Ok(Value::Void)
                     }
@@ -486,6 +498,7 @@ impl Session {
                 app_locks: app_lock::AppLocks::default(),
                 csv_parsers: BTreeMap::new(),
                 sounds: BTreeMap::new(),
+                psb_files: BTreeMap::new(),
                 sound_global_volume: 100_000,
                 sample_plugin: get_sample::State::default(),
                 arguments: BTreeMap::from([("-debugwin".into(), "no".into())]),

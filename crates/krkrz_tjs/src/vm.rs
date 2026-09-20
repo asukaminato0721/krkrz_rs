@@ -409,6 +409,7 @@ impl Vm {
             kind,
             ObjectKind::Array(_)
                 | ObjectKind::Dictionary
+                | ObjectKind::ReadOnly(_)
                 | ObjectKind::Instance
                 | ObjectKind::RegExp { .. }
         );

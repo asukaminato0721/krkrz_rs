@@ -23,6 +23,10 @@ impl Vm {
             return Ok(Value::Integer(0));
         }
         let id = self.object_handle(value)?;
+        if matches!(self.objects[id].kind, ObjectKind::ReadOnly(_)) {
+            self.objects[id].valid = false;
+            return Ok(Value::Integer(0));
+        }
         let object = &self.objects[id];
         // Native method dispatches inherit the default E_NOTIMPL. Native class
         // objects (including the four builtin constructors) are custom objects.

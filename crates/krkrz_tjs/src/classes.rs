@@ -21,6 +21,11 @@ impl Vm {
                         || match &object.kind {
                             ObjectKind::Array(_) => name == "Array",
                             ObjectKind::Dictionary => name == "Dictionary",
+                            ObjectKind::ReadOnly(view) => match view.data.as_ref() {
+                                crate::ReadOnlyData::Array(_) => name == "Array",
+                                crate::ReadOnlyData::Dictionary(_) => name == "Dictionary",
+                                _ => false,
+                            },
                             ObjectKind::RegExp { .. } => name == "RegExp",
                             ObjectKind::Class { .. } => name == "Class",
                             ObjectKind::Property { .. } => name == "Property",

@@ -4,8 +4,8 @@ This repository contains an initial implementation toward the Otome Domain
 playable slice. **The game is not playable yet.** Original startup now
 executes archive setup, plugin registration, `AppConfig.tjs`, `Config.tjs` and
 application locking, compatibility scripts and framework definitions through
-`UpdateRegion.tjs`. Execution currently stops in `packimage.tjs` at the unsupported
-`psbfile.dll` plugin. The title,
+`StandLayer.tjs`. Execution currently stops in `TextRender.tjs` at the unsupported
+`textrender.dll` plugin. The title,
 New Game, first choice, scene transition, and original save/load acceptance
 criteria have not been met. Execution failures never count as checkpoints.
 
@@ -87,10 +87,10 @@ outside the installation.
 | Crate | Implemented | Still required for the slice |
 |---|---|---|
 | `krkrz_core` | Storage-name normalization, resource limits, source/input types, separate save path selection | Full Kirikiri URI/media normalization |
-| `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5, integer WAVE/Vorbis PCM, SLI loops and labels | TLG6, PSB plugin object bindings, font integration, MPEG/AlphaMovie |
+| `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5, integer WAVE/Vorbis PCM, SLI loops and labels | TLG6, font integration, MPEG/AlphaMovie |
 | `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, switch/do/while/for control flow, comma/swap operators, ordered class initializers and deferred base resolution, explicit invalidation/finalization, interpolation, default parameters, argument forwarding/rest/spread, octet values, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting, automatic object finalization/collection, original bytecode loader |
 | `krkrz_kag` | Ordered tags/attributes, labels, text/escaped brackets, multiline tags, explicit jump/call/return and restorable cursor | Macros, conditionals, parameter expansion, script-driven parser bindings, complete KAGParserEx state |
-| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
+| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
 | `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, static inventory, primitive evaluation, startup diagnostics | Deterministic interactive replay, input-driven checkpoints, frame/audio comparison, native play |
 
 The compositor, scheduler, Window state and PCM mixer are tested components, not yet a game player. Window support currently covers construction, caption, visibility, client size, position, primary-layer lookup and resize/action callbacks in headless sessions. Explicit invalidation releases its native state and cancels pending callbacks. It does not create an OS window.
@@ -133,6 +133,13 @@ PackinOne API; the second storage argument is a boolean, not a text-stream
 mode. Explicit invalidation releases parser state, including during row callbacks.
 Invalid legacy encoding replacement rules and automatic object collection remain
 open. Startup can now load these components together through PackinOne.
+
+The `psbfile.dll` replacement exposes PSB v2 documents as read-only TJS views,
+including arrays, dictionaries and resource octets. Thirty-six cases match the
+installed plugin, including identity, reflection, cloning, invalidation and
+serialization. The original `StorageData` script reads a binary game scenario
+through this interface. Stale views fail safely after their owner is invalidated.
+This does not establish story playback or original save compatibility.
 
 System constants match the installed engine, including its older stretch-mode
 exports. Graphic-cache limits are bytes and affect a bounded LRU cache; Layer

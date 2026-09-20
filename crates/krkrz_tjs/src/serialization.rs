@@ -1,5 +1,5 @@
 //! Native saveStruct and the older saveStruct plugin shipped in PackinOne.
-use crate::{Host, ObjectRef, Value, Vm, object::ObjectKind, unsupported};
+use crate::{Host, ObjectRef, ReadOnlyData, Value, Vm, object::ObjectKind, unsupported};
 use anyhow::{Context, Result, ensure};
 
 impl Vm {
@@ -311,6 +311,11 @@ impl Writer<'_> {
     }
     fn object(&mut self, vm: &Vm, id: usize, indent: usize, array: bool) -> Result<()> {
         self.charge()?;
+        if let ObjectKind::ReadOnly(view) = &vm.objects[id].kind {
+            view.check()?;
+            ensure!(vm.objects[id].valid, "invalid native data view");
+            return self.readonly(vm, &view.data, indent);
+        }
         if self.stack.contains(&id) {
             if self.core {
                 self.text("null /* object recursion detected */");
@@ -375,6 +380,31 @@ impl Writer<'_> {
         }
         self.text("]");
         self.stack.pop();
+        Ok(())
+    }
+
+    fn readonly(&mut self, vm: &Vm, data: &ReadOnlyData, indent: usize) -> Result<()> {
+        self.charge()?;
+        ensure!(indent < 128, "serialization nesting limit exceeded");
+        match data {
+            ReadOnlyData::Scalar(value) => self.value(vm, value, indent)?,
+            // The installed saveStruct plugin obtains count through the native
+            // Array accessor, which rejects PSB views. Its fallback count is zero.
+            ReadOnlyData::Array(_) => self.text("[]"),
+            ReadOnlyData::Dictionary(items) => {
+                self.text("%[");
+                for (i, (key, value)) in items.iter().enumerate() {
+                    if i > 0 {
+                        self.text(",");
+                        self.text(self.newline);
+                    }
+                    self.quote(key, false);
+                    self.text("=>");
+                    self.readonly(vm, value, indent + 1)?;
+                }
+                self.text("]");
+            }
+        }
         Ok(())
     }
 }

@@ -1,0 +1,811 @@
+[
+  {
+    "name": "psb_members",
+    "source": "Plugins.link(\"psbfile.dll\");Plugins.link(\"ScriptsEx.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;return (typeof p.PSBFile)+\",\"+(typeof p.load)+\",\"+(typeof p.open)+\",\"+(typeof p.root)+\",\"+(typeof p.finalize);",
+    "expected": {
+      "String": [
+        79,
+        98,
+        106,
+        101,
+        99,
+        116,
+        44,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        44,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        44,
+        79,
+        98,
+        106,
+        101,
+        99,
+        116,
+        44,
+        79,
+        98,
+        106,
+        101,
+        99,
+        116
+      ]
+    }
+  },
+  {
+    "name": "psb_root_identity",
+    "source": "Plugins.link(\"psbfile.dll\");Plugins.link(\"ScriptsEx.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;return (p.root===p.root)+\",\"+(r[7]===r[7]);",
+    "expected": {
+      "String": [
+        48,
+        44,
+        48
+      ]
+    }
+  },
+  {
+    "name": "psb_list_clone",
+    "source": "Plugins.link(\"psbfile.dll\");Plugins.link(\"ScriptsEx.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;var c=Scripts.clone(r);c[1]=9;return c[1]+\",\"+r[1]+\",\"+(c===r);",
+    "expected": {
+      "String": [
+        57,
+        44,
+        49,
+        44,
+        48
+      ]
+    }
+  },
+  {
+    "name": "psb_list_foreach",
+    "source": "Plugins.link(\"psbfile.dll\");Plugins.link(\"ScriptsEx.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;var s=\"\";Scripts.foreach(r,function(k,v){s+=k+\":\"+(typeof v)+\",\";});return s;",
+    "expected": {
+      "String": [
+        48,
+        58,
+        118,
+        111,
+        105,
+        100,
+        44,
+        49,
+        58,
+        73,
+        110,
+        116,
+        101,
+        103,
+        101,
+        114,
+        44,
+        50,
+        58,
+        73,
+        110,
+        116,
+        101,
+        103,
+        101,
+        114,
+        44,
+        51,
+        58,
+        73,
+        110,
+        116,
+        101,
+        103,
+        101,
+        114,
+        44,
+        52,
+        58,
+        73,
+        110,
+        116,
+        101,
+        103,
+        101,
+        114,
+        44,
+        53,
+        58,
+        82,
+        101,
+        97,
+        108,
+        44,
+        54,
+        58,
+        83,
+        116,
+        114,
+        105,
+        110,
+        103,
+        44,
+        55,
+        58,
+        79,
+        98,
+        106,
+        101,
+        99,
+        116,
+        44
+      ]
+    }
+  },
+  {
+    "name": "psb_list_keys",
+    "source": "Plugins.link(\"psbfile.dll\");Plugins.link(\"ScriptsEx.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;return Scripts.getObjectKeys(r).join(\"|\");",
+    "expected": {
+      "String": [
+        48,
+        124,
+        49,
+        124,
+        50,
+        124,
+        51,
+        124,
+        52,
+        124,
+        53,
+        124,
+        54,
+        124,
+        55
+      ]
+    }
+  },
+  {
+    "name": "psb_r_invalidate",
+    "source": "Plugins.link(\"psbfile.dll\");Plugins.link(\"ScriptsEx.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;var i=invalidate r;return i+\",\"+(isvalid r)+\",\"+p.root[4];",
+    "expected": {
+      "String": [
+        48,
+        44,
+        48,
+        44,
+        52,
+        50
+      ]
+    }
+  },
+  {
+    "name": "psb_list_delete",
+    "source": "Plugins.link(\"psbfile.dll\");Plugins.link(\"ScriptsEx.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;var d=delete r[1];return d+\",\"+r.count+\",\"+r[1];",
+    "expected": {
+      "String": [
+        48,
+        44,
+        56,
+        44,
+        49
+      ]
+    }
+  },
+  {
+    "name": "psb_p_extra",
+    "source": "Plugins.link(\"psbfile.dll\");Plugins.link(\"ScriptsEx.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;p.foo=8;return p.foo;",
+    "expected": {
+      "Integer": 8
+    }
+  },
+  {
+    "name": "psb_p_finalizer",
+    "source": "Plugins.link(\"psbfile.dll\");Plugins.link(\"ScriptsEx.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;p.finalize();return p.root[4];",
+    "expected": {
+      "Integer": 42
+    }
+  },
+  {
+    "name": "psb_inherit",
+    "source": "Plugins.link(\"psbfile.dll\");Plugins.link(\"ScriptsEx.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;class P extends PSBFile {function P(s){super.PSBFile(s);}}var q=new P(System.exePath+\"list.psb\");return q.root[4];",
+    "expected": {
+      "Integer": 42
+    }
+  },
+  {
+    "name": "psb_object_root",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"object.psb\"),r=p.root;return (r instanceof \"Dictionary\")+\",\"+r.number+\",\"+r.text+\",\"+r.float+\",\"+r.nested.x+\",\"+r.array.count;",
+    "expected": {
+      "String": [
+        49,
+        44,
+        52,
+        50,
+        44,
+        104,
+        101,
+        108,
+        108,
+        111,
+        44,
+        49,
+        46,
+        53,
+        44,
+        45,
+        49,
+        44,
+        51
+      ]
+    }
+  },
+  {
+    "name": "psb_object_missing",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"object.psb\"),r=p.root;return (typeof r.foo)+\",\"+(typeof r.count)+\",\"+(typeof r.length);",
+    "expected": {
+      "String": [
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        44,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        44,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "psb_object_readmissing",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"object.psb\"),r=p.root;return r.foo;",
+    "expected": "Void"
+  },
+  {
+    "name": "psb_object_keys",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"object.psb\"),r=p.root;return Scripts.getObjectKeys(r).join(\"|\");",
+    "expected": {
+      "String": [
+        97,
+        114,
+        114,
+        97,
+        121,
+        124,
+        98,
+        108,
+        111,
+        98,
+        124,
+        102,
+        108,
+        111,
+        97,
+        116,
+        124,
+        110,
+        101,
+        115,
+        116,
+        101,
+        100,
+        124,
+        110,
+        117,
+        109,
+        98,
+        101,
+        114,
+        124,
+        116,
+        101,
+        120,
+        116
+      ]
+    }
+  },
+  {
+    "name": "psb_object_foreach",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"object.psb\"),r=p.root;var s=\"\";Scripts.foreach(r,function(k,v){s+=k+\":\"+(typeof v)+\",\";});return s;",
+    "expected": {
+      "String": [
+        97,
+        114,
+        114,
+        97,
+        121,
+        58,
+        79,
+        98,
+        106,
+        101,
+        99,
+        116,
+        44,
+        98,
+        108,
+        111,
+        98,
+        58,
+        79,
+        99,
+        116,
+        101,
+        116,
+        44,
+        102,
+        108,
+        111,
+        97,
+        116,
+        58,
+        82,
+        101,
+        97,
+        108,
+        44,
+        110,
+        101,
+        115,
+        116,
+        101,
+        100,
+        58,
+        79,
+        98,
+        106,
+        101,
+        99,
+        116,
+        44,
+        110,
+        117,
+        109,
+        98,
+        101,
+        114,
+        58,
+        73,
+        110,
+        116,
+        101,
+        103,
+        101,
+        114,
+        44,
+        116,
+        101,
+        120,
+        116,
+        58,
+        83,
+        116,
+        114,
+        105,
+        110,
+        103,
+        44
+      ]
+    }
+  },
+  {
+    "name": "psb_object_clone",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"object.psb\"),r=p.root;var c=Scripts.clone(r);c.number=5;return c.number+\",\"+r.number+\",\"+(c instanceof \"Dictionary\");",
+    "expected": {
+      "String": [
+        53,
+        44,
+        52,
+        50,
+        44,
+        49
+      ]
+    }
+  },
+  {
+    "name": "psb_object_equality",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"object.psb\"),r=p.root;return Scripts.equalStruct(r,Scripts.clone(r));",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "psb_binary",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"object.psb\"),r=p.root;return (typeof r.blob)+\",\"+(r.blob instanceof \"Octet\")+\",\"+(r.blob instanceof \"Binary\")+\",\"+(r.blob instanceof \"Array\");",
+    "expected": {
+      "String": [
+        79,
+        99,
+        116,
+        101,
+        116,
+        44,
+        49,
+        44,
+        48,
+        44,
+        48
+      ]
+    }
+  },
+  {
+    "name": "psb_binary_index",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"object.psb\"),r=p.root;return r.blob[0]+\",\"+r.blob[1]+\",\"+r.blob[2];",
+    "expected": {
+      "String": [
+        48,
+        44,
+        50,
+        53,
+        53,
+        44,
+        54,
+        53
+      ]
+    }
+  },
+  {
+    "name": "psb_root_readonly",
+    "source": "Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;try{p.root=[];}catch(e){return 1;}return 0;",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "psb_array_readonly",
+    "source": "Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;try{r[1]=9;}catch(e){return 1;}return 0;",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "psb_array_no_add",
+    "source": "Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;try{r.add(9);}catch(e){return 1;}return 0;",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "psb_array_no_join",
+    "source": "Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;try{r.join(\"|\");}catch(e){return 1;}return 0;",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "psb_array_no_length",
+    "source": "Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;try{var n=r.length;}catch(e){return 1;}return 0;",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "psb_missing_index",
+    "source": "Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;return typeof r[100];",
+    "expected": {
+      "String": [
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "psb_repeated_load",
+    "source": "Plugins.link(\"psbfile.dll\");var c=PSBFile;Plugins.link(\"psbfile.dll\");return int(c===PSBFile);",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "psb_class_keys",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;var k=Scripts.getObjectKeys(PSBFile);return k.join(\"|\");",
+    "expected": {
+      "String": [
+        80,
+        83,
+        66,
+        70,
+        105,
+        108,
+        101,
+        124,
+        102,
+        105,
+        110,
+        97,
+        108,
+        105,
+        122,
+        101,
+        124,
+        114,
+        111,
+        111,
+        116
+      ]
+    }
+  },
+  {
+    "name": "psb_instance_keys",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;var k=Scripts.getObjectKeys(p);return k.join(\"|\");",
+    "expected": {
+      "String": [
+        80,
+        83,
+        66,
+        70,
+        105,
+        108,
+        101,
+        124,
+        102,
+        105,
+        110,
+        97,
+        108,
+        105,
+        122,
+        101,
+        124,
+        114,
+        111,
+        111,
+        116
+      ]
+    }
+  },
+  {
+    "name": "psb_contexts",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;return Scripts.isNullContext(r)+\",\"+Scripts.isNullContext(r[7])+\",\"+(isvalid r);",
+    "expected": {
+      "String": [
+        48,
+        44,
+        48,
+        44,
+        49
+      ]
+    }
+  },
+  {
+    "name": "psb_read_past_end",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;return r[100];",
+    "expected": "Void"
+  },
+  {
+    "name": "psb_same_constructor",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;p.PSBFile(System.exePath+\"list.psb\");return p.root[4];",
+    "expected": {
+      "Integer": 42
+    }
+  },
+  {
+    "name": "psb_extra_args",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;var q=new PSBFile(System.exePath+\"list.psb\",1);return q.root[4];",
+    "expected": {
+      "Integer": 42
+    }
+  },
+  {
+    "name": "psb_failed_reopen",
+    "source": "Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;try{p.PSBFile(\"missing.psb\");}catch(e){} return p.root[4];",
+    "expected": {
+      "Integer": 42
+    }
+  },
+  {
+    "name": "psb_invalid_view",
+    "source": "Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\"),r=p.root;invalidate r;try{return r[4];}catch(e){return 77;}",
+    "expected": {
+      "Integer": 77
+    }
+  },
+  {
+    "name": "psb_plugin_serialize_list",
+    "source": "Plugins.link(\"saveStruct.dll\");Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"list.psb\");return [p.root].toStructString();",
+    "expected": {
+      "String": [
+        91,
+        91,
+        93,
+        93
+      ]
+    }
+  },
+  {
+    "name": "psb_plugin_serialize_object",
+    "source": "Plugins.link(\"saveStruct.dll\");Plugins.link(\"ScriptsEx.dll\");Plugins.link(\"psbfile.dll\");var p=new PSBFile(System.exePath+\"object.psb\");return [p.root].toStructString();",
+    "expected": {
+      "String": [
+        91,
+        37,
+        91,
+        34,
+        97,
+        114,
+        114,
+        97,
+        121,
+        34,
+        61,
+        62,
+        91,
+        93,
+        44,
+        13,
+        10,
+        34,
+        98,
+        108,
+        111,
+        98,
+        34,
+        61,
+        62,
+        60,
+        37,
+        32,
+        48,
+        48,
+        32,
+        102,
+        102,
+        32,
+        52,
+        49,
+        32,
+        37,
+        62,
+        44,
+        13,
+        10,
+        34,
+        102,
+        108,
+        111,
+        97,
+        116,
+        34,
+        61,
+        62,
+        114,
+        101,
+        97,
+        108,
+        32,
+        48,
+        120,
+        49,
+        46,
+        56,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        112,
+        48,
+        32,
+        47,
+        42,
+        32,
+        49,
+        46,
+        53,
+        32,
+        42,
+        47,
+        44,
+        13,
+        10,
+        34,
+        110,
+        101,
+        115,
+        116,
+        101,
+        100,
+        34,
+        61,
+        62,
+        37,
+        91,
+        34,
+        120,
+        34,
+        61,
+        62,
+        105,
+        110,
+        116,
+        32,
+        45,
+        49,
+        93,
+        44,
+        13,
+        10,
+        34,
+        110,
+        117,
+        109,
+        98,
+        101,
+        114,
+        34,
+        61,
+        62,
+        105,
+        110,
+        116,
+        32,
+        52,
+        50,
+        44,
+        13,
+        10,
+        34,
+        116,
+        101,
+        120,
+        116,
+        34,
+        61,
+        62,
+        34,
+        104,
+        101,
+        108,
+        108,
+        111,
+        34,
+        93,
+        93
+      ]
+    }
+  }
+]

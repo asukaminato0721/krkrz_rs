@@ -28,6 +28,7 @@ pub(crate) enum ObjectKind {
     Global,
     Namespace,
     Dictionary,
+    ReadOnly(crate::readonly::ReadOnlyView),
     Array(Vec<Value>),
     Function(Arc<Function>),
     Class {

@@ -109,3 +109,48 @@ fn native_sound_reads_archive_pcm_and_sli() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+#[ignore = "requires the installed Otome Domain game and KRKRZ_PROJECT_DIR"]
+fn original_storage_data_reads_binary_scenario() -> Result<()> {
+    use krkrz_assets::psb::{Document, Value as Psb};
+    use krkrz_runtime::Session;
+    use krkrz_tjs::Value;
+    let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
+    let saves = tempfile::tempdir()?;
+    let mut session = Session::open(Path::new(&project), Some(saves.path()), true, 1_000_000)?;
+    session.evaluate("Plugins.link('psbfile.dll')")?;
+    session.evaluate("Plugins.link('ScriptsEx.dll')")?;
+    session.execute_storage("system/storagedata.tjs")?;
+    let Psb::Object(root) =
+        Document::parse(&session.services.storage.read("scn/ra01_0.txt.scn")?)?.root
+    else {
+        anyhow::bail!("scenario root is not a dictionary");
+    };
+    let Psb::List(scenes) = &root["scenes"] else {
+        anyhow::bail!("scenario scenes is not an array");
+    };
+    session.evaluate(r#"Scripts.exec('var scenario=new StorageData("ra01_0.txt","scn/");')"#)?;
+    assert_eq!(
+        session.evaluate("scenario.getScenes().count")?,
+        Value::Integer(scenes.len() as i64)
+    );
+    let Psb::Object(first) = &scenes[0] else {
+        anyhow::bail!("first scene is not a dictionary");
+    };
+    let Psb::String(label) = &first["label"] else {
+        anyhow::bail!("first scene has no label");
+    };
+    let Psb::List(texts) = &first["texts"] else {
+        anyhow::bail!("first scene has no text array");
+    };
+    assert_eq!(
+        session.evaluate("scenario.findScene('').label")?,
+        Value::string(label)
+    );
+    assert_eq!(
+        session.evaluate("scenario.getScenes()[0].textCount")?,
+        Value::Integer(texts.len() as i64)
+    );
+    Ok(())
+}
