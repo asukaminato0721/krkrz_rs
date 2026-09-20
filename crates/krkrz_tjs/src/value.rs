@@ -236,12 +236,26 @@ impl Value {
 }
 /// Numeric prefix conversion, as used by TJS strings rather than JS Number().
 pub fn parse_number(text: &str) -> Value {
-    let mut s = text.trim_start();
+    let mut s = text;
     let negative = s.starts_with('-');
     if s.starts_with(['+', '-']) {
-        s = s[1..].trim_start();
+        s = s[1..].trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\u{ffff}');
     }
     let sign = if negative { -1i64 } else { 1 };
+    for (word, value) in [
+        ("true", Value::Integer(sign)),
+        ("false", Value::Integer(0)),
+        ("NaN", Value::Real(f64::NAN)),
+        ("Infinity", Value::Real(f64::INFINITY * sign as f64)),
+    ] {
+        if let Some(rest) = s.strip_prefix(word)
+            && !rest.chars().next().is_some_and(|c| {
+                c.is_ascii_alphabetic() || c == '_' || c as u32 >= 0x100
+            })
+        {
+            return value;
+        }
+    }
     let (radix, prefix) = if s.starts_with("0x") || s.starts_with("0X") {
         (16, 2)
     } else if s.starts_with("0b") || s.starts_with("0B") {

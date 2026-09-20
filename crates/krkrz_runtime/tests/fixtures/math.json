@@ -327,14 +327,95 @@
   },
   {
     "name": "math_errors",
-    "source": "var r=[];try{Math.abs();}catch(e){r.add('missing');}try{Math.PI=2;}catch(e){r.add('readonly');}Math.abs(%[]);return r.join(',')+'|'+(new Math() instanceof 'Math')+'|'+Math.abs(' -2.5 ',9);",
-    "expected": "Void"
+    "source": "var r=[];try{Math.abs();}catch(e){r.add('missing');}try{Math.PI=2;}catch(e){r.add('readonly');}Math.abs(%[]);var m=new Math();return r.join(',')+'|'+(m instanceof 'Math')+'|'+Math.abs(' -2.5 ',9);",
+    "expected": {
+      "String": [
+        109,
+        105,
+        115,
+        115,
+        105,
+        110,
+        103,
+        44,
+        114,
+        101,
+        97,
+        100,
+        111,
+        110,
+        108,
+        121,
+        124,
+        49,
+        124,
+        43,
+        48,
+        46,
+        48
+      ]
+    }
   },
   {
     "name": "math_random",
     "source": "var last=Math.random(),diff=false;for(var i=0;i<100;i++){var x=Math.random();if(x<0||x>=1)return false;if(x!=last)diff=true;last=x;}return diff;",
     "expected": {
       "Integer": 1
+    }
+  },
+  {
+    "name": "math_string_numbers",
+    "source": "var a=[' 12','\\t12','- 12','+\\t2.5','-\u300012','true','true1','truex','false','NaN','Infinity','- Infinity','Infinity\u3042'],r=[];for(var i=0;i<a.count;i++)r.add(string(+a[i]));return r.join('|');",
+    "expected": {
+      "String": [
+        48,
+        124,
+        48,
+        124,
+        45,
+        49,
+        50,
+        124,
+        50,
+        46,
+        53,
+        124,
+        48,
+        124,
+        49,
+        124,
+        49,
+        124,
+        48,
+        124,
+        48,
+        124,
+        78,
+        97,
+        78,
+        124,
+        43,
+        73,
+        110,
+        102,
+        105,
+        110,
+        105,
+        116,
+        121,
+        124,
+        45,
+        73,
+        110,
+        102,
+        105,
+        110,
+        105,
+        116,
+        121,
+        124,
+        48
+      ]
     }
   }
 ]

@@ -876,7 +876,8 @@ impl Vm {
                             self.object_id(&Value::object(frame.context))?;
                             let receiver = Value::object(frame.context);
                             let key = Value::string(name);
-                            if self.missing_candidate(&receiver, &key, host, budget)?
+                            if frame.context != 0
+                                && self.missing_candidate(&receiver, &key, host, budget)?
                                 && self
                                     .call_missing(
                                         &receiver,
