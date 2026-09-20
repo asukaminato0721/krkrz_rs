@@ -1,0 +1,303 @@
+[
+  {
+    "name": "trim_controls",
+    "source": "return ('\\x0001 \\t\\r\\nword\\x001f ').trim()+'|'+('\\xa0word\\x3000').trim()+'|'+''.trim()+'|'+(' \\t').trim();",
+    "expected": {
+      "String": [
+        119,
+        111,
+        114,
+        100,
+        124,
+        160,
+        119,
+        111,
+        114,
+        100,
+        12288,
+        124,
+        124
+      ]
+    }
+  },
+  {
+    "name": "trim_argument",
+    "source": "try{'a'.trim(void);}catch(e){return 1;}return 0;",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "array_assign",
+    "source": "var nested=[3],a=[1,2],b=[nested,void,7];a.extra=9;var r=a.assign(b);nested[0]=4;return [typeof r,a.count,a[0][0],a[1],a[2],a.extra].join('|');",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100,
+        124,
+        51,
+        124,
+        52,
+        124,
+        124,
+        55,
+        124,
+        57
+      ]
+    }
+  },
+  {
+    "name": "array_assign_self",
+    "source": "var a=[1,2];a.extra=9;a.assign(a);return [a.count,a.extra,typeof a.assign].join('|');",
+    "expected": {
+      "String": [
+        48,
+        124,
+        57,
+        124,
+        79,
+        98,
+        106,
+        101,
+        99,
+        116
+      ]
+    }
+  },
+  {
+    "name": "array_assign_bad_source",
+    "source": "var a=[1],out=[];try{a.assign();}catch(e){out.add(a.count);}try{a.assign(null);}catch(e){out.add(a.count);}a.add(2);try{a.assign(3);}catch(e){out.add(a.count);}return out.join('|');",
+    "expected": {
+      "String": [
+        49,
+        124,
+        48,
+        124,
+        48
+      ]
+    }
+  },
+  {
+    "name": "array_assign_dictionary",
+    "source": "var a=[];a.assign(%[one:1,two:2]);return a.join('|');",
+    "expected": {
+      "String": [
+        111,
+        110,
+        101,
+        124,
+        49,
+        124,
+        116,
+        119,
+        111,
+        124,
+        50
+      ]
+    }
+  },
+  {
+    "name": "array_assign_bound",
+    "source": "var a=[],src=[3,4];a.assign((function(){}) incontextof src);return a.join('|');",
+    "expected": {
+      "String": [
+        51,
+        124,
+        52
+      ]
+    }
+  },
+  {
+    "name": "dict_assign",
+    "source": "var s=%[a:[1],b:2],d=%[old:9];var f=Dictionary.assign incontextof d;var r=f(s);s.a[0]=3;return [typeof r,d.a[0],d.b,typeof d.old,typeof d.assign].join('|');",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100,
+        124,
+        51,
+        124,
+        50,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "dict_assign_merge",
+    "source": "var d=%[a:1,z:4],f=Dictionary.assign incontextof d;f(%[a:2,b:3],false);var out=[d.a,d.b,d.z];f(%[q:7],0.5);out.add(d.a);out.add(d.q);return out.join('|');",
+    "expected": {
+      "String": [
+        50,
+        124,
+        51,
+        124,
+        52,
+        124,
+        50,
+        124,
+        55
+      ]
+    }
+  },
+  {
+    "name": "dict_assign_array",
+    "source": "var d=%[old:1];(Dictionary.assign incontextof d)(['a',2,'b',3,'dangling']);return [d.a,d.b,typeof d.old,typeof d.dangling].join('|');",
+    "expected": {
+      "String": [
+        50,
+        124,
+        51,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "dict_assign_self",
+    "source": "var d=%[a:1],f=Dictionary.assign incontextof d;f(d,false);var out=[d.a];f(d);out.add(typeof d.a);return out.join('|');",
+    "expected": {
+      "String": [
+        49,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "dict_assign_bad",
+    "source": "var d=%[a:1],f=Dictionary.assign incontextof d,out=[];try{f(null);}catch(e){out.add(d.a);}try{f(3);}catch(e){out.add(d.a);}return out.join('|');",
+    "expected": {
+      "String": [
+        49,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "dict_clear",
+    "source": "var d=%[a:1];var r=(Dictionary.clear incontextof d)();return [typeof r,typeof d.a,typeof d.clear].join('|');",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "repeat",
+    "source": "var out=['ab'.repeat(3),'x'.repeat(-1),'x'.repeat(4294967297),'x'.repeat(2.9),'x'.repeat(void)];try{'x'.repeat();}catch(e){out.add('missing');}try{'x'.repeat(2,3);}catch(e){out.add('extra');}'x'.repeat(%[]);out.add('discarded');return out.join('|');",
+    "expected": {
+      "String": [
+        97,
+        98,
+        97,
+        98,
+        97,
+        98,
+        124,
+        124,
+        120,
+        124,
+        120,
+        120,
+        124,
+        124,
+        109,
+        105,
+        115,
+        115,
+        105,
+        110,
+        103,
+        124,
+        101,
+        120,
+        116,
+        114,
+        97,
+        124,
+        100,
+        105,
+        115,
+        99,
+        97,
+        114,
+        100,
+        101,
+        100
+      ]
+    }
+  }
+]

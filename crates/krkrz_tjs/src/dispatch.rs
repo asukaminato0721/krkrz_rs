@@ -16,6 +16,93 @@ fn index(key: &Value) -> Option<i64> {
     }
 }
 impl Vm {
+    pub(crate) fn dictionary_assign(&mut self, receiver: &Value, args: &[Value], clearing: bool, budget: &mut u64) -> Result<Value> {
+        let target = self.object_id(receiver)?;
+        ensure!(matches!(self.objects[target].kind, ObjectKind::Dictionary), "Dictionary native instance required");
+        let clear = clearing || args.get(1).filter(|v| !matches!(v, Value::Void)).map(Value::integer).transpose()?.map(|v| v as i32 != 0).unwrap_or(true);
+        let source = if clearing { None } else {
+            let Value::Object(reference) = args.first().context("Dictionary.assign: missing argument 0")? else { bail!("Dictionary.assign requires an Object source"); };
+            Some(self.object_id(&Value::object(reference.context.or(reference.object).context("null Dictionary.assign source")?))?)
+        };
+        if clear {
+            self.objects[target].members.clear();
+            self.objects[target].member_flags.clear();
+            self.objects[target].member_layout = Default::default();
+        }
+        let Some(source) = source else { return Ok(Value::Void); };
+        let mut entries = Vec::new();
+        let reserve = match self.objects[source].kind.clone() {
+            ObjectKind::Array(items) => {
+                let count = items.len();
+                for pair in items.chunks_exact(2) {
+                    entries.push((pair[0].unary("string")?, pair[1].clone(), 0));
+                }
+                count
+            }
+            ObjectKind::Dictionary | ObjectKind::Instance | ObjectKind::Namespace => {
+                if self.objects[source].hash_generation != self.hash_generation {
+                    let count = self.objects[source].members.len();
+                    self.objects[source].member_layout.rehash(count);
+                    self.objects[source].hash_generation = self.hash_generation;
+                }
+                for key in self.objects[source].member_layout.keys() {
+                    let flags = self.objects[source].member_flags.get(&key).copied().unwrap_or(0);
+                    if flags & crate::scripts_ex::HIDDEN == 0 {
+                        entries.push((Value::String(key.clone()), self.objects[source].members[&key].clone(), flags));
+                    }
+                }
+                entries.len()
+            }
+            _ => return Err(unsupported("Dictionary.assign source enumeration is not implemented for this object type")),
+        };
+        *budget = budget.checked_sub(entries.len() as u64).ok_or_else(|| unsupported("Dictionary.assign execution budget exceeded"))?;
+        let count = self.objects[target].members.len() + reserve;
+        ensure!(count <= 100_000, "Dictionary.assign member limit exceeded");
+        self.objects[target].member_layout.rehash(count);
+        for (key, value, flags) in entries {
+            self.set_member(receiver, &key, value)?;
+            self.objects[target].member_flags.insert(units(&key)?, flags);
+        }
+        Ok(Value::Void)
+    }
+
+    pub(crate) fn array_assign(&mut self, receiver: &Value, args: &[Value], budget: &mut u64) -> Result<Value> {
+        let target = self.object_id(receiver)?;
+        let source = args.first().context("Array.assign: missing argument 0")?;
+        let ObjectKind::Array(items) = &mut self.objects[target].kind else {
+            bail!("Array native instance required");
+        };
+        // Native assign clears before converting the source, including self.
+        items.clear();
+        let source = if let Value::Object(reference) = source {
+            Value::object(reference.context.or(reference.object).context("null Array.assign source")?)
+        } else { bail!("Array.assign requires an Object source"); };
+        let source_id = self.object_id(&source)?;
+        let values = match self.objects[source_id].kind.clone() {
+            ObjectKind::Array(items) => items,
+            ObjectKind::Dictionary | ObjectKind::Instance | ObjectKind::Namespace => {
+                if self.objects[source_id].hash_generation != self.hash_generation {
+                    let count = self.objects[source_id].members.len();
+                    self.objects[source_id].member_layout.rehash(count);
+                    self.objects[source_id].hash_generation = self.hash_generation;
+                }
+                let mut values = Vec::new();
+                for key in self.objects[source_id].member_layout.keys() {
+                    if self.objects[source_id].member_flags.get(&key).copied().unwrap_or(0) & crate::scripts_ex::HIDDEN == 0 {
+                        values.push(Value::String(key.clone()));
+                        values.push(self.objects[source_id].members[&key].clone());
+                    }
+                }
+                values
+            }
+            _ => return Err(unsupported("Array.assign source enumeration is not implemented for this object type")),
+        };
+        *budget = budget.checked_sub(values.len() as u64).ok_or_else(|| unsupported("Array.assign execution budget exceeded"))?;
+        ensure!(values.len() <= 1_000_000, "Array.assign exceeds array limit");
+        self.objects[target].kind = ObjectKind::Array(values);
+        Ok(Value::Void)
+    }
+
     pub(crate) fn delete_member(&mut self, receiver: &Value, key: &Value) -> Result<Value> {
         let id = self.object_handle(receiver)?;
         if !self.objects[id].valid || matches!(self.objects[id].kind, ObjectKind::ReadOnly(_)) {
@@ -112,6 +199,7 @@ impl Vm {
                 "match",
                 "reverse",
                 "trim",
+                "repeat",
                 "split",
                 "substring",
                 "substr",
@@ -247,6 +335,7 @@ impl Vm {
         args: &[Value],
         host: &mut impl Host,
         budget: &mut u64,
+        result_needed: bool,
     ) -> Result<Value> {
         let arg = |i| {
             args.get(i)
@@ -271,12 +360,23 @@ impl Vm {
             return match name {
                 "trim" => {
                     ensure!(args.is_empty(), "trim expects no arguments");
+                    if !result_needed { return Ok(Value::Void); }
                     // Kirikiri trims only nonzero UTF-16 units through U+0020.
                     let mut start = 0;
                     let mut end = s.len();
                     while end > start && (1..=32).contains(&s[end - 1]) { end -= 1; }
                     while start < end && (1..=32).contains(&s[start]) { start += 1; }
                     Ok(Value::String(s[start..end].to_vec()))
+                }
+                "repeat" => {
+                    ensure!(args.len() == 1, "repeat expects one argument");
+                    if !result_needed { return Ok(Value::Void); }
+                    let count = args[0].integer()? as i32;
+                    if count <= 0 || s.is_empty() { return Ok(Value::string("")); }
+                    let length = s.len().checked_mul(count as usize).filter(|n| *n <= 32_000_000)
+                        .ok_or_else(|| unsupported("repeated string exceeds limit"))?;
+                    *budget = budget.checked_sub(length as u64).ok_or_else(|| unsupported("String.repeat execution budget exceeded"))?;
+                    Ok(Value::String(s.repeat(count as usize)))
                 }
                 "reverse" => Ok(Value::String(s.iter().copied().rev().collect())),
                 "toLowerCase" | "toUpperCase" => Ok(Value::String(

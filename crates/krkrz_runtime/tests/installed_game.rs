@@ -6,6 +6,26 @@ use std::{path::Path, sync::Arc};
 
 #[test]
 #[ignore = "requires the installed Otome Domain game and KRKRZ_PROJECT_DIR"]
+fn embedded_true_type_and_cff_fonts_rasterize_japanese() -> Result<()> {
+    let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
+    let mut storage = Storage::open(Path::new(&project), Some(CxEncryption::otome_domain()?), Limits::default())?;
+    let mut book = krkrz_runtime::fonts::FontBook::default();
+    let names: Vec<_> = storage.catalog.keys().filter(|name| name.ends_with(".ttf") || name.ends_with(".otf")).cloned().collect();
+    assert_eq!(names.len(), 8);
+    for name in names {
+        assert_eq!(book.add(storage.read(&name)?.to_vec())?, 1, "{name}");
+    }
+    assert_eq!(book.face_count(), 8);
+    for face in ["モトヤLシータ゛3等幅", "モトヤLマルベリ3等幅", "源ノ角ゴシック JP Regular", "源ノ角ゴシック JP Heavy"] {
+        let glyph = book.rasterize(face, 'あ', 32.0)?;
+        assert!(glyph.coverage.iter().any(|v| *v != 0), "{face}");
+        assert!(glyph.advance > 0.0 && glyph.width <= 64 && glyph.height <= 64, "{face}");
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires the installed Otome Domain game and KRKRZ_PROJECT_DIR"]
 fn bgm_crossfade_is_independent_of_host_buffer_size() -> Result<()> {
     let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
     let mut storage = Storage::open(

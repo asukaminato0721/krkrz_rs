@@ -6,6 +6,7 @@ pub mod audio;
 pub mod compositor;
 mod csv;
 mod dialog;
+pub mod fonts;
 mod get_sample;
 pub mod graphics;
 mod layer_draw;
@@ -45,6 +46,7 @@ pub struct Services {
     pub trace_enabled: bool,
     pub windows: BTreeMap<usize, window::WindowState>,
     pub image_cache: graphics::ImageCache,
+    pub fonts: fonts::FontBook,
     app_locks: app_lock::AppLocks,
     async_triggers: async_trigger::State,
     csv_parsers: BTreeMap<usize, csv::Parser>,
@@ -394,6 +396,16 @@ impl Host for Services {
                 }
             }
             "System.getTickCount" => Ok(Value::Integer(self.time_ms as i64)),
+            "System.addFont" => {
+                let name = arg(0)?.text();
+                if self.storage.resolve(&name).is_err() {
+                    return Ok(Value::Void);
+                }
+                let data = self.read_storage(&name)?;
+                self.fonts.add(data)?;
+                // PackinOne's installed addFont wrapper discards the count.
+                Ok(Value::Void)
+            }
             "System.createAppLock" => Ok(Value::Integer(
                 self.app_locks.acquire(&arg(0)?.text())?.into(),
             )),
@@ -587,6 +599,7 @@ impl Session {
                 image_cache: graphics::ImageCache::new(graphics::automatic_limit()),
                 app_locks: app_lock::AppLocks::default(),
                 async_triggers: async_trigger::State::default(),
+                fonts: fonts::FontBook::default(),
                 csv_parsers: BTreeMap::new(),
                 sounds: BTreeMap::new(),
                 psb_files: BTreeMap::new(),

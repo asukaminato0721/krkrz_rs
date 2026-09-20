@@ -8,6 +8,15 @@ struct Case {
     expected: Value,
 }
 #[test]
+fn original_startup_builtin_corpus() {
+    let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/startup_builtins.json")).unwrap();
+    for case in cases {
+        let program = compile(&case.name, &case.source).unwrap();
+        let value = Vm::default().execute(&program, &mut (), &mut 100_000).unwrap_or_else(|e| panic!("{}: {e:#}", case.name));
+        assert_eq!(value, case.expected, "{}", case.name);
+    }
+}
+#[test]
 fn community_reference_corpus() {
     let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/semantics.json")).unwrap();
     for case in cases {

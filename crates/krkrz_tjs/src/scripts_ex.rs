@@ -6,7 +6,7 @@ use anyhow::{Context, Result, bail};
 pub(crate) const ENSURE: u32 = 0x200;
 const MUST_EXIST: u32 = 0x400;
 const IGNORE_PROPERTY: u32 = 0x800;
-const HIDDEN: u32 = 0x1000;
+pub(crate) const HIDDEN: u32 = 0x1000;
 pub(crate) const STATIC: u32 = 0x10000;
 
 fn charge(budget: &mut u64, depth: usize) -> Result<()> {

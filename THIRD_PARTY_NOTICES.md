@@ -133,3 +133,10 @@ specifies the Kirikiri license reproduced above. ncbind conversion and property
 access behavior follows the pinned Kirikiroid2 `ncbind.hpp`. Registration values
 and behavioral fixtures are observations of the installed plugin. No Windows
 plugin binary or platform UI code is linked into the Rust engine.
+
+## windowEx and fonts
+
+The windowEx state and notification bindings follow miahmie's `wtnbgo/windowEx`,
+revision `88c9be22ff8f9e6d42edbf4787092837f177a89a`, under the Kirikiri license
+reproduced above. Font parsing/rasterization uses `ttf-parser` (MIT/Apache-2.0)
+and `ab_glyph` (Apache-2.0). The test font is a generated synthetic triangle.

@@ -373,6 +373,17 @@ impl Default for Vm {
         vm.register_serialization(false)
             .expect("initial serialization members");
         let array = vm.globals["Array"].clone();
+        vm.register_native_method(&array, "assign", "Array.assign")
+            .expect("initial Array.assign member");
+        let array_id = vm.object_id(&array).expect("Array class");
+        vm.objects[array_id].member_flags.insert("assign".encode_utf16().collect(), crate::scripts_ex::HIDDEN);
+        let dictionary = vm.globals["Dictionary"].clone();
+        for method in ["assign", "clear"] {
+            vm.register_native_static_method(&dictionary, method, &format!("Dictionary.{method}")).expect("initial Dictionary members");
+            let function = vm.get_member(&dictionary, &Value::string(method), false).expect("Dictionary method");
+            let id = vm.object_id(&function).expect("Dictionary method object");
+            vm.objects[id].native_static = true;
+        }
         let id = vm.object_id(&array).expect("Array class");
         vm.native_array_class = vm.objects.len();
         vm.objects.push(vm.objects[id].clone());
@@ -1187,6 +1198,14 @@ impl Vm {
         let kind = self.objects[id].kind.clone();
         match kind {
             ObjectKind::Native(name) => match name.as_str() {
+                "Array.assign" => {
+                    let context = reference.context.map(Value::object).unwrap_or_else(|| context.clone());
+                    self.array_assign(&context, args, budget)
+                }
+                "Dictionary.assign" | "Dictionary.clear" => {
+                    let context = reference.context.map(Value::object).unwrap_or_else(|| context.clone());
+                    self.dictionary_assign(&context, args, name == "Dictionary.clear", budget)
+                }
                 "RegExp" => self.regexp_new(args),
                 "Dictionary" => self.allocate(ObjectKind::Dictionary),
                 "Array" => self.allocate(ObjectKind::Array(vec![])),
@@ -1236,7 +1255,7 @@ impl Vm {
                 self.run(&function.program, host, budget, frame)
             }
             ObjectKind::Method { receiver, name } => {
-                self.method(&receiver, &name, args, host, budget)
+                self.method(&receiver, &name, args, host, budget, result_needed)
             }
             _ => bail!("TJS object is not callable"),
         }
