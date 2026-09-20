@@ -61,7 +61,9 @@ installed PackinOne storage-mode behavior was established by comparison.
 Habakiri is used only as an external differential-test reference. Its Java
 sources are not bundled or linked into the Rust engine.
 SLI parsing and PCM loop mixing are adapted from Kirikiri Z
-`sound/WaveLoopManager.cpp` and `sound/WaveLoopManager.h`.
+`sound/WaveLoopManager.cpp` and `sound/WaveLoopManager.h`. Sound control state
+and fades follow `sound/WaveIntf.cpp`, `sound/SoundBufferBaseIntf.cpp`,
+`sound/win32/WaveImpl.cpp` and `sound/win32/SoundBufferBaseImpl.h`.
 Original TLG copyright: Copyright (C) 2000-2005 W.Dee and contributors.
 C# TLG port by morkt. The applicable Kirikiri notice follows.
 

@@ -1092,7 +1092,19 @@ impl Compiler {
         if self.eat("extends") {
             loop {
                 let base = self.expression(0)?;
-                bases.push(self.compile_expr(base, at)?);
+                let program = Program {
+                    storage: self.program.storage.clone(),
+                    registers: 0,
+                    code: vec![],
+                };
+                let parent = std::mem::replace(&mut self.program, program);
+                let result = self.compile_expr(base, at);
+                if let Ok(input) = result.as_ref() {
+                    self.emit(Op::Return { input: *input }, at);
+                }
+                let program = std::mem::replace(&mut self.program, parent);
+                result?;
+                bases.push(program);
                 if !self.eat(",") {
                     break;
                 }
@@ -1118,6 +1130,7 @@ impl Compiler {
         self.unnamed_arguments = 0;
         let mut definition = Class {
             name: name.clone(),
+            bases,
             methods: vec![],
             properties: vec![],
             initializer: None,
@@ -1161,7 +1174,6 @@ impl Compiler {
             Op::Class {
                 out,
                 definition: Box::new(definition),
-                bases,
             },
             at,
         );

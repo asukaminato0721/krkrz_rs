@@ -284,5 +284,32 @@
     "expected": {
       "Integer": 76544
     }
+  },
+  {
+    "name": "legacy_sound_absence",
+    "source": "class M extends MIDISoundBuffer{}class C extends CDDASoundBuffer{}return (typeof global.MIDISoundBuffer)+\",\"+(typeof global.CDDASoundBuffer);",
+    "expected": {
+      "String": [
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        44,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
   }
 ]

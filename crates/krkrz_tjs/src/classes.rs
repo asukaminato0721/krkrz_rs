@@ -54,21 +54,9 @@ impl Vm {
         let setter = make(&definition.setter)?;
         self.allocate(ObjectKind::Property { getter, setter })
     }
-    pub(crate) fn define_class(&mut self, definition: &Class, bases: &[Value]) -> Result<Value> {
-        let bases = bases
-            .iter()
-            .map(|base| {
-                let id = self.object_id(base)?;
-                ensure!(
-                    matches!(self.objects[id].kind, ObjectKind::Class { .. }),
-                    "base is not a TJS class"
-                );
-                Ok(id)
-            })
-            .collect::<Result<Vec<_>>>()?;
+    pub(crate) fn define_class(&mut self, definition: &Class) -> Result<Value> {
         let value = self.allocate(ObjectKind::Class {
             definition: Arc::new(definition.clone()),
-            bases,
             native_initializer: None,
         })?;
         let id = self.object_id(&value)?;
@@ -95,14 +83,79 @@ impl Vm {
         if let Some(value) = self.objects[class].members.get(key) {
             return Ok(Some(value.clone()));
         }
-        if let ObjectKind::Class { bases, .. } = &self.objects[class].kind {
-            for base in bases.iter().rev() {
-                if let Some(value) = self.class_member(*base, key, depth + 1)? {
+        Ok(None)
+    }
+    fn resolve_class_member(
+        &mut self,
+        class: usize,
+        key: &[u16],
+        host: &mut impl Host,
+        budget: &mut u64,
+        depth: usize,
+    ) -> Result<Option<Value>> {
+        ensure!(depth < 128, "class inheritance depth exceeded");
+        if let Some(value) = self.class_member(class, key, depth)? {
+            return Ok(Some(value));
+        }
+        if let ObjectKind::Class { definition, .. } = &self.objects[class].kind {
+            let bases = definition.bases.clone();
+            for expression in bases.iter().rev() {
+                let value = self.run(expression, host, budget, Frame::global())?;
+                let base = self.object_id(&value)?;
+                if let Some(value) =
+                    self.resolve_class_member(base, key, host, budget, depth + 1)?
+                {
                     return Ok(Some(value));
                 }
             }
         }
         Ok(None)
+    }
+    fn resolve_member(
+        &mut self,
+        receiver: &Value,
+        key: &Value,
+        optional: bool,
+        host: &mut impl Host,
+        budget: &mut u64,
+    ) -> Result<Value> {
+        if let Value::Object(_) = receiver {
+            let id = self.object_id(receiver)?;
+            let key_units = key.unary("string")?;
+            let Value::String(units) = &key_units else {
+                unreachable!()
+            };
+            let kind = self.objects[id].kind.clone();
+            let resolved = match kind {
+                ObjectKind::Class { .. } => {
+                    Some(self.resolve_class_member(id, units, host, budget, 0)?)
+                }
+                ObjectKind::Super { bases, context } => {
+                    let mut found = None;
+                    for base in bases.iter().rev() {
+                        if let Some(mut value) =
+                            self.resolve_class_member(*base, units, host, budget, 0)?
+                        {
+                            if let Value::Object(reference) = &mut value {
+                                reference.context = Some(context);
+                            }
+                            found = Some(value);
+                            break;
+                        }
+                    }
+                    Some(found)
+                }
+                _ => None,
+            };
+            if let Some(value) = resolved {
+                return match value {
+                    Some(value) => Ok(value),
+                    None if optional => Ok(Value::Void),
+                    None => bail!("member not found: {}", key.text()),
+                };
+            }
+        }
+        self.get_member(receiver, key, optional)
     }
     fn initialize_instance(
         &mut self,
@@ -116,13 +169,16 @@ impl Vm {
         self.object_id(&Value::object(class))?;
         let ObjectKind::Class {
             definition,
-            bases,
             native_initializer,
         } = self.objects[class].kind.clone()
         else {
             bail!("invalid class object")
         };
-        for base in bases {
+        for expression in &definition.bases {
+            let mut frame = Frame::global();
+            frame.context = self.object_id(instance)?;
+            let base = self.run(expression, host, budget, frame)?;
+            let base = self.object_id(&base)?;
             self.initialize_instance(base, instance, host, budget, depth + 1)?;
         }
         let context = self.object_id(instance)?;
@@ -168,7 +224,9 @@ impl Vm {
                 let instance = self.allocate(ObjectKind::Instance)?;
                 self.initialize_instance(class, &instance, host, budget, 0)?;
                 let key: Vec<_> = definition.name.encode_utf16().collect();
-                if let Some(constructor) = self.objects[class].members.get(&key).cloned() {
+                if let Some(constructor) =
+                    self.resolve_class_member(class, &key, host, budget, 0)?
+                {
                     self.invoke(&constructor, &instance, args, host, budget)?;
                 }
                 Ok(instance)
@@ -190,7 +248,7 @@ impl Vm {
         host: &mut impl Host,
         budget: &mut u64,
     ) -> Result<Value> {
-        let mut value = self.get_member(receiver, key, optional)?;
+        let mut value = self.resolve_member(receiver, key, optional, host, budget)?;
         if let Value::Object(object) = &mut value
             && let Some(id) = object.object
             && self
@@ -236,7 +294,7 @@ impl Vm {
         };
         self.objects[id].member_flags.insert(units.clone(), flags);
         if !raw {
-            let existing = self.get_member(receiver, key, true)?;
+            let existing = self.resolve_member(receiver, key, true, host, budget)?;
             if let Value::Object(object) = &existing
                 && let Some(id) = object.object
                 && self

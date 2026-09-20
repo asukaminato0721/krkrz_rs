@@ -18,6 +18,7 @@ pub struct Property {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Class {
     pub name: String,
+    pub bases: Vec<Program>,
     pub methods: Vec<Function>,
     pub properties: Vec<Property>,
     pub initializer: Option<Program>,
@@ -31,7 +32,6 @@ pub(crate) enum ObjectKind {
     Function(Arc<Function>),
     Class {
         definition: Arc<Class>,
-        bases: Vec<usize>,
         native_initializer: Option<String>,
     },
     Instance,

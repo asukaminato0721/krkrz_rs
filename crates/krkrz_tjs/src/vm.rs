@@ -112,7 +112,6 @@ pub enum Op {
     Class {
         out: usize,
         definition: Box<Class>,
-        bases: Vec<usize>,
     },
     Property {
         out: usize,
@@ -249,13 +248,11 @@ impl Program {
                         f.program.validate_depth(depth + 1)?;
                     }
                 }
-                Op::Class {
-                    out,
-                    definition,
-                    bases,
-                } => {
+                Op::Class { out, definition } => {
                     regs.push(*out);
-                    regs.extend(bases);
+                    for base in &definition.bases {
+                        base.validate_depth(depth + 1)?;
+                    }
                     for f in &definition.methods {
                         f.program.validate_depth(depth + 1)?;
                     }
@@ -484,15 +481,13 @@ impl Vm {
             !self.globals.contains_key(name),
             "class is already registered: {name}"
         );
-        let value = self.define_class(
-            &crate::Class {
-                name: name.into(),
-                methods: vec![],
-                properties: vec![],
-                initializer: None,
-            },
-            &[],
-        )?;
+        let value = self.define_class(&crate::Class {
+            name: name.into(),
+            bases: vec![],
+            methods: vec![],
+            properties: vec![],
+            initializer: None,
+        })?;
         let id = self.object_id(&value)?;
         if let ObjectKind::Class {
             native_initializer, ..
@@ -602,11 +597,18 @@ impl Vm {
         }
         if name == "super" {
             let owner = frame.owner.context("super outside class method")?;
-            let ObjectKind::Class { bases, .. } = &self.objects[owner].kind else {
+            let ObjectKind::Class { definition, .. } = &self.objects[owner].kind else {
                 bail!("invalid super owner")
             };
+            let base = definition
+                .bases
+                .first()
+                .context("class has no super expression")?
+                .clone();
+            let base = self.run(&base, host, budget, Frame::global())?;
+            let base = self.object_id(&base)?;
             return self.allocate(ObjectKind::Super {
-                bases: bases.clone(),
+                bases: vec![base],
                 context: frame.context,
             });
         }
@@ -911,16 +913,8 @@ impl Vm {
                         registers[*out] =
                             self.construct(&registers[*callee], &args, host, budget)?;
                     }
-                    Op::Class {
-                        out,
-                        definition,
-                        bases,
-                    } => {
-                        let bases = bases
-                            .iter()
-                            .map(|i| registers[*i].clone())
-                            .collect::<Vec<_>>();
-                        registers[*out] = self.define_class(definition, &bases)?;
+                    Op::Class { out, definition } => {
+                        registers[*out] = self.define_class(definition)?;
                     }
                     Op::Property { out, definition } => {
                         registers[*out] = self.define_property(definition, None)?

@@ -1351,5 +1351,54 @@
     "expected": {
       "Integer": 99
     }
+  },
+  {
+    "name": "base_lazy_missing",
+    "source": "class C extends missing{}return 1;",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "base_lazy_error",
+    "source": "class C extends missing{}function f(){try{new C();}catch(e){return 99;}return 0;}return f();",
+    "expected": {
+      "Integer": 99
+    }
+  },
+  {
+    "name": "base_lazy_side_effect",
+    "source": "var n=0;class A{}function b(){n++;return A;}class B extends b(){}var before=n;new B();new B();return before*10+n;",
+    "expected": {
+      "Integer": 4
+    }
+  },
+  {
+    "name": "base_lazy_replaced",
+    "source": "class A{var x=1;}class C{var x=9;}class B extends A{}A=C;return (new B()).x;",
+    "expected": {
+      "Integer": 9
+    }
+  },
+  {
+    "name": "base_class_member",
+    "source": "class A{function f(){return 9;}}class B extends A{}function run(){try{return B.f();}catch(e){return 99;}}return run();",
+    "expected": {
+      "Integer": 9
+    }
+  },
+  {
+    "name": "base_lazy_super",
+    "source": "var n=0;class A{function f(){return 2;}}function b(){n++;return A;}class B extends b(){function f(){return super.f();}}var c=new B();var x=c.f();return n*10+x;",
+    "expected": {
+      "Integer": 32
+    }
+  },
+  {
+    "name": "base_noclass",
+    "source": "class C extends 1{}return 1;",
+    "expected": {
+      "Integer": 1
+    }
   }
 ]
