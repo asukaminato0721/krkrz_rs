@@ -4,8 +4,20 @@ use anyhow::{Context, Result, ensure};
 use krkrz_assets::media::Image;
 use krkrz_tjs::{ObjectRef, Value, Vm, unsupported};
 
+struct Province {
+    width: usize,
+    height: usize,
+    pixels: Vec<u8>,
+}
+
 pub(crate) struct Layer {
     constructed: bool,
+    focusable: bool,
+    join_focus_chain: bool,
+    focus_work: Option<usize>,
+    focused_layer: Option<usize>,
+    focus_lock: bool,
+    action_owner: Value,
     primary: bool,
     window: usize,
     root: usize,
@@ -15,6 +27,9 @@ pub(crate) struct Layer {
     children_dirty: bool,
     font: Option<Value>,
     name: String,
+    hint: Value,
+    show_parent_hint: bool,
+    ignore_hint_sensing: bool,
     left: i32,
     top: i32,
     width: i32,
@@ -22,6 +37,7 @@ pub(crate) struct Layer {
     image_left: i32,
     image_top: i32,
     pub(crate) image: Option<Image>,
+    province: Option<Province>,
     clip: [i32; 4],
     kind: i32,
     face: i32,
@@ -30,6 +46,7 @@ pub(crate) struct Layer {
     enabled: bool,
     opacity: i32,
     cursor: i32,
+    cursor_x_work: i32,
     image_modified: bool,
     hit_type: i32,
     hit_threshold: i32,
@@ -41,6 +58,12 @@ impl Default for Layer {
     fn default() -> Self {
         Self {
             constructed: false,
+            focusable: false,
+            join_focus_chain: true,
+            focus_work: None,
+            focused_layer: None,
+            focus_lock: false,
+            action_owner: Value::NULL,
             primary: false,
             window: 0,
             root: 0,
@@ -50,6 +73,9 @@ impl Default for Layer {
             children_dirty: true,
             font: None,
             name: String::new(),
+            hint: Value::string(""),
+            show_parent_hint: true,
+            ignore_hint_sensing: false,
             left: 0,
             top: 0,
             width: 32,
@@ -61,6 +87,7 @@ impl Default for Layer {
                 height: 32,
                 rgba: [255, 255, 255, 0].repeat(32 * 32),
             }),
+            province: None,
             clip: [0, 0, 32, 32],
             kind: 2,
             face: 128,
@@ -69,6 +96,7 @@ impl Default for Layer {
             enabled: true,
             opacity: 255,
             cursor: 0,
+            cursor_x_work: 0,
             image_modified: true,
             hit_type: 0,
             hit_threshold: 16,
@@ -81,7 +109,17 @@ impl Default for Layer {
 pub(crate) fn register(vm: &mut Vm) -> Result<()> {
     crate::plugins::declare_class(vm, "Layer")?;
     let class = vm.globals["Layer"].clone();
-    for key in ["children", "window", "isPrimary", "font"] {
+    for key in [
+        "children",
+        "window",
+        "isPrimary",
+        "font",
+        "focused",
+        "nodeFocusable",
+        "nodeEnabled",
+        "nextFocusable",
+        "prevFocusable",
+    ] {
         vm.register_native_property(&class, key, Some(&format!("Layer.get:{key}")), None)?;
     }
     Ok(())
@@ -128,6 +166,42 @@ impl Layer {
     fn bitmap(&self) -> Result<&Image> {
         self.image.as_ref().context("layer has no image")
     }
+    fn allocate_province(&mut self, available: usize) -> Result<()> {
+        if self.province.is_none() {
+            let (w, h) = self
+                .image
+                .as_ref()
+                .map(|i| (i.width as i32, i.height as i32))
+                .unwrap_or((self.width, self.height));
+            let n = pixel_count(w, h)?;
+            ensure!(
+                n + self.image.as_ref().map_or(0, |i| i.rgba.len()) <= available,
+                "session layer image memory limit exceeded"
+            );
+            self.province = Some(Province {
+                width: w as usize,
+                height: h as usize,
+                pixels: vec![0; n],
+            });
+        }
+        self.image_modified = true;
+        Ok(())
+    }
+    fn resize_province(&mut self, w: usize, h: usize) {
+        if let Some(old) = self.province.take() {
+            let mut pixels = vec![0; w * h];
+            for y in 0..h.min(old.height) {
+                let len = w.min(old.width);
+                pixels[y * w..y * w + len]
+                    .copy_from_slice(&old.pixels[y * old.width..y * old.width + len]);
+            }
+            self.province = Some(Province {
+                width: w,
+                height: h,
+                pixels,
+            });
+        }
+    }
     fn reset_clip(&mut self) -> Result<()> {
         let image = self.bitmap()?;
         self.clip = [0, 0, image.width as i32, image.height as i32];
@@ -137,7 +211,7 @@ impl Layer {
         if self.image.is_none() {
             let n = pixel_count(self.width, self.height)?;
             ensure!(
-                n * 4 <= available,
+                n * if self.province.is_some() { 5 } else { 4 } <= available,
                 "session layer image memory limit exceeded"
             );
             self.image = Some(Image {
@@ -147,6 +221,7 @@ impl Layer {
             });
             self.image_left = 0;
             self.image_top = 0;
+            self.resize_province(self.width as usize, self.height as usize);
         }
         self.image_modified = true;
         self.reset_clip()
@@ -154,7 +229,7 @@ impl Layer {
     fn resize_image(&mut self, w: i32, h: i32, available: usize) -> Result<()> {
         let n = pixel_count(w, h)?;
         ensure!(
-            n * 4 <= available,
+            n * if self.province.is_some() { 5 } else { 4 } <= available,
             "session layer image memory limit exceeded"
         );
         let old = self.bitmap()?;
@@ -170,6 +245,7 @@ impl Layer {
             height: h as u32,
             rgba,
         });
+        self.resize_province(w as usize, h as usize);
         self.image_modified = true;
         self.reset_clip()
     }
@@ -235,7 +311,91 @@ impl Layer {
         );
         Ok((y as usize * image.width as usize + x as usize) * 4)
     }
+    fn color_rect(&mut self, args: &[Value], available: usize) -> Result<Value> {
+        ensure!(args.len() >= 5, "Layer.colorRect: missing arguments");
+        let n = |i| int(&args[i]);
+        let (x, y, w, h) = (n(0)?, n(1)?, n(2)?, n(3)?);
+        let left = x.max(self.clip[0]);
+        let top = y.max(self.clip[1]);
+        let right = x.wrapping_add(w).min(self.clip[2]);
+        let bottom = y.wrapping_add(h).min(self.clip[3]);
+        if right <= left || bottom <= top {
+            return Ok(Value::Void);
+        }
+        let face = self.draw_face();
+        if matches!(face, 2 | 3) {
+            return self.call("fillRect", &args[..5], available);
+        }
+        ensure!(matches!(face, 0 | 1 | 4), "invalid colorRect draw face");
+        let opacity = args
+            .get(5)
+            .filter(|v| !matches!(v, Value::Void))
+            .map(int)
+            .transpose()?
+            .unwrap_or(255);
+        self.bitmap()?;
+        ensure!(
+            face != 4 || opacity >= 0,
+            "negative opacity is not supported on additive alpha face"
+        );
+        if opacity == 0 {
+            return Ok(Value::Void);
+        }
+        let removing = face == 0 && opacity < 0;
+        let strength = if removing {
+            (-(opacity as i64)).min(255) as i32
+        } else {
+            opacity.clamp(0, 255)
+        };
+        let color = if removing {
+            [0; 3]
+        } else {
+            rgb(args[4].integer()? as u32)?
+        };
+        let image = self.image.as_mut().unwrap();
+        for y in top.max(0)..bottom.min(image.height as i32) {
+            for x in left.max(0)..right.min(image.width as i32) {
+                let i = (y as usize * image.width as usize + x as usize) * 4;
+                let pixel = &mut image.rgba[i..i + 4];
+                if removing {
+                    pixel[3] = ((pixel[3] as i32 * (255 - strength)) >> 8) as u8;
+                } else if strength == 255 {
+                    pixel[..3].copy_from_slice(&color);
+                    if face != 1 {
+                        pixel[3] = 255;
+                    }
+                } else if face == 0 {
+                    let weight = straight_alpha_weight(pixel[3], strength as u8);
+                    for k in 0..3 {
+                        pixel[k] = (pixel[k] as i32
+                            + (((color[k] as i32 - pixel[k] as i32) * weight) >> 8))
+                            as u8;
+                    }
+                    pixel[3] = (255 - (((255 - pixel[3] as i32) * (255 - strength)) >> 8)) as u8;
+                } else if face == 1 {
+                    for k in 0..3 {
+                        pixel[k] = ((pixel[k] as i32 * (255 - strength)
+                            + color[k] as i32 * strength)
+                            >> 8) as u8;
+                    }
+                } else {
+                    for k in 0..3 {
+                        pixel[k] = (((pixel[k] as i32 * (255 - strength)) >> 8)
+                            + ((color[k] as i32 * strength) >> 8))
+                            .min(255) as u8;
+                    }
+                    let alpha = pixel[3] as i32 + strength - ((pixel[3] as i32 * strength) >> 8);
+                    pixel[3] = (alpha - (alpha >> 8)) as u8;
+                }
+            }
+        }
+        self.image_modified = true;
+        Ok(Value::Void)
+    }
     fn call(&mut self, op: &str, args: &[Value], available: usize) -> Result<Value> {
+        if op == "colorRect" {
+            return self.color_rect(args, available);
+        }
         let arg = |i: usize| {
             args.get(i)
                 .with_context(|| format!("Layer.{op}: missing argument {i}"))
@@ -244,6 +404,9 @@ impl Layer {
         if let Some(key) = op.strip_prefix("get:") {
             let v = match key {
                 "name" => return Ok(Value::string(&self.name)),
+                "hint" => return Ok(self.hint.clone()),
+                "showParentHint" => self.show_parent_hint.into(),
+                "ignoreHintSensing" => self.ignore_hint_sensing.into(),
                 "left" => self.left,
                 "top" => self.top,
                 "width" => self.width,
@@ -280,6 +443,13 @@ impl Layer {
         match op {
             "finalize" => {}
             "set:name" => self.name = arg(0)?.text(),
+            "set:showParentHint" => self.show_parent_hint = arg(0)?.truth()?,
+            "set:ignoreHintSensing" => self.ignore_hint_sensing = arg(0)?.truth()?,
+            "set:hint" => {
+                self.hint = arg(0)?.unary("string")?;
+                self.show_parent_hint = false;
+                self.ignore_hint_sensing = false;
+            }
             "set:visible" => self.visible = arg(0)?.truth()?,
             "set:enabled" => self.enabled = arg(0)?.truth()?,
             "set:opacity" => self.opacity = n(0)?.clamp(0, 255),
@@ -303,6 +473,7 @@ impl Layer {
                     self.allocate(available)?;
                 } else {
                     self.image = None;
+                    self.province = None;
                     self.image_modified = true;
                 }
             }
@@ -318,6 +489,7 @@ impl Layer {
                     };
                     if matches!(kind, 0 | 6 | 7) {
                         self.image = None;
+                        self.province = None;
                         self.image_modified = true;
                     } else {
                         self.allocate(available)?;
@@ -389,6 +561,29 @@ impl Layer {
                 }] = n(0)?;
                 self.set_clip(c[0], c[1], c[2], c[3])?;
             }
+            "getProvincePixel" => {
+                let (x, y) = (n(0)?, n(1)?);
+                return Ok(Value::Integer(
+                    self.province
+                        .as_ref()
+                        .filter(|p| {
+                            x >= 0 && y >= 0 && (x as usize) < p.width && (y as usize) < p.height
+                        })
+                        .map_or(0, |p| p.pixels[y as usize * p.width + x as usize] as i64),
+                ));
+            }
+            "setProvincePixel" => {
+                let (x, y, color) = (n(0)?, n(1)?, n(2)? as u8);
+                self.allocate_province(available)?;
+                if self.inside_clip(x, y) {
+                    let p = self.province.as_mut().unwrap();
+                    ensure!(
+                        x >= 0 && y >= 0 && (x as usize) < p.width && (y as usize) < p.height,
+                        "province pixel is outside image"
+                    );
+                    p.pixels[y as usize * p.width + x as usize] = color;
+                }
+            }
             "getMainPixel" | "getMaskPixel" => {
                 let i = self.point(n(0)?, n(1)?)?;
                 let p = &self.bitmap()?.rgba[i..i + 4];
@@ -423,6 +618,31 @@ impl Layer {
                     return Ok(Value::Void);
                 }
                 let face = self.draw_face();
+                if face == 3 {
+                    let color = color as u8;
+                    if color != 0 {
+                        self.allocate_province(available)?;
+                    }
+                    if let Some(p) = &mut self.province {
+                        if color == 0
+                            && left == 0
+                            && top == 0
+                            && right == p.width as i32
+                            && bottom == p.height as i32
+                        {
+                            self.province = None;
+                            self.image_modified = true;
+                        } else {
+                            for y in top.max(0)..bottom.min(p.height as i32) {
+                                for x in left.max(0)..right.min(p.width as i32) {
+                                    p.pixels[y as usize * p.width + x as usize] = color;
+                                    self.image_modified = true;
+                                }
+                            }
+                        }
+                    }
+                    return Ok(Value::Void);
+                }
                 if !matches!(face, 0 | 1 | 2 | 4) {
                     return Err(unsupported(format!("Layer.fillRect draw face {face}")));
                 }
@@ -454,7 +674,7 @@ impl Layer {
     }
 }
 impl Services {
-    fn layer_reparent(&mut self, id: usize, parent: Option<usize>) -> Result<()> {
+    fn layer_validate_parent(&self, id: usize, parent: Option<usize>) -> Result<()> {
         let root = self.layers[&id].root;
         if let Some(p) = parent {
             let layer = self.layers.get(&p).context("parent is not a Layer")?;
@@ -468,6 +688,10 @@ impl Services {
                 ancestor = self.layers[&a].parent;
             }
         }
+        Ok(())
+    }
+    fn layer_reparent(&mut self, id: usize, parent: Option<usize>) -> Result<()> {
+        self.layer_validate_parent(id, parent)?;
         if let Some(old) = self.layers[&id].parent {
             let layer = self.layers.get_mut(&old).unwrap();
             layer.children.retain(|child| *child != id);
@@ -541,6 +765,7 @@ impl Services {
             return Ok(Value::Void);
         }
         if op == "@invalidate" {
+            self.layer_forget_focus(id);
             if let Some(layer) = self.layers.remove(&id) {
                 if let Some(parent) = layer.parent.and_then(|p| self.layers.get_mut(&p)) {
                     parent.children.retain(|c| *c != id);
@@ -589,6 +814,7 @@ impl Services {
                 (id, window)
             };
             let layer = self.layers.get_mut(&id).unwrap();
+            layer.action_owner = arg(0)?.clone();
             layer.constructed = true;
             layer.root = root;
             layer.window = tree_window;
@@ -605,6 +831,9 @@ impl Services {
             }
             self.layer_reparent(id, parent)?;
             return Ok(Value::Void);
+        }
+        if let Some(value) = self.layer_focus_call(vm, id, op, args, budget)? {
+            return Ok(value);
         }
         match op {
             "get:absoluteOrderMode" => {
@@ -624,7 +853,10 @@ impl Services {
             }
             "get:parent" => return Ok(self.layers[&id].parent.map_or(Value::NULL, bound)),
             "set:parent" => {
-                self.layer_reparent(id, object(arg(0)?)?)?;
+                let parent = object(arg(0)?)?;
+                self.layer_validate_parent(id, parent)?;
+                self.layer_blur_tree(vm, id, budget)?;
+                self.layer_reparent(id, parent)?;
                 return Ok(Value::Void);
             }
             "get:window" => {
@@ -691,12 +923,41 @@ impl Services {
             .layers
             .iter()
             .filter(|(key, _)| **key != id)
-            .filter_map(|(_, l)| l.image.as_ref())
-            .map(|i| i.rgba.len())
+            .map(|(_, l)| {
+                l.image.as_ref().map_or(0, |i| i.rgba.len())
+                    + l.province.as_ref().map_or(0, |p| p.pixels.len())
+            })
             .sum();
         self.layers
             .get_mut(&id)
             .unwrap()
             .call(op, args, (256usize << 20).saturating_sub(bytes))
     }
+}
+
+mod focus;
+
+// Match TVPOpacityOnOpacityTable's single-precision construction rather than
+// replacing its 8-bit interpolation with a different compositing formula.
+fn straight_alpha_weight(destination: u8, source: u8) -> i32 {
+    use std::sync::OnceLock;
+    static TABLE: OnceLock<Box<[u8]>> = OnceLock::new();
+    let table = TABLE.get_or_init(|| {
+        let mut table = vec![0; 65536];
+        for b in 0..256 {
+            for a in 0..256 {
+                table[b * 256 + a] = if a == 0 {
+                    255
+                } else {
+                    let at = (a as f64 / 255.0) as f32;
+                    let bt = (b as f64 / 255.0) as f32;
+                    let c = bt / at;
+                    let c = c / ((1.0 - bt as f64 + c as f64) as f32);
+                    ((c * 255.0) as i32).min(255) as u8
+                };
+            }
+        }
+        table.into_boxed_slice()
+    });
+    table[source as usize * 256 + destination as usize] as i32
 }

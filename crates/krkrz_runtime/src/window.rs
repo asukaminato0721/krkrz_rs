@@ -16,6 +16,7 @@ pub struct WindowState {
     pub left: i32,
     pub top: i32,
     pub primary_layer: Value,
+    pub(crate) pointer: [i32; 2],
     pub(crate) draw_device: Value,
     pub(crate) registered_objects: Vec<Value>,
     pub(crate) invalidating: bool,
@@ -35,6 +36,7 @@ impl Default for WindowState {
             left: 0,
             top: 0,
             primary_layer: Value::NULL,
+            pointer: [0; 2],
             draw_device: Value::Void,
             registered_objects: Vec::new(),
             invalidating: false,
@@ -57,6 +59,7 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         vm.register_native(&format!("Window.{name}"))?;
     }
     for name in [
+        "focusedLayer",
         "visible",
         "caption",
         "borderStyle",

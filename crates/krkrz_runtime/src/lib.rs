@@ -244,6 +244,9 @@ impl Host for Services {
                 self.window_ex.windows.remove(&id);
                 return Ok(Value::Void);
             }
+            if matches!(operation, "get:focusedLayer" | "set:focusedLayer") {
+                return self.window_focus(vm, id, operation == "set:focusedLayer", args, budget);
+            }
             if operation == "set:drawDevice" {
                 let value = args
                     .first()
