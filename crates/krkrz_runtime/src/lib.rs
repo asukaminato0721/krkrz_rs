@@ -157,11 +157,6 @@ impl Host for Services {
         self.events.gc_roots(&mut roots);
         self.menus.gc_roots(&mut roots);
         self.layer_draw.gc_roots(&mut roots);
-        for (&id, timer) in &self.timers {
-            if timer.gc_active() {
-                roots.push(Value::object(id));
-            }
-        }
         roots
     }
 

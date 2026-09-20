@@ -54,7 +54,7 @@ fn unreferenced_native_instances_finalize_and_transient_allocations_are_reclaime
             function T() { super.Timer(null); }
             function finalize() { global.finalized++; }
         }
-        function allocate() { var t = new T(); }
+        function allocate() { var t = new T(); t.interval=10; t.enabled=true; }
         allocate();
     "#,
     );
@@ -75,12 +75,12 @@ fn unreferenced_native_instances_finalize_and_transient_allocations_are_reclaime
 }
 
 #[test]
-fn explicit_external_roots_survive_and_enabled_timers_deliver() {
+fn explicit_external_roots_survive_and_referenced_timers_deliver() {
     let (_project, _saves, mut session) = session(
         r#"
         global.count = 0;
         function setup() {
-            var t = new Timer(function() { global.count++; }, '');
+            global.t = new Timer(function() { global.count++; }, '');
             t.interval = 10; t.enabled = true;
         }
         setup();

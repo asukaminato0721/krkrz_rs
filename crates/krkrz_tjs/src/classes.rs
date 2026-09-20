@@ -225,6 +225,8 @@ impl Vm {
         if let Some(initializer) = native_initializer {
             if initializer == "Date.@initialize" {
                 self.objects[context].date = Some(0);
+            } else if initializer == "RandomGenerator.@initialize" {
+                self.objects[context].random_generator = None;
             } else {
                 host.call_with_context(self, &initializer, instance, &[], budget)?;
             }

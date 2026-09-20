@@ -217,4 +217,3 @@ fn stbi_f2f(x: f32) -> Wrapping<i32> {
 fn stbi_fsh(x: Wrapping<i32>) -> Wrapping<i32> {
     x << 12
 }
-

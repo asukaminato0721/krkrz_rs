@@ -1377,6 +1377,10 @@ impl Vm {
                         .unwrap_or_else(|| context.clone());
                     self.date_call(&name[5..], &context, args, host, result_needed)
                 }
+                _ if name.starts_with("RandomGenerator.") => {
+                    let context = reference.context.map(Value::object).unwrap_or_else(||context.clone());
+                    self.random_generator_call(&name[16..],&context,args,host,budget)
+                }
                 _ if name.starts_with("Math.") => self.math_call(&name[5..], args, result_needed),
                 _ if name.starts_with("ScriptsEx.") => {
                     let context = reference
@@ -1410,7 +1414,10 @@ impl Vm {
             },
             ObjectKind::Function(function) => {
                 let mut frame = Frame::global();
-                frame.context = reference.context.unwrap_or(self.object_handle(context)?);
+                frame.context = match reference.context {
+                    Some(context) => context,
+                    None => self.object_handle(context)?,
+                };
                 frame.owner = self.objects[id].owner;
                 frame.arguments = args.to_vec();
                 ensure!(

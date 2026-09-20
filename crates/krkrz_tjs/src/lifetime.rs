@@ -95,7 +95,7 @@ impl Vm {
         for finalizer in self.objects[id].native_finalizers.clone().iter().rev() {
             // Date's native Invalidate is empty. Cached native closures can
             // still read its timestamp after the script object is invalidated.
-            if finalizer != "Date.@invalidate" {
+            if !matches!(finalizer.as_str(), "Date.@invalidate" | "RandomGenerator.@invalidate") {
                 host.call_with_context(self, finalizer, &Value::object(id), &[], budget)?;
             }
         }

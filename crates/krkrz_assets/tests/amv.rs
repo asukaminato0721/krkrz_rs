@@ -90,15 +90,40 @@ fn rejects_truncation_and_hostile_lengths_before_allocation() {
 fn dc_pixels_match_original_alpha_movie() {
     // Ten distinct DC differences, unit quantizers. Original DLL reference:
     // RGB 8880517, 9143689, 9472654, 9867412; alpha 153, 161, 170, 180.
-    let movie=Movie::parse(include_bytes!("fixtures/amv/dc.amv").to_vec()).unwrap();
-    let image=movie.decode_packet(0).unwrap().unwrap();
-    for (x,y,rgb,a) in [(0,0,8880517u32,153),(8,0,9143689,161),(0,8,9472654,170),(8,8,9867412,180)] {
-        let at=(y*16+x)*4;
-        assert_eq!(&image.rgba[at..at+4],&[(rgb>>16) as u8,(rgb>>8) as u8,rgb as u8,a]);
+    let movie = Movie::parse(include_bytes!("fixtures/amv/dc.amv").to_vec()).unwrap();
+    let image = movie.decode_packet(0).unwrap().unwrap();
+    for (x, y, rgb, a) in [
+        (0, 0, 8880517u32, 153),
+        (8, 0, 9143689, 161),
+        (0, 8, 9472654, 170),
+        (8, 8, 9867412, 180),
+    ] {
+        let at = (y * 16 + x) * 4;
+        assert_eq!(
+            &image.rgba[at..at + 4],
+            &[(rgb >> 16) as u8, (rgb >> 8) as u8, rgb as u8, a]
+        );
     }
 }
 #[test]
 fn malformed_entropy_returns_error_without_panicking() {
-    let movie=Movie::parse(movie(1,&[255;4])).unwrap();
+    let movie = Movie::parse(movie(1, &[255; 4])).unwrap();
     assert!(movie.decode_packet(0).is_err());
+}
+
+#[test]
+fn ac_reconstruction_stays_within_integer_idct_rounding_error() {
+    // Four macroblocks with nonzero AC coefficients, positive/negative DC
+    // differences and non-unit quantizers. Captured from the original DLL.
+    // Its optimized IDCT and jpeg-decoder round intermediate values differently.
+    let movie = Movie::parse(include_bytes!("fixtures/amv/ac.amv").to_vec()).unwrap();
+    let image = movie.decode_packet(0).unwrap().unwrap();
+    let expected = include_bytes!("fixtures/amv/ac.rgba");
+    for (i, (actual, reference)) in image.rgba.iter().zip(expected).enumerate() {
+        let tolerance = if i % 4 == 3 { 1 } else { 2 };
+        assert!(
+            actual.abs_diff(*reference) <= tolerance,
+            "channel {i}: {actual} vs {reference}"
+        );
+    }
 }

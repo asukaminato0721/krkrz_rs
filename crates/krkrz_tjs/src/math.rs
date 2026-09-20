@@ -23,6 +23,7 @@ impl Vm {
         ] {
             self.register_native_static_property(&math, name, Some(&format!("Math.{name}")), None)?;
         }
+        self.register_random_generator(&math)?;
         Ok(())
     }
 

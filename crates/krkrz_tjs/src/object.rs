@@ -61,6 +61,7 @@ pub(crate) struct Object {
     pub members: BTreeMap<Vec<u16>, Value>,
     pub owner: Option<usize>,
     pub date: Option<i64>,
+    pub random_generator: Option<Box<crate::random_generator::Generator>>,
     pub classes: Vec<String>,
     pub member_flags: BTreeMap<Vec<u16>, u32>,
     // Native static methods receive the script caller's this, not their namespace.
@@ -80,6 +81,7 @@ impl Object {
             members: BTreeMap::new(),
             owner: None,
             date: None,
+            random_generator: None,
             classes: vec![],
             member_flags: BTreeMap::new(),
             native_static: false,
