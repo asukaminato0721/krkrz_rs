@@ -85,3 +85,81 @@ fn surface_resize_preserves_pixels_and_enforces_allocation_limits() {
         Value::Integer(0x345678)
     );
 }
+
+#[test]
+fn original_piled_copy_corpus() {
+    let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/layer_piled.json")).unwrap();
+    for case in cases {
+        let (project, _saves, mut session) = session("", 1_000_000);
+        std::fs::write(project.path().join("test.tjs"), &case.source).unwrap();
+        assert_eq!(
+            session
+                .execute_storage("test.tjs")
+                .unwrap_or_else(|e| panic!("{}: {e:#}", case.name)),
+            case.expected,
+            "{}",
+            case.name
+        );
+    }
+}
+
+#[test]
+fn original_transition_corpus() {
+    #[derive(Deserialize)]
+    struct TransitionCase {
+        #[serde(flatten)]
+        case: Case,
+        advance_ms: Option<u64>,
+        result: Option<String>,
+    }
+    let cases: Vec<TransitionCase> =
+        serde_json::from_str(include_str!("fixtures/layer_transition.json")).unwrap();
+    for TransitionCase {
+        case,
+        advance_ms,
+        result,
+    } in cases
+    {
+        let (project, _saves, mut session) = session("", 1_000_000);
+        std::fs::write(project.path().join("test.tjs"), &case.source).unwrap();
+        let mut value = session
+            .execute_storage("test.tjs")
+            .unwrap_or_else(|e| panic!("{}: {e:#}", case.name));
+        if let Some(end) = advance_ms {
+            for tick in (0..end).step_by(16).chain([end]) {
+                session.tick(tick).unwrap();
+            }
+            value = session.evaluate(&result.unwrap()).unwrap();
+        }
+        assert_eq!(value, case.expected, "{}", case.name);
+    }
+}
+
+#[test]
+fn crossfade_capture_and_budget_share_native_tree() {
+    let (_project, _saves, mut session) = session(
+        "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),clock=0; p.setSize(2,1);p.setImageSize(2,1);a.setSize(2,1);a.setImageSize(2,1);b.setSize(2,1);b.setImageSize(2,1);a.type=ltOpaque;b.type=ltOpaque;a.fillRect(0,0,2,1,0xff000000);b.fillRect(0,0,2,1,0xffffffff);a.visible=true;a.beginTransition('crossfade',true,b,%[time:100,selfupdate:true,callback:function(){return global.clock;}]);",
+        100_000,
+    );
+    let window = session.evaluate("w").unwrap();
+    assert_eq!(
+        session.capture_window(&window).unwrap().rgba,
+        [0, 0, 0, 255].repeat(2)
+    );
+    session.evaluate("clock=50").unwrap();
+    assert_eq!(
+        session.capture_window(&window).unwrap().rgba,
+        [126, 126, 126, 255].repeat(2)
+    );
+    session.evaluate("clock=100").unwrap();
+    assert_eq!(
+        session.capture_window(&window).unwrap().rgba,
+        [255, 255, 255, 255].repeat(2)
+    );
+    assert_eq!(
+        session.evaluate("b.visible && !a.visible").unwrap(),
+        Value::Integer(1)
+    );
+    session.budget = 0;
+    assert!(session.capture_window(&window).is_err());
+}

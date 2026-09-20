@@ -110,33 +110,24 @@ impl Services {
         let hold = dst.hold_alpha;
         let image = dst.image.as_mut().unwrap();
         let mut sample = 0;
-        // The original IA32 routines process pairs differently from scalar tails.
-        // AlphaBlend_d pairs start at the row origin. AdditiveAlphaBlend[_a]
-        // aligns the destination to eight bytes and leaves one or two tail pixels.
-        let row_len = (right - left) as usize;
-        let alpha_pairs = mode == 2 && face == 0 && opacity == 255;
-        let add_pairs = mode == 12 && (face == 4 || (face == 1 && !hold)) && opacity == 255;
-        let pair_start = if add_pairs {
-            ((dx + left) & 1) as usize
-        } else {
-            0
-        };
-        let pair_end = if alpha_pairs {
-            row_len / 2 * 2
-        } else if add_pairs {
-            pair_start + row_len.saturating_sub(pair_start + 1) / 2 * 2
-        } else {
-            0
-        };
         for y in top..bottom {
-            for x in left..right {
-                let i = ((dy + y) * image.width as i64 + dx + x) as usize;
-                let p = &mut image.rgba[i * 4..i * 4 + 4];
-                let s: [u8; 4] = pixels[sample * 4..sample * 4 + 4].try_into().unwrap();
-                if op == "copyRect" {
+            let start = ((dy + y) * image.width as i64 + dx + left) as usize * 4;
+            let count = (right - left) as usize;
+            let row = &mut image.rgba[start..start + count * 4];
+            let source = &pixels[sample * 4..(sample + count) * 4];
+            if op == "operateRect" {
+                blend_row(row, source, (dx + left) as usize, face, mode, opacity, hold);
+            } else {
+                for (x, (p, s)) in row
+                    .as_chunks_mut::<4>()
+                    .0
+                    .iter_mut()
+                    .zip(source.as_chunks::<4>().0.iter())
+                    .enumerate()
+                {
                     if face == 3 {
                         if let Some(province) = &mut dst.province {
-                            province.pixels[i] = provinces[sample];
+                            province.pixels[start / 4 + x] = provinces[sample + x];
                         }
                     } else {
                         if face != 2 {
@@ -146,31 +137,60 @@ impl Services {
                             p[3] = s[3];
                         }
                     }
-                } else {
-                    let column = (x - left) as usize;
-                    let paired = column >= pair_start && column < pair_end;
-                    let partner = if column.wrapping_sub(pair_start) & 1 == 0 {
-                        sample + 1
-                    } else {
-                        sample.saturating_sub(1)
-                    };
-                    if paired && s[3] == 255 && pixels[partner * 4 + 3] == 255 {
-                        p.copy_from_slice(&s);
-                    } else if !(paired && alpha_pairs && s[3] == 0 && pixels[partner * 4 + 3] == 0)
-                    {
-                        let dest_alpha = p[3];
-                        blend(p, s, face, mode, opacity, hold);
-                        if paired && alpha_pairs {
-                            p[3] = (255 - (((255 - dest_alpha as i32) * (255 - s[3] as i32)) >> 8))
-                                as u8;
-                        }
-                    }
                 }
-                sample += 1;
             }
+            sample += count;
         }
         dst.image_modified = true;
         Ok(Value::Void)
+    }
+}
+
+// The original IA32 routines process pairs differently from scalar tails.
+// Share these row boundaries with tree composition and operateRect.
+pub(super) fn blend_row(
+    dst: &mut [u8],
+    src: &[u8],
+    x: usize,
+    face: i32,
+    mode: i32,
+    opacity: i32,
+    hold: bool,
+) {
+    let count = dst.len() / 4;
+    let alpha_pairs = mode == 2 && face == 0 && opacity == 255;
+    let add_pairs = mode == 12 && (face == 4 || (face == 1 && !hold)) && opacity == 255;
+    let pair_start = if add_pairs { x & 1 } else { 0 };
+    let pair_end = if alpha_pairs {
+        count / 2 * 2
+    } else if add_pairs {
+        pair_start + count.saturating_sub(pair_start + 1) / 2 * 2
+    } else {
+        0
+    };
+    for (column, (p, s)) in dst
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
+        .zip(src.as_chunks::<4>().0.iter())
+        .enumerate()
+    {
+        let s = *s;
+        let paired = column >= pair_start && column < pair_end;
+        let partner = if column.wrapping_sub(pair_start) & 1 == 0 {
+            column + 1
+        } else {
+            column.saturating_sub(1)
+        };
+        if paired && s[3] == 255 && src[partner * 4 + 3] == 255 {
+            p.copy_from_slice(&s);
+        } else if !(paired && alpha_pairs && s[3] == 0 && src[partner * 4 + 3] == 0) {
+            let dest_alpha = p[3];
+            blend(p, s, face, mode, opacity, hold);
+            if paired && alpha_pairs {
+                p[3] = (255 - (((255 - dest_alpha as i32) * (255 - s[3] as i32)) >> 8)) as u8;
+            }
+        }
     }
 }
 

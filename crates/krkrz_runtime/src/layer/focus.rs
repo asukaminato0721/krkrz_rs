@@ -426,6 +426,7 @@ impl Services {
             }
             "onBeforeFocus"
             | "onPaint"
+            | "onTransitionCompleted"
             | "onSearchNextFocusable"
             | "onSearchPrevFocusable"
             | "onFocus"
@@ -433,6 +434,7 @@ impl Services {
             | "onNodeEnabled"
             | "onNodeDisabled" => {
                 let keys: &[&str] = match op {
+                    "onTransitionCompleted" => &["dest", "src"],
                     "onBeforeFocus" => &["layer", "blurred", "direction"],
                     "onFocus" => &["blurred", "direction"],
                     "onBlur" => &["focused"],

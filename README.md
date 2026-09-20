@@ -3,7 +3,7 @@
 This repository contains an initial implementation toward the Otome Domain
 playable slice. **The game is not playable yet.** The original `startup.tjs`
 now completes framework initialization, including game menus, embedded fonts,
-message layers and audio objects. Deterministic ticks deliver timer, asynchronous
+message layers and audio objects. Deterministic ticks deliver timer, asynchronous,
 continuous and paint callbacks. The original scripts reach `custom.ks` after
 one second of deterministic ticks; further execution reaches the first
 `Layer.beginTransition` call, whose rendering is still unimplemented.

@@ -937,6 +937,7 @@ impl Session {
             .ok_or_else(|| unsupported("host tick execution budget exceeded"))?;
         self.advance_clock(time_ms)?;
         self.dispatch_continuous()?;
+        self.dispatch_layer_transitions()?;
         if self.services.events.exclusive_posted() {
             return Ok(());
         }
@@ -949,6 +950,7 @@ impl Session {
                 .is_some_and(|w| w.constructed && w.visible && !w.minimized)
             {
                 self.prepare_window_paint(&Value::object(id))?;
+                self.complete_window_transitions(id)?;
             }
         }
         Ok(())

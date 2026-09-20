@@ -13,6 +13,7 @@ struct Province {
 
 pub(crate) struct Layer {
     constructed: bool,
+    transition: Option<transition::Transition>,
     focusable: bool,
     join_focus_chain: bool,
     focus_work: Option<usize>,
@@ -60,6 +61,7 @@ impl Default for Layer {
     fn default() -> Self {
         Self {
             constructed: false,
+            transition: None,
             focusable: false,
             join_focus_chain: true,
             focus_work: None,
@@ -452,9 +454,6 @@ impl Layer {
         }
         match op {
             "finalize" => {}
-            // No transition can be active until beginTransition is implemented.
-            // Upstream StopTransition leaves an idle layer untouched.
-            "stopTransition" => {}
             "set:name" => self.name = arg(0)?.text(),
             "set:neutralColor" => {
                 let [a, r, g, b] = (arg(0)?.integer()? as u32).to_be_bytes();
@@ -801,6 +800,7 @@ impl Services {
             return Ok(Value::Void);
         }
         if op == "@invalidate" {
+            self.layer_invalidate_transition(vm, id, budget)?;
             self.layer_forget_focus(id);
             if let Some(layer) = self.layers.remove(&id) {
                 if let Some(parent) = layer.parent.and_then(|p| self.layers.get_mut(&p)) {
@@ -955,6 +955,12 @@ impl Services {
             }
             _ => {}
         }
+        if matches!(op, "beginTransition" | "stopTransition") {
+            return self.layer_transition_call(vm, id, op, args, budget);
+        }
+        if op == "piledCopy" {
+            return self.layer_piled_copy(vm, id, args, budget);
+        }
         if op == "loadImages" {
             return self.layer_load_images(vm, id, args, budget);
         }
@@ -987,9 +993,11 @@ impl Services {
 }
 
 mod blit;
+mod draw;
 mod focus;
 mod images;
 mod text;
+mod transition;
 
 // Match TVPOpacityOnOpacityTable's single-precision construction rather than
 // replacing its 8-bit interpolation with a different compositing formula.
@@ -1028,26 +1036,9 @@ impl crate::Session {
             .get(&window)
             .filter(|w| w.constructed)
             .context("paint requires a constructed Window")?;
-        let mut pending: Vec<_> = object(&window.primary_layer)?.into_iter().collect();
-        let mut visited = std::collections::BTreeSet::new();
-        while let Some(id) = pending.pop() {
-            self.budget = self
-                .budget
-                .checked_sub(1)
-                .ok_or_else(|| unsupported("Layer paint execution budget exceeded"))?;
-            if !visited.insert(id) {
-                continue;
-            }
-            let Some(layer) = self.services.layers.get_mut(&id) else {
-                continue;
-            };
-            if std::mem::take(&mut layer.call_on_paint) {
-                self.services
-                    .layer_event(&mut self.vm, id, "onPaint", &[], &mut self.budget)?;
-            }
-            if let Some(layer) = self.services.layers.get(&id) {
-                pending.extend(layer.children.iter().rev());
-            }
+        if let Some(root) = object(&window.primary_layer)? {
+            self.services
+                .layer_before_completion(&mut self.vm, root, &mut self.budget)?;
         }
         Ok(())
     }

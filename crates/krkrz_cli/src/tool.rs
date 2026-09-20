@@ -191,7 +191,15 @@ fn run() -> Result<()> {
                 if let Some(end) = advance_ms {
                     session.tick(0)?;
                     while session.services.time_ms < end {
-                        session.tick(session.services.time_ms.saturating_add(step_ms).min(end))?;
+                        if let Err(error) =
+                            session.tick(session.services.time_ms.saturating_add(step_ms).min(end))
+                        {
+                            for message in session.services.messages.iter().rev().take(8).rev() {
+                                eprintln!("{message}");
+                            }
+                            return Err(error
+                                .context(format!("session at {} ms", session.services.time_ms)));
+                        }
                     }
                 }
                 if inspect.is_empty() {
