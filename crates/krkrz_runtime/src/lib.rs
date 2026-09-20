@@ -6,6 +6,7 @@ pub mod audio;
 pub mod compositor;
 mod csv;
 mod dialog;
+pub mod display;
 mod draw_device;
 mod font;
 pub mod fonts;
@@ -57,6 +58,7 @@ pub struct Services {
     draw_devices: draw_device::Devices,
     /// The headless display size. A native host replaces it before startup.
     pub screen_size: (u32, u32),
+    displays: Vec<display::Monitor>,
     pub image_cache: graphics::ImageCache,
     pub fonts: fonts::FontBook,
     app_locks: app_lock::AppLocks,
@@ -513,8 +515,16 @@ impl Host for Services {
                 // reports a missing value, allowing scripts to use their defaults.
                 Ok(Value::Void)
             }
-            "System.get:screenWidth" => Ok(Value::Integer(self.screen_size.0.into())),
-            "System.get:screenHeight" => Ok(Value::Integer(self.screen_size.1.into())),
+            "System.get:screenWidth" => {
+                Ok(Value::Integer(self.application_display().bounds[2].into()))
+            }
+            "System.get:screenHeight" => {
+                Ok(Value::Integer(self.application_display().bounds[3].into()))
+            }
+            "System.get:desktopLeft" => Ok(Value::Integer(self.desktop_bounds()[0].into())),
+            "System.get:desktopTop" => Ok(Value::Integer(self.desktop_bounds()[1].into())),
+            "System.get:desktopWidth" => Ok(Value::Integer(self.desktop_bounds()[2].into())),
+            "System.get:desktopHeight" => Ok(Value::Integer(self.desktop_bounds()[3].into())),
             "System.addFont" => {
                 let name = arg(0)?.text();
                 if self.storage.resolve(&name).is_err() {
@@ -675,7 +685,14 @@ impl Session {
         phase_vocoder::register(&mut vm)?;
         video_overlay::register(&mut vm)?;
         let system = vm.register_namespace("System")?;
-        for name in ["screenWidth", "screenHeight"] {
+        for name in [
+            "screenWidth",
+            "screenHeight",
+            "desktopLeft",
+            "desktopTop",
+            "desktopWidth",
+            "desktopHeight",
+        ] {
             vm.register_native_property(&system, name, Some(&format!("System.get:{name}")), None)?;
         }
         vm.register_native_property(
@@ -730,6 +747,7 @@ impl Session {
                 main_window: None,
                 draw_devices: draw_device::Devices::new(draw_device_class),
                 screen_size: (1280, 720),
+                displays: Vec::new(),
                 image_cache: graphics::ImageCache::new(graphics::automatic_limit()),
                 app_locks: app_lock::AppLocks::default(),
                 async_triggers: async_trigger::State::default(),

@@ -13,6 +13,9 @@ pub struct WindowState {
     pub border_style: i32,
     pub inner_width: i32,
     pub inner_height: i32,
+    /// Host-provided left, top, right and bottom non-client extents. Headless
+    /// windows have no decorations; full-screen windows ignore these extents.
+    pub frame_insets: [i32; 4],
     pub zoom_numer: i32,
     pub zoom_denom: i32,
     full_screen: Option<WindowedBounds>,
@@ -45,6 +48,7 @@ impl Default for WindowState {
             border_style: 2,
             inner_width: 10,
             inner_height: 10,
+            frame_insets: [0; 4],
             zoom_numer: 1,
             zoom_denom: 1,
             full_screen: None,
@@ -68,6 +72,7 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         "add",
         "remove",
         "setInnerSize",
+        "setSize",
         "setZoom",
         "setPos",
         "onResize",
@@ -82,6 +87,8 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         "borderStyle",
         "innerWidth",
         "innerHeight",
+        "width",
+        "height",
         "zoomNumer",
         "zoomDenom",
         "left",
@@ -114,6 +121,35 @@ fn dimension(value: &Value) -> Result<i32> {
     Ok(value)
 }
 impl WindowState {
+    pub fn client_rect(&self) -> [i32; 4] {
+        let insets = self.effective_insets();
+        [
+            self.left.saturating_add(insets[0]),
+            self.top.saturating_add(insets[1]),
+            self.inner_width,
+            self.inner_height,
+        ]
+    }
+    pub fn window_rect(&self) -> [i32; 4] {
+        let insets = self.effective_insets();
+        [
+            self.left,
+            self.top,
+            self.inner_width
+                .saturating_add(insets[0])
+                .saturating_add(insets[2]),
+            self.inner_height
+                .saturating_add(insets[1])
+                .saturating_add(insets[3]),
+        ]
+    }
+    fn effective_insets(&self) -> [i32; 4] {
+        if self.is_full_screen() || self.border_style == 0 {
+            [0; 4]
+        } else {
+            self.frame_insets
+        }
+    }
     pub fn is_full_screen(&self) -> bool {
         self.full_screen.is_some()
     }
@@ -143,16 +179,16 @@ impl WindowState {
             self.visible = true;
         }
     }
-    pub(crate) fn enter_full_screen(&mut self, screen: (u32, u32)) -> Result<()> {
+    pub(crate) fn enter_full_screen(&mut self, screen: [i32; 4]) -> Result<()> {
         if self.is_full_screen() {
             return Ok(());
         }
         ensure!(
-            screen.0 > 0 && screen.1 > 0 && screen.0 <= 32768 && screen.1 <= 32768,
+            screen[2] > 0 && screen[3] > 0 && screen[2] <= 32768 && screen[3] <= 32768,
             "invalid full-screen display size"
         );
         let (width, height) = (self.inner_width.max(1), self.inner_height.max(1));
-        let (sw, sh) = (screen.0 as i32, screen.1 as i32);
+        let (sw, sh) = (screen[2], screen[3]);
         let mut scale = if i64::from(sw) * i64::from(height) < i64::from(sh) * i64::from(width) {
             [sw, width]
         } else {
@@ -173,8 +209,8 @@ impl WindowState {
             scale,
             origin: [(sw - target_width) / 2, (sh - target_height) / 2],
         });
-        self.left = 0;
-        self.top = 0;
+        self.left = screen[0];
+        self.top = screen[1];
         self.set_size(sw, sh);
         self.visible = true;
         self.minimized = false;
@@ -207,6 +243,8 @@ impl WindowState {
                 "borderStyle" => Value::Integer(self.border_style.into()),
                 "innerWidth" => Value::Integer(self.inner_width.into()),
                 "innerHeight" => Value::Integer(self.inner_height.into()),
+                "width" => Value::Integer(self.window_rect()[2].into()),
+                "height" => Value::Integer(self.window_rect()[3].into()),
                 "zoomNumer" => Value::Integer(self.zoom_numer.into()),
                 "zoomDenom" => Value::Integer(self.zoom_denom.into()),
                 "left" => Value::Integer(self.left.into()),
@@ -241,6 +279,9 @@ impl WindowState {
             "set:borderStyle" => self.border_style = coordinate(arg(0)?)?,
             "set:innerWidth" => self.set_size(dimension(arg(0)?)?, self.inner_height),
             "set:innerHeight" => self.set_size(self.inner_width, dimension(arg(0)?)?),
+            "set:width" => self.set_outer_size(dimension(arg(0)?)?, self.window_rect()[3]),
+            "set:height" => self.set_outer_size(self.window_rect()[2], dimension(arg(0)?)?),
+            "setSize" => self.set_outer_size(dimension(arg(0)?)?, dimension(arg(1)?)?),
             "set:zoomNumer" => self.set_zoom(coordinate(arg(0)?)?, self.zoom_denom)?,
             "set:zoomDenom" => self.set_zoom(self.zoom_numer, coordinate(arg(0)?)?)?,
             "setZoom" => self.set_zoom(coordinate(arg(0)?)?, coordinate(arg(1)?)?)?,
@@ -261,6 +302,13 @@ impl WindowState {
             self.inner_height = height;
             self.resize_pending = true;
         }
+    }
+    fn set_outer_size(&mut self, width: i32, height: i32) {
+        let [l, t, r, b] = self.effective_insets();
+        self.set_size(
+            width.saturating_sub(l).saturating_sub(r).max(0),
+            height.saturating_sub(t).saturating_sub(b).max(0),
+        );
     }
 }
 
@@ -287,11 +335,12 @@ impl crate::Services {
             "context has no constructed Window native instance"
         );
         if enabled {
+            let screen = self
+                .display_for_rect(self.windows[&id].window_rect(), true)
+                .context("no full-screen display is available")?
+                .bounds;
             ensure!(
-                self.screen_size.0 > 0
-                    && self.screen_size.1 > 0
-                    && self.screen_size.0 <= 32768
-                    && self.screen_size.1 <= 32768,
+                screen[2] > 0 && screen[3] > 0 && screen[2] <= 32768 && screen[3] <= 32768,
                 "invalid full-screen display size"
             );
             for (&other, window) in &mut self.windows {
@@ -302,7 +351,7 @@ impl crate::Services {
             self.windows
                 .get_mut(&id)
                 .unwrap()
-                .enter_full_screen(self.screen_size)?;
+                .enter_full_screen(screen)?;
         } else {
             self.windows.get_mut(&id).unwrap().leave_full_screen();
         }

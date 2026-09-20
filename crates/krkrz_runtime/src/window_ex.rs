@@ -410,6 +410,12 @@ impl Services {
         if let Some(name) = operation.strip_prefix("MenuItem.") {
             return self.menu_appearance_call(vm, name, context, args, budget);
         }
+        if matches!(
+            operation,
+            "System.getDisplayMonitors" | "System.getMonitorInfo"
+        ) {
+            return self.display_call(vm, operation, args);
+        }
         let arg = |i: usize| {
             args.get(i)
                 .with_context(|| format!("windowEx {operation}: missing argument {i}"))
@@ -454,6 +460,24 @@ impl Services {
                 self.windows.get(&id).is_some_and(|w| w.constructed),
                 "context has no constructed Window native instance"
             );
+            if matches!(name, "getWindowRect" | "getClientRect" | "getNormalRect") {
+                if name == "getNormalRect"
+                    && let Some(value) = args.first()
+                {
+                    value.integer()?;
+                }
+                let window = &self.windows[&id];
+                let bounds = if name == "getClientRect" {
+                    window.client_rect()
+                } else {
+                    window.window_rect()
+                };
+                let result = vm.new_dictionary()?;
+                for (key, value) in ["x", "y", "w", "h"].into_iter().zip(bounds) {
+                    vm.set_member(&result, &Value::string(key), Value::Integer(value.into()))?;
+                }
+                return Ok(result);
+            }
             if name == "resetExSystemMenu" {
                 if self
                     .window_ex

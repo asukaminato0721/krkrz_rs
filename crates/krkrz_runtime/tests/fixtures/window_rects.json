@@ -1,0 +1,39 @@
+[
+  {
+    "name": "window_rects",
+    "source": "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');var w=new Window(),a=[];w.borderStyle=0;w.setInnerSize(320,240);w.setPos(30,40);var r=w.getWindowRect(),n=w.getNormalRect(),c=w.getClientRect();a.add([r.x,r.y,r.w,r.h,n.x==r.x,n.y==r.y,n.w==r.w,n.h==r.h,c.x==r.x,c.y==r.y,c.w==r.w,c.h==r.h].join(','));return a.join('|');",
+    "expected": {
+      "String": [
+        51,
+        48,
+        44,
+        52,
+        48,
+        44,
+        51,
+        50,
+        48,
+        44,
+        50,
+        52,
+        48,
+        44,
+        49,
+        44,
+        49,
+        44,
+        49,
+        44,
+        49,
+        44,
+        49,
+        44,
+        49,
+        44,
+        49,
+        44,
+        49
+      ]
+    }
+  }
+]

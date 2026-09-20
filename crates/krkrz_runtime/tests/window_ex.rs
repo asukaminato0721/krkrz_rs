@@ -21,6 +21,9 @@ fn original_window_ex_corpus() {
     cases.extend(
         serde_json::from_str::<Vec<Case>>(include_str!("fixtures/menu_appearance.json")).unwrap(),
     );
+    cases.extend(
+        serde_json::from_str::<Vec<Case>>(include_str!("fixtures/window_rects.json")).unwrap(),
+    );
     for c in cases {
         assert_eq!(
             run(&c.source, 500_000).unwrap_or_else(|e| panic!("{}: {e:#}", c.name)),
@@ -119,12 +122,7 @@ fn callbacks_share_budget_and_handle_reentrant_invalidation() {
 }
 #[test]
 fn native_window_operations_are_explicit_until_host_support_exists() {
-    for operation in [
-        "System.getDisplayMonitors()",
-        "w.maximize()",
-        "w.getWindowRect()",
-        "w.setOverlayBitmap(null)",
-    ] {
+    for operation in ["w.maximize()", "w.setOverlayBitmap(null)"] {
         let error = run(
             &format!("{SETUP}var w=new Window();try{{{operation};}}catch(e){{return 99;}}"),
             100_000,
