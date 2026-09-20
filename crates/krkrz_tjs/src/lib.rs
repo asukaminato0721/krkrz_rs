@@ -6,6 +6,7 @@ mod dispatch;
 pub mod lexer;
 mod lifetime;
 mod literal;
+mod math;
 mod member_layout;
 mod missing;
 pub use literal::Literal;

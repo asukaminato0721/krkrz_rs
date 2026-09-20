@@ -353,6 +353,7 @@ pub struct Vm {
     pub(crate) hash_generation: u64,
     literal_objects: BTreeMap<u64, Value>,
     native_array_class: usize,
+    pub(crate) random_state: [u32; 4],
     depth: usize,
 }
 impl Default for Vm {
@@ -365,6 +366,7 @@ impl Default for Vm {
             hash_generation: 0,
             literal_objects: BTreeMap::new(),
             native_array_class: 0,
+            random_state: [123456789, 362436069, 521288629, 88675123],
             depth: 0,
         };
         for name in ["Array", "Dictionary", "Exception", "RegExp"] {
@@ -394,6 +396,7 @@ impl Default for Vm {
         let id = vm.object_id(&array).expect("Array class");
         vm.native_array_class = vm.objects.len();
         vm.objects.push(vm.objects[id].clone());
+        vm.register_math().expect("initial Math members");
         vm
     }
 }
@@ -1261,6 +1264,7 @@ impl Vm {
                 "Exception" => {
                     self.exception_object(&args.first().map(Value::text).unwrap_or_default())
                 }
+                _ if name.starts_with("Math.") => self.math_call(&name[5..], args, result_needed),
                 _ if name.starts_with("ScriptsEx.") => {
                     let context = reference
                         .context
