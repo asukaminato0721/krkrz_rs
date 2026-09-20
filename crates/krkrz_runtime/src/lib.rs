@@ -1,4 +1,5 @@
 //! Shared deterministic session services. Presentation and full Kirikiri objects remain unimplemented.
+mod alpha_movie;
 mod app_lock;
 pub mod audio;
 pub mod compositor;
@@ -46,6 +47,8 @@ pub struct Services {
     psb_files: BTreeMap<usize, Option<psb_file::File>>,
     text_renderers: BTreeMap<usize, text_render::Renderer>,
     layer_draw: layer_draw::State,
+    alpha_movies: BTreeMap<usize, alpha_movie::Player>,
+    alpha_movie_links: BTreeSet<String>,
     sound_global_volume: i32,
     sample_plugin: get_sample::State,
     pub arguments: BTreeMap<String, String>,
@@ -121,6 +124,9 @@ impl Host for Services {
         args: &[Value],
         budget: &mut u64,
     ) -> Result<Value> {
+        if let Some(operation) = name.strip_prefix("AlphaMovie.") {
+            return self.alpha_movie_call(operation, context, args, budget);
+        }
         if let Some(operation) = name.strip_prefix("GdiPlus.") {
             return self.layer_draw_call(vm, operation, context, args, budget);
         }
@@ -299,6 +305,14 @@ impl Host for Services {
                         if !self.loaded_plugins.contains("textrender.dll") {
                             text_render::register(vm)?;
                             self.loaded_plugins.insert("textrender.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
+                    "alphamovie.dll" => {
+                        let spelling = path.rsplit('/').next().unwrap_or("");
+                        if !self.alpha_movie_links.contains(spelling) {
+                            alpha_movie::register(vm)?;
+                            self.alpha_movie_links.insert(spelling.into());
                         }
                         Ok(Value::Void)
                     }
@@ -531,6 +545,8 @@ impl Session {
                 psb_files: BTreeMap::new(),
                 text_renderers: BTreeMap::new(),
                 layer_draw: layer_draw::State::default(),
+                alpha_movies: BTreeMap::new(),
+                alpha_movie_links: BTreeSet::new(),
                 sound_global_volume: 100_000,
                 sample_plugin: get_sample::State::default(),
                 arguments: BTreeMap::from([("-debugwin".into(), "no".into())]),

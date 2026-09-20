@@ -43,5 +43,35 @@
     "name": "layerExImage",
     "url": "https://github.com/wamsoft/layerExImage",
     "revision": "c8e9e71f5ce475340732888ddda7270f77e19122"
+  },
+  {
+    "name": "TextRender",
+    "url": "https://github.com/3c1u/TextRender",
+    "revision": "2fe2957148df30e70a2271f4ba7cfcdbc8e0fdc9"
+  },
+  {
+    "name": "AetherKiri-TextRender",
+    "url": "https://github.com/AetherKiri/AetherKiri",
+    "revision": "13786bf7047d09288368762bc33a4da3aff716bf"
+  },
+  {
+    "name": "layerExDraw",
+    "url": "https://github.com/wamsoft/layerExDraw",
+    "revision": "c87f273a0b4e0b27bcf2d98e8e6de469d2716888"
+  },
+  {
+    "name": "amv_decoder",
+    "url": "https://github.com/xmoezzz/amv_decoder",
+    "revision": "9f5da0194b9dc4d4e45313243e9eb05a8e040104"
+  },
+  {
+    "name": "AlphaMovieDecoder",
+    "url": "https://github.com/xmoezzz/AlphaMovieDecoder",
+    "revision": "1cbb7f4ffe774a67f363afd80a76af26448ae3e6"
+  },
+  {
+    "name": "menu",
+    "url": "https://github.com/krkrz/menu",
+    "revision": "6818626cd4df71fa318412e2148e1d731b7d6662"
   }
 ]

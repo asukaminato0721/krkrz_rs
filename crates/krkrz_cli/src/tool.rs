@@ -74,6 +74,8 @@ enum Command {
         #[arg(long, default_value_t = 28_800_000)]
         max_frames: usize,
     },
+    /// Inspect an AlphaMovie container and its rectangle packets. Does not decode pixels.
+    Amv { name: String },
     /// Inspect SLI loop links, conditions and sample-frame labels.
     Loops { name: String },
     /// Report archive contents and static script/plugin references; does not execute scripts.
@@ -100,6 +102,10 @@ fn run() -> Result<()> {
     let mut storage = Storage::open(&args.project_dir, cipher, Limits::default())?;
     let mut out = io::BufWriter::new(io::stdout().lock());
     match args.command {
+        Command::Amv { name } => serde_json::to_writer_pretty(
+            &mut out,
+            &krkrz_assets::amv::Movie::parse(storage.read(&name)?)?,
+        )?,
         Command::Loops { name } => serde_json::to_writer_pretty(
             &mut out,
             &LoopInfo::parse(&text::decode(&storage.read(&name)?)?)?,

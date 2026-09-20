@@ -1,4 +1,5 @@
 //! Bounded readers for Kirikiri archives and structured assets.
+pub mod amv;
 mod binary;
 pub mod cx;
 pub mod media;

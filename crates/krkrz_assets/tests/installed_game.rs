@@ -86,3 +86,37 @@ fn loop_metadata() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+#[ignore = "requires the installed Otome Domain game and KRKRZ_PROJECT_DIR"]
+fn alpha_movie_containers() -> Result<()> {
+    let mut game = game()?;
+    let names = game
+        .catalog
+        .keys()
+        .filter(|n| n.ends_with(".amv"))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(names.len(), 4);
+    for name in names {
+        game.verify(&name)?;
+        let movie =
+            krkrz_assets::amv::Movie::parse(game.read(&name)?).with_context(|| name.clone())?;
+        assert_eq!((movie.header.fps_scale, movie.header.fps_rate), (1, 30));
+        assert_eq!(
+            movie.header.alpha_encoding,
+            krkrz_assets::amv::AlphaEncoding::Dct
+        );
+        eprintln!(
+            "{name}: {}x{}, {} declared frames, {} packets",
+            movie.header.width,
+            movie.header.height,
+            movie.header.frame_count,
+            movie.packets.len()
+        );
+        for i in 0..movie.packets.len() {
+            movie.entropy(i)?;
+        }
+    }
+    Ok(())
+}
