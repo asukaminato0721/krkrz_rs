@@ -17,3 +17,4 @@ tempfile.workspace = true
 sha2.workspace = true
 ab_glyph = "0.2.32"
 ttf-parser = "0.25.1"
+rustfft = "6.4"

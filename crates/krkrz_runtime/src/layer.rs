@@ -183,8 +183,8 @@ impl Layer {
                 height: h as usize,
                 pixels: vec![0; n],
             });
+            self.image_modified = true;
         }
-        self.image_modified = true;
         Ok(())
     }
     fn resize_province(&mut self, w: usize, h: usize) {
@@ -584,6 +584,7 @@ impl Layer {
                         "province pixel is outside image"
                     );
                     p.pixels[y as usize * p.width + x as usize] = color;
+                    self.image_modified = true;
                 }
             }
             "getMainPixel" | "getMaskPixel" => {
@@ -638,6 +639,7 @@ impl Layer {
                             for y in top.max(0)..bottom.min(p.height as i32) {
                                 for x in left.max(0)..right.min(p.width as i32) {
                                     p.pixels[y as usize * p.width + x as usize] = color;
+                    self.image_modified = true;
                                     self.image_modified = true;
                                 }
                             }
@@ -677,7 +679,11 @@ impl Layer {
 }
 impl Services {
     fn layer_validate_parent(&self, id: usize, parent: Option<usize>) -> Result<()> {
-        let root = self.layers[&id].root;
+        let root = self
+            .layers
+            .get(&id)
+            .context("Layer invalidated before reparenting")?
+            .root;
         if let Some(p) = parent {
             let layer = self.layers.get(&p).context("parent is not a Layer")?;
             ensure!(
