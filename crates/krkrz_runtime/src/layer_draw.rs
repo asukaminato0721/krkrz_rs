@@ -19,6 +19,7 @@ struct Interface {
 }
 #[derive(Default)]
 pub(crate) struct State {
+    pub(crate) link_name: String,
     classes: BTreeMap<String, Value>,
     objects: BTreeMap<(usize, String), Geometry>,
 }
@@ -46,7 +47,7 @@ fn id(v: &Value) -> Result<usize> {
         _ => bail!("GdiPlus requires an object context"),
     }
 }
-pub(crate) fn register(vm: &mut Vm) -> Result<State> {
+pub(crate) fn register(vm: &mut Vm, link_name: &str) -> Result<State> {
     let exports: Interface = serde_json::from_str(include_str!("../data/layer_draw.json"))?;
     let root = vm.register_native_class("GdiPlus")?;
     for method in ["GdiPlus", "finalize", "addPrivateFont", "getFontList"] {
@@ -55,7 +56,10 @@ pub(crate) fn register(vm: &mut Vm) -> Result<State> {
     for (key, value) in exports.constants {
         vm.set_member(&root, &Value::string(&key), Value::Integer(value))?;
     }
-    let mut state = State::default();
+    let mut state = State {
+        link_name: link_name.into(),
+        ..State::default()
+    };
     for (name, exports) in exports.classes {
         let prefix = format!("GdiPlus.{name}");
         let class = vm.new_native_class(&name, &format!("{prefix}.@initialize"))?;
@@ -120,6 +124,9 @@ impl Services {
         fields: [&str; N],
         budget: &mut u64,
     ) -> Result<[f32; N]> {
+        if kind == "Matrix" && !matches!(v, Value::Object(r) if r.object.is_some()) {
+            bail!("GdiPlus matrix conversion requires a non-null object");
+        }
         if matches!(v, Value::Object(r) if r.object.is_none()) {
             bail!("GdiPlus cannot convert a null object to geometry");
         }
@@ -473,4 +480,27 @@ fn multiply(a: &[f32; 6], b: &[f32; 6]) -> [f32; 6] {
         a[4] * b[0] + a[5] * b[2] + b[4],
         a[4] * b[1] + a[5] * b[3] + b[5],
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Session;
+    #[test]
+    fn nested_native_classes_release_state_on_invalidation() {
+        let project = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        std::fs::write(
+            project.path().join("startup.tjs"),
+            r#"
+            Plugins.link('layerExDraw.dll');
+            class R extends GdiPlus.RectF { function R(){super.RectF(1,2,3,4);} }
+            var r=new R(),p=r.location,b=r.bounds;
+            invalidate r;invalidate p;invalidate b;
+        "#,
+        )
+        .unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), false, 10_000).unwrap();
+        session.startup().unwrap();
+        assert!(session.services.layer_draw.objects.is_empty());
+    }
 }

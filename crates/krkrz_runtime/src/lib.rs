@@ -303,9 +303,15 @@ impl Host for Services {
                         Ok(Value::Void)
                     }
                     "layerexdraw.dll" => {
+                        let link_name = path.rsplit('/').next().unwrap_or("");
                         if !self.loaded_plugins.contains("layerexdraw.dll") {
-                            self.layer_draw = layer_draw::register(vm)?;
+                            self.layer_draw = layer_draw::register(vm, link_name)?;
                             self.loaded_plugins.insert("layerexdraw.dll".into());
+                        } else {
+                            ensure!(
+                                self.layer_draw.link_name == link_name,
+                                "GdiPlus class is already registered under another plugin-name spelling"
+                            );
                         }
                         Ok(Value::Void)
                     }

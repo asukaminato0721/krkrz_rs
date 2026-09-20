@@ -103,3 +103,14 @@ Kirikiri Z 64bit Project Contributors
 使用の喪失、データの喪失、利益の喪失、業務の中断も含め、またそれに限定されな
 い）直接損害、間接損害、偶発的な損害、特別損害、懲罰的損害、または結果損害に
 ついて、一切責任を負わないものとします。
+
+## layerExDraw and ncbind
+
+The Rust layerExDraw API and geometry binding follow Wamsoft's layerExDraw,
+commit `c87f273a0b4e0b27bcf2d98e8e6de469d2716888`, by Go Watanabe
+(わたなべごう). Its readme specifies the Kirikiri license reproduced above.
+Sources consulted: `main.cpp` and `Path.cpp`. Native converter behavior also
+follows `src/plugins/ncbind/ncbind.hpp` in the pinned Kirikiroid2 checkout.
+The binding is independently written in Rust and verified with synthetic
+original-plugin observations. No GDI+, C++, Wine or Windows binary is included
+or required by the Rust engine. Drawing algorithms have not been ported yet.

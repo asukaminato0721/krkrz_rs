@@ -569,7 +569,7 @@ impl Vm {
         let property = self.allocate(ObjectKind::Property { getter, setter })?;
         self.set_member(receiver, &Value::string(name), property)
     }
-    /// Register a class property that is not copied into instances.
+    /// Register a class method that is not copied into instances.
     pub fn register_native_static_method(
         &mut self,
         receiver: &Value,
