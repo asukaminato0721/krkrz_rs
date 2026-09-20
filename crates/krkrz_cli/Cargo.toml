@@ -16,6 +16,8 @@ krkrz_runtime.workspace = true
 winit = "0.30.13"
 wgpu = "0.20.1"
 pollster = "0.3.0"
+env_logger = "0.11"
+cpal = "0.15.3"
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -188,7 +188,10 @@ impl Services {
             return Ok(None);
         }
         let window = l.window;
-        self.windows.get_mut(&window).unwrap().input.hit = true;
+        let Some(state) = self.windows.get_mut(&window) else {
+            return Ok(None);
+        };
+        state.input.hit = true;
         self.layer_event(
             vm,
             id,
@@ -306,7 +309,9 @@ impl crate::Session {
             .windows
             .get(&window)
             .context("input Window is invalid")?;
-        if !state.visible || state.minimized {
+        if (!state.visible || state.minimized)
+            && !matches!(event, InputEvent::Focus(false) | InputEvent::KeyUp { .. })
+        {
             return Ok(());
         }
         let primary = object(&state.primary_layer)?;
@@ -387,11 +392,29 @@ impl crate::Session {
             ),
         };
         if let Some(state) = self.services.windows.get_mut(&window) {
+            if matches!(event, InputEvent::PointerMove { .. })
+                && state.pointer != point
+                && state.mouse_cursor_state == 1
+            {
+                state.mouse_cursor_state = 0;
+            }
             match &event {
-                InputEvent::KeyDown { key, .. } => { state.input.keys.insert(*key); state.input.pressed.insert(*key); }
-                InputEvent::KeyUp { key, .. } => { state.input.keys.remove(key); }
-                InputEvent::PointerDown { button, .. } => { let key = [1,2,4].get(*button as usize).copied().unwrap_or(0); state.input.keys.insert(key); state.input.pressed.insert(key); }
-                InputEvent::PointerUp { button, .. } => { let key = [1,2,4].get(*button as usize).copied().unwrap_or(0); state.input.keys.remove(&key); }
+                InputEvent::KeyDown { key, .. } => {
+                    state.input.keys.insert(*key);
+                    state.input.pressed.insert(*key);
+                }
+                InputEvent::KeyUp { key, .. } => {
+                    state.input.keys.remove(key);
+                }
+                InputEvent::PointerDown { button, .. } => {
+                    let key = [1, 2, 4].get(*button as usize).copied().unwrap_or(0);
+                    state.input.keys.insert(key);
+                    state.input.pressed.insert(key);
+                }
+                InputEvent::PointerUp { button, .. } => {
+                    let key = [1, 2, 4].get(*button as usize).copied().unwrap_or(0);
+                    state.input.keys.remove(&key);
+                }
                 InputEvent::Focus(false) => state.input.keys.clear(),
                 _ => {}
             }
@@ -406,6 +429,9 @@ impl crate::Session {
                 let moved = s.windows[&window].pointer != point;
                 s.windows.get_mut(&window).unwrap().pointer = point;
                 s.host_hover(&mut self.vm, window, point, shift, moved, &mut self.budget)?;
+                if !s.windows.contains_key(&window) {
+                    return Ok(());
+                }
                 if let InputEvent::PointerDown { button, .. } = event {
                     let target =
                         s.host_target(&mut self.vm, window, point, true, &mut self.budget)?;
@@ -484,6 +510,19 @@ impl crate::Session {
             _ => {}
         }
         Ok(())
+    }
+    pub fn window_cursor(&self, window: &Value) -> Result<i32> {
+        let id = object(window)?.context("cursor requires a Window")?;
+        let window = self
+            .services
+            .windows
+            .get(&id)
+            .context("cursor Window is invalid")?;
+        Ok(window
+            .input
+            .hover
+            .and_then(|id| self.services.layers.get(&id))
+            .map_or(0, |layer| layer.cursor))
     }
     pub fn request_window_close(&mut self, window: &Value) -> Result<()> {
         let id = object(window)?.context("close requires a Window")?;

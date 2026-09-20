@@ -79,7 +79,11 @@ impl Services {
         *budget = budget
             .checked_sub(1)
             .ok_or_else(|| unsupported("Layer event execution budget exhausted"))?;
-        if !self.layers.get(&id).is_some_and(|l| l.constructed) {
+        if !self
+            .layers
+            .get(&id)
+            .is_some_and(|l| l.constructed && self.windows.contains_key(&l.window))
+        {
             return Ok(());
         }
         let context = bound(id);

@@ -83,6 +83,9 @@ Layer shrinkCopy follows miahmie's shrinkCopy plugin, revision
 `007fbba3b3531b476d6b97e7ee80553868f31b2d` from wtnbgo/shrinkCopy.
 Its readme specifies the Kirikiri license reproduced below. BMP serialization
 and palette dithering follow `visual/GraphicsLoaderIntf.cpp` and `visual/tvpgl.c`.
+Universal transitions also follow `visual/TransIntf.cpp` and the historical
+`src/core/visual/IA32/univtrans.nas` at revision
+`516eae6decd3d3b58bdde24907d408aece38699a`.
 Original TLG copyright: Copyright (C) 2000-2005 W.Dee and contributors.
 C# TLG port by morkt. The applicable Kirikiri notice follows.
 

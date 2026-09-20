@@ -1,4 +1,4 @@
-use crate::presenter::Presenter;
+use crate::{audio_output::AudioOutput, presenter::Presenter};
 use anyhow::{Context, Result};
 use krkrz_runtime::{InputEvent, Session, display::Monitor, window::WindowState};
 use krkrz_tjs::Value;
@@ -28,10 +28,15 @@ struct NativeWindow {
     last_click: Option<(Instant, [i32; 2])>,
     suspended: bool,
 }
-pub fn run(session: &mut Session) -> Result<()> {
+pub fn run(session: &mut Session, audio_enabled: bool) -> Result<()> {
     let event_loop = EventLoop::new()?;
     let mut host = Host {
         session,
+        audio: if audio_enabled {
+            Some(AudioOutput::open()?)
+        } else {
+            None
+        },
         windows: BTreeMap::new(),
         started: false,
         origin: Instant::now(),
@@ -45,6 +50,7 @@ pub fn run(session: &mut Session) -> Result<()> {
 }
 struct Host<'a> {
     session: &'a mut Session,
+    audio: Option<AudioOutput>,
     windows: BTreeMap<usize, NativeWindow>,
     started: bool,
     origin: Instant,
@@ -178,6 +184,11 @@ impl Host<'_> {
                     .window
                     .set_outer_position(PhysicalPosition::new(state.left, state.top));
             }
+            let cursor = self.session.window_cursor(&Value::object(id))?;
+            native
+                .window
+                .set_cursor_visible(state.mouse_cursor_state == 0 && cursor != -1);
+            native.window.set_cursor(cursor_icon(cursor));
             native.state = state.clone();
         }
         if self.started && self.windows.is_empty() {
@@ -364,10 +375,13 @@ impl ApplicationHandler for Host<'_> {
         }
         if Instant::now() >= self.next_tick {
             let time = self.origin.elapsed().as_millis().min(u64::MAX as u128) as u64;
-            let result = self
-                .session
-                .tick(time)
-                .and_then(|_| self.sync_windows(event_loop));
+            let result = self.session.tick(time).and_then(|_| {
+                let samples = self.session.take_audio();
+                if let Some(audio) = &self.audio {
+                    audio.submit(&samples)?;
+                }
+                self.sync_windows(event_loop)
+            });
             if let Err(error) = result {
                 self.fail(event_loop, error);
                 return;
@@ -386,8 +400,8 @@ impl ApplicationHandler for Host<'_> {
 fn shift(native: &NativeWindow) -> u32 {
     native.buttons
         | u32::from(native.modifiers.shift_key())
-        | u32::from(native.modifiers.alt_key()) * 2
-        | u32::from(native.modifiers.control_key()) * 4
+        | (u32::from(native.modifiers.alt_key()) * 2)
+        | (u32::from(native.modifiers.control_key()) * 4)
 }
 fn virtual_key(code: KeyCode) -> Option<u32> {
     use KeyCode::*;
@@ -495,4 +509,29 @@ fn virtual_key(code: KeyCode) -> Option<u32> {
         IntlBackslash => 226,
         _ => return None,
     })
+}
+
+fn cursor_icon(cursor: i32) -> winit::window::CursorIcon {
+    use winit::window::CursorIcon::*;
+    match cursor {
+        -3 => Crosshair,
+        -4 => Text,
+        -5 | -22 => Move,
+        -6 => NeswResize,
+        -7 => NsResize,
+        -8 => NwseResize,
+        -9 => EwResize,
+        -10 => NResize,
+        -11 | -17 => Wait,
+        -12 | -16 => Grab,
+        -13 => NoDrop,
+        -14 => ColResize,
+        -15 => RowResize,
+        -18 => NotAllowed,
+        -19 => Progress,
+        -20 => Help,
+        -21 => Pointer,
+        1 => VerticalText,
+        _ => Default,
+    }
 }

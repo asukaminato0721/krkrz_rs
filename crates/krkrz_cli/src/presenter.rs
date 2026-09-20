@@ -17,8 +17,21 @@ impl Presenter {
         pollster::block_on(Self::create(window))
     }
     async fn create(window: Arc<Window>) -> Result<Self> {
+        let requested = wgpu::util::backend_bits_from_env();
+        let result =
+            Self::create_backend(window.clone(), requested.unwrap_or(wgpu::Backends::all())).await;
+        if result.is_err() && requested.is_none() {
+            // Try EGL if the primary adapter or device cannot initialize.
+            return Self::create_backend(window, wgpu::Backends::GL).await;
+        }
+        result
+    }
+    async fn create_backend(window: Arc<Window>, backends: wgpu::Backends) -> Result<Self> {
         let size = window.inner_size();
-        let instance = wgpu::Instance::default();
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends,
+            ..Default::default()
+        });
         let surface = instance.create_surface(window)?;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -33,7 +46,8 @@ impl Presenter {
                 &wgpu::DeviceDescriptor {
                     label: Some("Kirikiri presentation"),
                     required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::downlevel_defaults(),
+                    required_limits: wgpu::Limits::downlevel_defaults()
+                        .using_resolution(adapter.limits()),
                 },
                 None,
             )
@@ -52,7 +66,11 @@ impl Presenter {
             config.format = format;
         }
         config.present_mode = wgpu::PresentMode::Fifo;
+        device.push_error_scope(wgpu::ErrorFilter::Validation);
         surface.configure(&device, &config);
+        if let Some(error) = device.pop_error_scope().await {
+            anyhow::bail!("GPU cannot configure the native window surface: {error}");
+        }
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: None,
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -133,7 +151,11 @@ impl Presenter {
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: wgpu::TextureFormat::Rgba8Unorm,
+                format: if self.config.format.is_srgb() {
+                    wgpu::TextureFormat::Rgba8UnormSrgb
+                } else {
+                    wgpu::TextureFormat::Rgba8Unorm
+                },
                 usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
                 view_formats: &[],
             });

@@ -509,6 +509,19 @@ impl Transition {
             crossfade(destination, source, kind, self.phase);
             return;
         };
+        if self.phase == 0 {
+            return;
+        }
+        if self.phase == self.phase_max() {
+            destination.rgba.copy_from_slice(&source.rgba);
+            return;
+        }
+        let width = destination.width as usize;
+        let rule_at = |x: usize, y: usize| {
+            let x = (origin[0] + x as i64).rem_euclid(rule.width as i64) as usize;
+            let y = (origin[1] + y as i64).rem_euclid(rule.height as i64) as usize;
+            rule.pixels[y * rule.width + x] as i32
+        };
         for (i, (d, s)) in destination
             .rgba
             .as_chunks_mut::<4>()
@@ -517,45 +530,56 @@ impl Transition {
             .zip(source.rgba.as_chunks::<4>().0.iter())
             .enumerate()
         {
-            let x = (origin[0] + (i % destination.width as usize) as i64)
-                .rem_euclid(rule.width as i64) as usize;
-            let y = (origin[1] + (i / destination.width as usize) as i64)
-                .rem_euclid(rule.height as i64) as usize;
-            let level = rule.pixels[y * rule.width + x] as i32;
+            let (x, y) = (i % width, i / width);
+            let level = rule_at(x, y);
+            let low = self.phase - rule.vague;
+            let opaque = !matches!(kind, 2 | 12 | 13);
             if rule.vague < 512 {
-                if level >= self.phase {
-                    continue;
-                }
-                if level < self.phase - rule.vague {
-                    *d = *s;
-                    continue;
+                // The original MMX opaque path switches pairs together; the
+                // odd tail always blends. Alpha paths switch each pixel.
+                let partner = if opaque {
+                    (x / 2 * 2 + 1 < width).then(|| rule_at(x ^ 1, y))
+                } else {
+                    Some(level)
+                };
+                if let Some(partner) = partner {
+                    if level >= self.phase && partner >= self.phase {
+                        continue;
+                    }
+                    if level < low && partner < low {
+                        *d = *s;
+                        continue;
+                    }
                 }
             }
-            let weight = if level < self.phase - rule.vague {
+            let weight = if level < low {
                 255
             } else if level >= self.phase {
                 0
             } else {
-                255 - ((level as i64 - (self.phase - rule.vague) as i64) * 255 / rule.vague as i64)
-                    as i32
+                255 - ((level as i64 - low as i64) * 255 / rule.vague as i64) as i32
             };
             if matches!(kind, 2 | 13) {
-                let a1 = d[3] as i32;
-                let a2 = s[3] as i32;
-                let color = straight_alpha_weight(
-                    ((a1 * (256 - weight)) >> 8) as u8,
-                    ((a2 * weight) >> 8) as u8,
-                );
+                let a1 = (d[3] as i32 * (256 - weight)) >> 8;
+                let a2 = (s[3] as i32 * weight) >> 8;
+                let color = straight_alpha_weight(a1 as u8, a2 as u8);
                 for c in 0..3 {
                     d[c] = (d[c] as i32 + (((s[c] as i32 - d[c] as i32) * color) >> 8)) as u8;
                 }
-                d[3] = (a1 + (((a2 - a1) * weight) >> 8)) as u8;
+                d[3] = if rule.vague < 512 {
+                    (255 - (255 - a1) * (255 - a2) / 255) as u8
+                } else {
+                    (d[3] as i32 + (((s[3] as i32 - d[3] as i32) * weight) >> 8)) as u8
+                };
+            } else if opaque {
+                let inverse = 255 - weight;
+                for c in 0..4 {
+                    d[c] = (s[c] as i32 + ((((d[c] as i32 - s[c] as i32) * inverse) >> 9) * 2))
+                        .clamp(0, 255) as u8;
+                }
             } else {
                 for c in 0..4 {
                     d[c] = (d[c] as i32 + (((s[c] as i32 - d[c] as i32) * weight) >> 8)) as u8;
-                }
-                if kind != 12 {
-                    d[3] = 0;
                 }
             }
         }

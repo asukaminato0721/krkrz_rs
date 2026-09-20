@@ -220,3 +220,73 @@ fn original_bmp_thumbnail_bytes_and_storage_isolation() {
             .is_err()
     );
 }
+
+#[test]
+fn original_universal_transition_pixels() {
+    let cases: Vec<Case> =
+        serde_json::from_str(include_str!("fixtures/layer_universal.json")).unwrap();
+    for case in cases {
+        let (project, saves, _session) = session("", 1_000_000);
+        std::fs::write(
+            project.path().join("transition-rule.png"),
+            include_bytes!("fixtures/transition-rule.png"),
+        )
+        .unwrap();
+        // Open after creating the asset so the storage directory catalog sees it.
+        let mut session =
+            Session::open(project.path(), Some(saves.path()), false, 1_000_000).unwrap();
+        let value = session
+            .vm
+            .execute(
+                &krkrz_tjs::compile(&case.name, &case.source).unwrap(),
+                &mut session.services,
+                &mut session.budget,
+            )
+            .unwrap_or_else(|e| panic!("{}: {e:#}", case.name));
+        assert_eq!(value, case.expected, "{}", case.name);
+    }
+}
+
+#[test]
+fn shrink_errors_and_budget_do_not_modify_pixels() {
+    let (_project, _saves, mut session) = session(
+        "Plugins.link('PackinOne.dll');var w=new Window(),d=new Layer(w,null),s=new Layer(w,d);d.setImageSize(2,2);s.setImageSize(4,4);d.fillRect(0,0,2,2,0xff123456);",
+        100_000,
+    );
+    for code in [
+        "d.shrinkCopy(0,0,2,2,s,0,0,0,4)",
+        "d.shrinkCopy(0,0,5,5,s,0,0,4,4)",
+        "d.shrinkCopy(0,0,2,2,null,0,0,4,4)",
+    ] {
+        assert!(session.evaluate(code).is_err(), "{code}");
+        assert_eq!(
+            session.evaluate("d.getMainPixel(0,0)").unwrap(),
+            Value::Integer(0x123456)
+        );
+    }
+    session
+        .evaluate("d.shrinkCopy(0,0,2,2,s,100,100,4,4)")
+        .unwrap();
+    session.budget = 35;
+    assert!(session.evaluate("d.shrinkCopy(0,0,2,2,s,0,0,4,4)").is_err());
+    session.budget = 1000;
+    assert_eq!(
+        session.evaluate("d.getMainPixel(0,0)").unwrap(),
+        Value::Integer(0x123456)
+    );
+}
+
+#[test]
+fn date_follows_session_wall_clock_origin() {
+    let (_project, _saves, mut session) = session("", 10_000);
+    session.services.epoch_ms = 1_700_000_000_123;
+    assert_eq!(
+        session.evaluate("(new Date()).getTime()").unwrap(),
+        Value::Integer(1_700_000_000_000)
+    );
+    session.tick(900).unwrap();
+    assert_eq!(
+        session.evaluate("(new Date()).getTime()").unwrap(),
+        Value::Integer(1_700_000_001_000)
+    );
+}

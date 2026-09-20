@@ -70,7 +70,16 @@ impl Services {
     pub(super) fn suggest_graphic(&self, name: &str) -> Option<String> {
         EXTENSIONS
             .iter()
-            .find_map(|ext| self.storage.resolve(&format!("{name}{ext}")).ok())
+            .find_map(|ext| self.resolve_graphic(&format!("{name}{ext}")).ok())
+    }
+
+    pub(super) fn resolve_graphic(&self, name: &str) -> Result<String> {
+        if let Ok(path) = crate::save_storage::path(&self.storage.project, &self.save_dir, name)
+            && path.is_file()
+        {
+            return Ok(path.to_string_lossy().into_owned());
+        }
+        self.storage.resolve(name)
     }
 
     pub(super) fn read_graphic(
@@ -80,7 +89,10 @@ impl Services {
     ) -> Result<(Image, BTreeMap<String, String>)> {
         let bytes = self.read_storage(name)?;
         let tags = Image::metadata(&bytes)?;
-        let key = self.storage.placed_path(name)?;
+        let key = match crate::save_storage::path(&self.storage.project, &self.save_dir, name) {
+            Ok(path) if path.is_file() => path.to_string_lossy().into_owned(),
+            _ => self.storage.placed_path(name)?,
+        };
         let image = match self.image_cache.get(&key) {
             Some(image) => image,
             None => {
@@ -120,7 +132,7 @@ impl Services {
             self.suggest_graphic(&name)
                 .with_context(|| format!("cannot suggest graphic extension: {name}"))?
         } else {
-            self.storage.resolve(&name)?
+            self.resolve_graphic(&name)?
         };
         let (mut image, tags) = self.read_graphic(&resolved, budget)?;
         if key & 0xff000000 == 0x03000000 {
@@ -147,7 +159,7 @@ impl Services {
         let mask = if ext.is_empty() {
             None
         } else {
-            self.storage.resolve(&format!("{mask}{ext}")).ok()
+            self.resolve_graphic(&format!("{mask}{ext}")).ok()
         }
         .or_else(|| self.suggest_graphic(&mask));
         if let Some(mask) = mask {
@@ -273,7 +285,7 @@ impl Services {
             self.suggest_graphic(&name)
                 .context("cannot suggest province extension")?
         } else {
-            self.storage.resolve(&name)?
+            self.resolve_graphic(&name)?
         };
         let image = self.layers[&id].bitmap()?;
         let (width, height) = (image.width, image.height);

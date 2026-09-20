@@ -3,6 +3,7 @@ mod alpha_movie;
 mod app_lock;
 mod async_trigger;
 pub mod audio;
+mod audio_mixer;
 pub mod compositor;
 mod continuous;
 mod csv;
@@ -786,6 +787,7 @@ pub struct Session {
     pub vm: Vm,
     pub services: Services,
     pub budget: u64,
+    audio_output: Vec<f32>,
 }
 impl Session {
     pub fn open(
@@ -937,6 +939,7 @@ impl Session {
                 depth: 0,
             },
             budget,
+            audio_output: Vec::new(),
         })
     }
     pub fn startup(&mut self) -> Result<Value> {
@@ -975,6 +978,7 @@ impl Session {
             .budget
             .checked_sub(1)
             .ok_or_else(|| unsupported("host tick execution budget exceeded"))?;
+        self.mix_clock_audio(time_ms)?;
         self.advance_clock(time_ms)?;
         self.dispatch_continuous()?;
         self.dispatch_layer_transitions()?;

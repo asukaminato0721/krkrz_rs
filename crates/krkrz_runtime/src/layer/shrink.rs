@@ -108,6 +108,16 @@ impl Services {
             sw > 0 && sh > 0 && d[2] > 0.0 && d[3] > 0.0 && sw >= d[2] as i64 && sh >= d[3] as i64,
             "invalid shrinkCopy size"
         );
+        // Bound tables as well as pixels, including very thin source images.
+        let columns = (d[2].ceil() as usize + 1).min(dest.width as usize);
+        let rows = (d[3].ceil() as usize + 1).min(dest.height as usize);
+        ensure!(
+            (columns + rows) * std::mem::size_of::<Sample>() + columns * rows * 4 <= 256 << 20,
+            "shrinkCopy temporary memory limit exceeded"
+        );
+        *budget = budget
+            .checked_sub((columns + rows) as u64)
+            .ok_or_else(|| unsupported("shrinkCopy execution budget exceeded"))?;
         let x = axis(d[0], d[2], sx, sw, source.width, dest.width);
         let y = axis(d[1], d[3], sy, sh, source.height, dest.height);
         let mut output = Vec::with_capacity(x.samples.len() * y.samples.len() * 4);

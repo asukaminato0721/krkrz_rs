@@ -1,3 +1,4 @@
+mod audio_output;
 mod native_host;
 mod presenter;
 use anyhow::Result;
@@ -22,8 +23,12 @@ struct Args {
     /// Fix the Unix wall-clock origin for reproducible runs.
     #[arg(long)]
     epoch_ms: Option<i64>,
+    /// Disable the audio device while continuing the script audio clock.
+    #[arg(long)]
+    no_audio: bool,
 }
 fn main() -> Result<()> {
+    env_logger::init();
     let args = Args::parse();
     let mut session = Session::open(
         &args.project_dir,
@@ -35,7 +40,7 @@ fn main() -> Result<()> {
     if let Some(epoch) = args.epoch_ms {
         session.services.epoch_ms = epoch;
     }
-    let result = native_host::run(&mut session);
+    let result = native_host::run(&mut session, !args.no_audio);
     if let Some(path) = args.trace {
         let path = krkrz_core::save_directory(&args.project_dir, Some(&path))?;
         let mut output = std::fs::OpenOptions::new()

@@ -20,6 +20,7 @@ pub(crate) struct Loaded {
     pub stream: SoundStream,
     pub pipeline: crate::phase_vocoder::Pipeline,
     pub ended: bool,
+    pub mixer: crate::audio_mixer::Source,
 }
 pub(crate) struct Sound {
     pub(crate) loaded: Option<Loaded>,
@@ -34,9 +35,9 @@ pub(crate) struct Sound {
     flags_object: Option<Value>,
     pub(crate) labels_object: Option<Value>,
     constructed: bool,
-    volume: i32,
-    volume2: i32,
-    pan: i32,
+    pub(crate) volume: i32,
+    pub(crate) volume2: i32,
+    pub(crate) pan: i32,
     pub(crate) paused: bool,
     pub(crate) looping: bool,
     pub(crate) use_vis_buffer: bool,
@@ -351,6 +352,7 @@ impl Services {
                 if position < loaded.audio.frames() as u64 {
                     loaded.stream.seek(position)?;
                     loaded.pipeline.reset();
+                    loaded.mixer = Default::default();
                     loaded.ended = false;
                     sound.generation += 1;
                     sound.events.clear();

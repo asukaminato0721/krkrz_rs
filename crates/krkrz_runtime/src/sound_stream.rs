@@ -54,6 +54,7 @@ impl Services {
         {
             loaded.stream.seek(0)?;
             loaded.pipeline.reset();
+            loaded.mixer = Default::default();
             loaded.ended = false;
         }
         Ok(())
@@ -119,6 +120,7 @@ impl Services {
             stream,
             pipeline,
             ended: false,
+            mixer: Default::default(),
         });
         // WaveImpl recreates this dictionary only when an SLI file was read.
         if exists && let Some(labels) = sound.labels_object.take() {

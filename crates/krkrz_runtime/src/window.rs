@@ -19,6 +19,7 @@ pub struct WindowState {
     normal_bounds: Option<[i32; 4]>,
     restore_maximized: bool,
     pub caption: String,
+    pub mouse_cursor_state: i32,
     pub border_style: i32,
     pub inner_width: i32,
     pub inner_height: i32,
@@ -57,6 +58,7 @@ impl Default for WindowState {
             normal_bounds: None,
             restore_maximized: false,
             caption: String::new(),
+            mouse_cursor_state: 0,
             border_style: 2,
             inner_width: 10,
             inner_height: 10,
@@ -104,11 +106,13 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         "onDeactivate",
         "onCloseQuery",
         "close",
+        "hideMouseCursor",
     ] {
         vm.register_native(&format!("Window.{name}"))?;
     }
     for name in [
         "focusedLayer",
+        "mouseCursorState",
         "fullScreen",
         "visible",
         "caption",
@@ -311,6 +315,7 @@ impl WindowState {
         };
         if let Some(key) = name.strip_prefix("get:") {
             return Ok(match key {
+                "mouseCursorState" => Value::Integer(self.mouse_cursor_state.into()),
                 "visible" => Value::Integer(i64::from(self.visible)),
                 "fullScreen" => Value::Integer(self.is_full_screen().into()),
                 "caption" => Value::string(&self.caption),
@@ -348,6 +353,8 @@ impl WindowState {
                     }
                 }
             }
+            "hideMouseCursor" => self.mouse_cursor_state = 1,
+            "set:mouseCursorState" => self.mouse_cursor_state = coordinate(arg(0)?)?,
             "set:visible" => self.visible = arg(0)?.truth()?,
             "set:caption" => self.caption = arg(0)?.text(),
             "set:borderStyle" => self.border_style = coordinate(arg(0)?)?,
