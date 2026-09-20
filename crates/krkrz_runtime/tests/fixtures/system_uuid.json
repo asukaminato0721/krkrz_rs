@@ -1,0 +1,10 @@
+[
+  {
+    "name": "system_uuid_v4",
+    "source": "var seen=%[]; for(var i=0;i<128;i++){var u=System.createUUID(); if(typeof u!='String' || u.length!=36 || u.toLowerCase()!=u || u.charAt(8)!='-' || u.charAt(13)!='-' || u.charAt(18)!='-' || u.charAt(23)!='-' || u.charAt(14)!='4' || '89ab'.indexOf(u.charAt(19))<0 || seen[u]) return 0; for(var j=0;j<36;j++)if(j!=8&&j!=13&&j!=18&&j!=23&&'0123456789abcdef'.indexOf(u.charAt(j))<0)return 0;seen[u]=1;} return 1;",
+    "expected": {
+      "Integer": 1
+    },
+    "budget": 1000000
+  }
+]

@@ -640,6 +640,7 @@ impl Host for Services {
                 Ok(Value::Integer(pressed.into()))
             }
             "System.getTickCount" => Ok(Value::Integer(self.time_ms as i64)),
+            "System.createUUID" => Ok(Value::string(&uuid::Uuid::new_v4().hyphenated().to_string())),
             "System.touchImages" => self.touch_images(vm, args, budget),
             "System.clearGraphicCache" => {
                 self.image_cache.clear();
@@ -923,6 +924,7 @@ impl Session {
             "Debug.message",
             "Debug.notice",
             "System.getTickCount",
+            "System.createUUID",
             "System.touchImages",
             "System.clearGraphicCache",
             "System.getKeyState",

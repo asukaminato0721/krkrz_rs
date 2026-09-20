@@ -18,7 +18,10 @@ impl Services {
             let image = layer.image.as_mut().unwrap();
             for y in top..bottom {
                 let start = (y * image.width as usize + left) * 4;
-                for pixel in image.rgba[start..start + (right - left) * 4].chunks_exact_mut(4) {
+                for pixel in image.rgba[start..start + (right - left) * 4]
+                    .as_chunks_mut::<4>()
+                    .0
+                {
                     let gray = ((pixel[0] as u32 * 54
                         + pixel[1] as u32 * 183
                         + pixel[2] as u32 * 19)
