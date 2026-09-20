@@ -1497,5 +1497,20 @@
         100
       ]
     }
+  },
+  {
+    "name": "empty_conditional_entity_skips_tag",
+    "source": "Plugins.link('KAGParserEx.dll');\nvar p = new KAGParser();\np.onScenarioLoad = function(){return '[foo cond=&void]\\n[next]';};\np.loadScenario('test');\nvar out=[], t;\ntry { t=p.getNextTag(); out.add(t.tagname); } catch(e) { out.add('error:'+e.message); }\nt=p.getNextTag(); out.add(t.tagname+':'+t.text);\nreturn out.join('|');\n",
+    "expected": {
+      "String": [
+        114,
+        124,
+        110,
+        101,
+        120,
+        116,
+        58
+      ]
+    }
   }
 ]

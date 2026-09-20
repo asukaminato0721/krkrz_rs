@@ -79,9 +79,7 @@ fn dequantize_and_idct_block_8x8_inner<'a, I>(
         }
     }
 
-    for (chunk, output_chunk) in temp.chunks_exact(8).zip(output) {
-        let chunk = <&[_; 8]>::try_from(chunk).unwrap();
-
+    for (chunk, output_chunk) in temp.as_chunks::<8>().0.iter().zip(output) {
         // constants scaled things up by 1<<12, plus we had 1<<2 from first
         // loop, plus horizontal and vertical each scale by sqrt(8) so together
         // we've got an extra 1<<3, so 1<<17 total we need to remove.
@@ -207,7 +205,7 @@ fn dequantize(c: i16, q: u16) -> Wrapping<i32> {
 }
 
 fn stbi_clamp(x: Wrapping<i32>) -> u8 {
-    x.0.max(0).min(255) as u8
+    x.0.clamp(0, 255) as u8
 }
 
 fn stbi_f2f(x: f32) -> Wrapping<i32> {

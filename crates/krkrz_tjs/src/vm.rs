@@ -312,9 +312,13 @@ impl Program {
 }
 pub trait Host {
     /// Strong roots held by the host between script calls.
-    fn gc_roots(&self) -> Vec<Value> { Vec::new() }
+    fn gc_roots(&self) -> Vec<Value> {
+        Vec::new()
+    }
     /// Native outgoing references owned by a particular dispatch object.
-    fn gc_trace(&self, _id: usize) -> Vec<Value> { Vec::new() }
+    fn gc_trace(&self, _id: usize) -> Vec<Value> {
+        Vec::new()
+    }
     /// Unix wall time for Date. Replay hosts supply an epoch plus session time.
     fn unix_time_ms(&self) -> i64 {
         chrono::Utc::now().timestamp_millis()
@@ -1378,8 +1382,11 @@ impl Vm {
                     self.date_call(&name[5..], &context, args, host, result_needed)
                 }
                 _ if name.starts_with("RandomGenerator.") => {
-                    let context = reference.context.map(Value::object).unwrap_or_else(||context.clone());
-                    self.random_generator_call(&name[16..],&context,args,host,budget)
+                    let context = reference
+                        .context
+                        .map(Value::object)
+                        .unwrap_or_else(|| context.clone());
+                    self.random_generator_call(&name[16..], &context, args, host, budget)
                 }
                 _ if name.starts_with("Math.") => self.math_call(&name[5..], args, result_needed),
                 _ if name.starts_with("ScriptsEx.") => {

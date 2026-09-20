@@ -470,7 +470,7 @@ impl Video {
             volume * (1.0 - self.balance.max(0) as f32 / 100_000.0),
             volume * (1.0 + self.balance.min(0) as f32 / 100_000.0),
         ];
-        for (i, frame) in output.chunks_exact_mut(2).enumerate() {
+        for (i, frame) in output.as_chunks_mut::<2>().0.iter_mut().enumerate() {
             let mut position = self.position + i as f64 / 48.0 * self.rate;
             if self.segment[1] > 0 {
                 let end = self.segment[1] as f64 * 1000.0 / movie.fps;

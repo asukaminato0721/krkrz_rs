@@ -610,7 +610,6 @@ impl Services {
                 {
                     return Ok(Value::Void);
                 }
-                if p.storage == "custom.ks" && p.position.line == 193 { eprintln!("KAG POS: id={id} pos={} buffer={}", p.position.pos, p.position.buffer.is_some()); }
                 p.args.clear(vm, budget)?;
                 if p.interrupted {
                     p.interrupted = false;
@@ -754,7 +753,6 @@ impl Services {
                     if p.exclude != -1 {
                         continue;
                     }
-                    if ch == 93 { eprintln!("KAG BRACKET: {}:{}:{} source={:?} calls={:?}", p.storage, p.position.line, pos, String::from_utf16_lossy(&line), p.calls.iter().map(|c| (&c.storage, c.position.line, c.position.pos)).collect::<Vec<_>>()); }
                     p.args.add(
                         vm,
                         "tagname",
@@ -785,7 +783,6 @@ impl Services {
                     self.kag_attribute(vm, id, attribute, &mut condition, budget, 0)?;
                 }
             }
-            if handle.borrow().storage == "custom.ks" && handle.borrow().position.line == 193 { eprintln!("KAG TAG: id={id} name={} delimiter={} condition={condition}", tag.name, tag.delimiter); }
             handle.borrow_mut().position.pos = tag.delimiter;
             if self.kag_control(vm, id, &tag, condition, budget)? {
                 return handle.borrow().args.result(vm);

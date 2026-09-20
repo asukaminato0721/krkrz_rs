@@ -100,3 +100,26 @@ fn explicit_external_roots_survive_and_referenced_timers_deliver() {
     session.tick(11).unwrap();
     assert_eq!(session.evaluate("count").unwrap(), Value::Integer(1));
 }
+
+#[test]
+fn window_registry_does_not_retain_abandoned_windows() {
+    let (_project, _saves, mut session) = session(
+        r#"
+        global.finalized = 0;
+        class W extends Window {
+            function W() { super.Window(); }
+            function finalize() { global.finalized++; }
+        }
+        global.window = new W();
+    "#,
+    );
+    let window = session.evaluate("window").unwrap();
+    session.evaluate("window = null").unwrap();
+    session
+        .collect_garbage(std::slice::from_ref(&window))
+        .unwrap();
+    assert_eq!(session.evaluate("finalized").unwrap(), Value::Integer(0));
+    session.collect_garbage(&[]).unwrap();
+    assert_eq!(session.evaluate("finalized").unwrap(), Value::Integer(1));
+    assert_eq!(session.evaluate("Window.mainWindow").unwrap(), Value::NULL);
+}

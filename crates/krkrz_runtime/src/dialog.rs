@@ -458,6 +458,18 @@ impl Services {
     }
 }
 
+impl State {
+    pub(crate) fn gc_trace(&self, id: usize, out: &mut Vec<Value>) {
+        for ((owner, _), value) in &self.objects {
+            if *owner == id
+                && let Object::Template(template) = value
+            {
+                out.extend(template.fields.values().cloned());
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Object;
@@ -488,17 +500,5 @@ mod tests {
                 1, 0, 2, 0, 3, 0, 4, 0, 42, 0, 0, 0, 255, 255, 128, 0, 79, 0, 75, 0, 0, 0, 0, 0
             ]
         );
-    }
-}
-
-impl State {
-    pub(crate) fn gc_trace(&self, id: usize, out: &mut Vec<Value>) {
-        for ((owner, _), value) in &self.objects {
-            if *owner == id
-                && let Object::Template(template) = value
-            {
-                out.extend(template.fields.values().cloned());
-            }
-        }
     }
 }

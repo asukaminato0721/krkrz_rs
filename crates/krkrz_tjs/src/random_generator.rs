@@ -129,7 +129,10 @@ impl Vm {
                             "invalid RandomGenerator state"
                         );
                         let mut state = [0; N];
-                        for (word, hex) in state.iter_mut().zip(text.as_bytes().as_chunks::<8>().0.iter()) {
+                        for (word, hex) in state
+                            .iter_mut()
+                            .zip(text.as_bytes().as_chunks::<8>().0.iter())
+                        {
                             *word = u32::from_str_radix(std::str::from_utf8(hex)?, 16)
                                 .context("invalid RandomGenerator state")?;
                         }

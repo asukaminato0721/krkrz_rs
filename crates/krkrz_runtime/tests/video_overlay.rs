@@ -97,7 +97,10 @@ fn overlay_frames_clip_to_window_bounds_and_respect_visibility() {
     assert_eq!(pixel(13, 17), &[0, 255, 0, 255]);
     session.evaluate("v.visible=false").unwrap();
     let hidden = session.capture_window(&window).unwrap();
-    assert_eq!(&hidden.rgba[(5 * 32) * 4..(5 * 32 + 1) * 4], &[0, 255, 0, 255]);
+    assert_eq!(
+        &hidden.rgba[(5 * 32) * 4..(5 * 32 + 1) * 4],
+        &[0, 255, 0, 255]
+    );
 }
 
 #[test]

@@ -482,6 +482,12 @@ fn multiply(a: &[f32; 6], b: &[f32; 6]) -> [f32; 6] {
     ]
 }
 
+impl State {
+    pub(crate) fn gc_roots(&self, out: &mut Vec<Value>) {
+        out.extend(self.classes.values().cloned());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::Session;
@@ -502,11 +508,5 @@ mod tests {
         let mut session = Session::open(project.path(), Some(saves.path()), false, 10_000).unwrap();
         session.startup().unwrap();
         assert!(session.services.layer_draw.objects.is_empty());
-    }
-}
-
-impl State {
-    pub(crate) fn gc_roots(&self, out: &mut Vec<Value>) {
-        out.extend(self.classes.values().cloned());
     }
 }

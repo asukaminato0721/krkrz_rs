@@ -141,10 +141,10 @@ outside the installation.
 | Crate | Implemented | Still required for the slice |
 |---|---|---|
 | `krkrz_core` | Storage-name normalization, resource limits, source/input types, separate save path selection | Full Kirikiri URI/media normalization |
-| `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5/TLG6, integer WAVE/Vorbis PCM, SLI loops and labels, checked AlphaMovie containers | MPEG/AlphaMovie pixel decoding |
+| `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5/TLG6, integer WAVE/Vorbis PCM, SLI loops and labels, AlphaMovie rectangle pixel decoding | Remaining video codecs |
 | `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, switch/do/while/for control flow, comma/swap and eager logical-assignment operators, global unary-dot lookup, ordered class initializers and deferred base resolution, explicit invalidation/finalization, interpolation, default parameters, argument forwarding/rest/spread, octet values, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting, exact reference-counted finalization timing, original bytecode loader |
 | `krkrz_kag` | UTF-16 KAGParserEx tokenization, ordered attributes, labels, escaped brackets and multiline tags; runtime bindings provide expressions, macros, conditions, jumps/calls and label-based state restoration | Complete game-framework integration and replay validation |
-| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, TextRenderBase layout/timing, GdiPlus geometry, AlphaMovie metadata/transport controls, MenuItem state/tree/click dispatch, WIN32Dialog templates/bounded buffers/closed state, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, private FreeType font rasterization and Layer.drawText, image loading/blits, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, remaining transitions/effects/callback integration, SLI label expressions, original saves and replay |
+| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, TextRenderBase layout/timing, GdiPlus geometry, AlphaMovie playback/Layer delivery, MenuItem state/tree/click dispatch, WIN32Dialog templates/bounded buffers/closed state, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, private FreeType font rasterization and Layer.drawText, image loading/blits, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, remaining transitions/effects/callback integration, SLI label expressions, original saves and replay |
 | `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, static inventory, primitive evaluation, startup diagnostics | Deterministic interactive replay, input-driven checkpoints, frame/audio comparison, native play |
 
 The native host presents CPU-composited frames through wgpu and forwards winit
@@ -242,9 +242,13 @@ and registration cases plus seven reached TJS language cases. GDI+ fonts, images
 paths, appearance resources and Layer drawing remain explicit unsupported calls.
 Plugin loading alone does not establish rendered output.
 
-The AlphaMovie binding opens checked AJPM storage and implements metadata and
-transport settings. It does not decode movie pixels or write Layers. Frame
-seeking, movie queuing, positioning and `showNextImage` fail explicitly.
+The AlphaMovie binding decodes AJPM rectangles, delivers their pixels and position
+to Layers, and supports playback, looping and frame seeks. All 160 packets in the
+four installed AMVs decode. Synthetic DCT/DC and DEFLATE alpha pixels match the
+original DLL; the reused integer IDCT differs by at most two RGB levels and one
+alpha level in the AC fixture. Decoding is synchronous, so `frame` reports the
+last decoded sequence rather than the original worker's preload cursor. Queued
+movies (`setNextMovieFile`) remain an explicit unsupported operation.
 `krkrz_tool amv NAME` inspects the container and rectangle-packet index.
 
 The menu binding follows the public `krkrz/menu` source and original-DLL probes.

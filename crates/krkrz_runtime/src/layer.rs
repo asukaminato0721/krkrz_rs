@@ -1091,11 +1091,14 @@ impl Layer {
 
 impl Layer {
     pub(crate) fn present_alpha_movie(&mut self, image: &Image, left: i32, top: i32) -> Result<()> {
-        ensure!(!self.primary || (left==0 && top==0), "cannot move primary layer");
+        ensure!(
+            !self.primary || (left == 0 && top == 0),
+            "cannot move primary layer"
+        );
         self.set_movie_image(image)?;
         self.size(image.width as i32, image.height as i32, 256usize << 20)?;
-        self.left=left;
-        self.top=top;
+        self.left = left;
+        self.top = top;
         Ok(())
     }
 }

@@ -133,8 +133,8 @@ fn deflate_alpha_matches_original_and_has_bounded_output() {
     let bytes = include_bytes!("fixtures/amv/deflate.amv");
     let movie = Movie::parse(bytes.to_vec()).unwrap();
     let image = movie.decode_packet(0).unwrap().unwrap();
-    for (i, pixel) in image.rgba.chunks_exact(4).enumerate() {
-        assert_eq!(pixel, [128, 128, 128, i as u8]);
+    for (i, pixel) in image.rgba.as_chunks::<4>().0.iter().enumerate() {
+        assert_eq!(*pixel, [128, 128, 128, i as u8]);
     }
     let mut invalid = bytes.to_vec();
     // Claim a 32x16 rectangle while retaining its 16x16 alpha plane.

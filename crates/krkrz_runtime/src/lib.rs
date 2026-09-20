@@ -145,12 +145,9 @@ impl Services {
 }
 impl Host for Services {
     fn gc_roots(&self) -> Vec<Value> {
-        let mut roots = self
-            .windows
-            .iter()
-            .filter_map(|(&id, window)| window.constructed.then_some(Value::object(id)))
-            .collect::<Vec<_>>();
-        roots.extend(self.main_window.map(Value::object));
+        // Native window lists and mainWindow are weak references in Kirikiri.
+        // An embedding host must explicitly retain any window handles it owns.
+        let mut roots = Vec::new();
         roots.extend(self.continuous_handlers.iter().flatten().cloned());
         roots.extend(self.draw_devices.class.iter().cloned());
         roots.push(self.wave_flags_class.clone());

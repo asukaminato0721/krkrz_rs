@@ -1455,7 +1455,13 @@ pub fn compile_with_preprocessor(
     let result = (|| -> Result<()> {
         if expression {
             let at = c.at();
-            let e = c.full_expression()?;
+            // Kirikiri EvalExpression returns void when lexing yields no
+            // tokens, including whitespace and comment-only expressions.
+            let e = if c.eof() {
+                Expr::Value(Value::Void)
+            } else {
+                c.full_expression()?
+            };
             ensure!(c.eof(), "unexpected tokens after TJS expression");
             let input = c.compile_expr(e, &at)?;
             c.emit(Op::Return { input }, &at);
@@ -1510,6 +1516,27 @@ fn constant_literal(expression: Expr) -> Result<crate::Literal> {
 mod tests {
     use super::*;
     use crate::Vm;
+    #[test]
+    fn empty_expressions_evaluate_to_void() {
+        let mut vm = Vm::default();
+        for source in [
+            "",
+            " \t\r\n",
+            "/* empty */",
+            "// empty\n",
+            "@if(0) ignored @endif",
+        ] {
+            let program = compile_expression("empty", source).unwrap();
+            assert_eq!(
+                vm.execute(&program, &mut (), &mut 100).unwrap(),
+                Value::Void
+            );
+        }
+        for source in ["(", "1 +", "/* unterminated"] {
+            assert!(compile_expression("invalid", source).is_err());
+        }
+    }
+
     #[test]
     fn register_execution_and_short_circuit() {
         let p = compile(
