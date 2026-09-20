@@ -1621,5 +1621,31 @@
     "expected": {
       "Integer": 0
     }
+  },
+  {
+    "name": "system_arguments",
+    "source": "System.setArgument('-synthetic',123);var a=System.getArgument('-synthetic');System.setArgument('-synthetic',void);System.setArgument('bare','x');return (typeof a)+'|'+a+'|'+System.getArgument('-synthetic')+'|'+typeof System.getArgument('-Synthetic')+'|'+System.getArgument('bare');",
+    "expected": {
+      "String": [
+        83,
+        116,
+        114,
+        105,
+        110,
+        103,
+        124,
+        49,
+        50,
+        51,
+        124,
+        124,
+        118,
+        111,
+        105,
+        100,
+        124,
+        120
+      ]
+    }
   }
 ]

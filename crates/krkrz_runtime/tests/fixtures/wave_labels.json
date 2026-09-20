@@ -1,0 +1,111 @@
+[
+  {
+    "name": "labels_values",
+    "source": "var w=new WaveSoundBuffer(null);w.open(System.exePath+'tone.wav');var l=w.labels;return (l===w.labels)+'|'+(l instanceof 'Dictionary')+'|'+l.start.name+'|'+l.start.samplePosition+'|'+l.start.position+'|'+l.end.position+'|'+typeof l.missing;",
+    "expected": {
+      "String": [
+        49,
+        124,
+        49,
+        124,
+        115,
+        116,
+        97,
+        114,
+        116,
+        124,
+        52,
+        52,
+        49,
+        124,
+        49,
+        48,
+        124,
+        53,
+        48,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "labels_reopen",
+    "source": "var w=new WaveSoundBuffer(null),empty=w.labels;empty.custom=7;w.open(System.exePath+'tone.wav');var l=w.labels,item=l.start;l.start.position=23;var v=w.labels.start.position;w.open(System.exePath+'tone.wav');return (isvalid empty)+'|'+(isvalid l)+'|'+(isvalid item)+'|'+item.position+'|'+v+'|'+w.labels.start.position;",
+    "expected": {
+      "String": [
+        48,
+        124,
+        48,
+        124,
+        49,
+        124,
+        50,
+        51,
+        124,
+        50,
+        51,
+        124,
+        49,
+        48
+      ]
+    }
+  },
+  {
+    "name": "labels_destroy",
+    "source": "var w=new WaveSoundBuffer(null);w.open(System.exePath+'tone.wav');var l=w.labels,item=l.start;invalidate w;return (isvalid l)+'|'+(isvalid item)+'|'+item.position;",
+    "expected": {
+      "String": [
+        48,
+        124,
+        49,
+        124,
+        49,
+        48
+      ]
+    }
+  },
+  {
+    "name": "labels_unloaded",
+    "source": "var w=new WaveSoundBuffer(null),l=w.labels;l.foo=6;var failed=0;try{w.labels=%[];}catch(e){failed=1;}return (l===w.labels)+'|'+l.foo+'|'+failed+'|'+typeof l.start;",
+    "expected": {
+      "String": [
+        49,
+        124,
+        54,
+        124,
+        49,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "labels_without_sli",
+    "source": "var w=new WaveSoundBuffer(null),l=w.labels;l.foo=6;w.open(System.exePath+'plain.wav');return (l===w.labels)+'|'+(isvalid l)+'|'+w.labels.foo;",
+    "expected": {
+      "String": [
+        49,
+        124,
+        49,
+        124,
+        54
+      ]
+    }
+  }
+]

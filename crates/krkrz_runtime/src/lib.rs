@@ -4,6 +4,7 @@ mod app_lock;
 mod async_trigger;
 pub mod audio;
 pub mod compositor;
+mod continuous;
 mod csv;
 mod dialog;
 pub mod display;
@@ -22,6 +23,7 @@ mod psb_file;
 mod save_storage;
 pub mod scheduler;
 mod sound;
+mod sound_flags;
 mod sound_stream;
 mod text_render;
 mod timer;
@@ -64,6 +66,7 @@ pub struct Services {
     pub fonts: fonts::FontBook,
     app_locks: app_lock::AppLocks,
     async_triggers: async_trigger::State,
+    continuous_handlers: Vec<Option<Value>>,
     events: scheduler::EventQueue,
     timers: BTreeMap<usize, timer::Timer>,
     layers: BTreeMap<usize, layer::Layer>,
@@ -71,6 +74,8 @@ pub struct Services {
     kag_parsers: BTreeMap<usize, std::rc::Rc<std::cell::RefCell<kag_parser::Parser>>>,
     csv_parsers: BTreeMap<usize, csv::Parser>,
     sounds: BTreeMap<usize, sound::Sound>,
+    wave_flags_class: Value,
+    wave_flags: BTreeMap<usize, Option<usize>>,
     vocoders: BTreeMap<usize, phase_vocoder::Settings>,
     videos: BTreeMap<usize, video_overlay::Video>,
     psb_files: BTreeMap<usize, Option<psb_file::File>>,
@@ -85,6 +90,7 @@ pub struct Services {
     sample_plugin: get_sample::State,
     pub arguments: BTreeMap<String, String>,
     loaded_plugins: BTreeSet<String>,
+    plugin_names: Vec<String>,
     depth: usize,
 }
 impl Services {
@@ -146,6 +152,13 @@ impl Host for Services {
         if name == "WaveSoundBuffer.getSample" {
             return self.sample_call(vm, "getSample", context, args, budget, result_needed);
         }
+        // TJS compiles eval as an expression with a return only when the caller
+        // requested a result. Discarded eval permits result-less swap operations.
+        let name = match (name, result_needed) {
+            ("Scripts.eval", false) => "Scripts.evalDiscard",
+            ("Scripts.evalStorage", false) => "Scripts.evalStorageDiscard",
+            _ => name,
+        };
         self.call_with_context(vm, name, context, args, budget)
     }
     fn call_with_context(
@@ -156,6 +169,9 @@ impl Host for Services {
         args: &[Value],
         budget: &mut u64,
     ) -> Result<Value> {
+        if let Some(operation) = name.strip_prefix("WaveFlags.") {
+            return self.wave_flags_call(operation, context, args);
+        }
         if let Some(operation) = name.strip_prefix("KAGParser.") {
             return self.kag_call(vm, operation, context, args, budget);
         }
@@ -388,8 +404,12 @@ impl Host for Services {
                 Ok(Value::Void)
             }
             "Plugins.link" => {
-                let path = arg(0)?.text().replace('\\', "/");
-                match path
+                let spelling = arg(0)?.unary("string")?.text();
+                if self.plugin_names.contains(&spelling) {
+                    return Ok(Value::Void);
+                }
+                let path = spelling.replace('\\', "/");
+                let result = match path
                     .rsplit('/')
                     .next()
                     .unwrap_or("")
@@ -398,9 +418,19 @@ impl Host for Services {
                 {
                     "packinone.dll" => {
                         if !self.loaded_plugins.contains("packinone.dll") {
-                            for component in ["ScriptsEx.dll", "saveStruct.dll", "csvParser.dll"] {
-                                self.call(vm, "Plugins.link", &[Value::string(component)], budget)?;
+                            if !self.loaded_plugins.contains("scriptsex.dll") {
+                                vm.register_scripts_ex()?;
                             }
+                            if !self.loaded_plugins.contains("savestruct.dll") {
+                                vm.register_save_struct()?;
+                            }
+                            if !self.loaded_plugins.contains("csvparser.dll") {
+                                csv::register(vm)?;
+                            }
+                            self.loaded_plugins.extend(
+                                ["scriptsex.dll", "savestruct.dll", "csvparser.dll"]
+                                    .map(String::from),
+                            );
                             plugins::packinone(vm)?;
                             self.loaded_plugins.insert("packinone.dll".into());
                         }
@@ -410,6 +440,14 @@ impl Host for Services {
                     // uses the Rust Vorbis decoder for these streams.
                     "wuvorbis.dll" => {
                         self.loaded_plugins.insert("wuvorbis.dll".into());
+                        Ok(Value::Void)
+                    }
+                    // extrans installs transition providers, with no TJS globals.
+                    // Layer.beginTransition remains responsible for validating
+                    // the selected provider and rejecting unimplemented effects.
+                    "extrans.dll" | "extnagano.dll" => {
+                        self.loaded_plugins
+                            .insert(path.rsplit('/').next().unwrap().to_ascii_lowercase());
                         Ok(Value::Void)
                     }
                     // PackinOne already registers the image extension. The
@@ -507,9 +545,39 @@ impl Host for Services {
                     _ => Err(unsupported(format!(
                         "unsupported Kirikiri native operation: Plugins.link({path})"
                     ))),
+                };
+                if result.is_ok() {
+                    self.plugin_names.push(spelling);
                 }
+                result
+            }
+            "Plugins.getList" => {
+                vm.new_native_array(self.plugin_names.iter().map(|s| Value::string(s)).collect())
             }
             "System.getTickCount" => Ok(Value::Integer(self.time_ms as i64)),
+            "System.addContinuousHandler" | "System.removeContinuousHandler" => {
+                let handler = arg(0)?;
+                ensure!(
+                    matches!(handler, Value::Object(_)),
+                    "continuous handler must be an Object"
+                );
+                let index = self
+                    .continuous_handlers
+                    .iter()
+                    .position(|h| h.as_ref() == Some(handler));
+                if name == "System.addContinuousHandler" {
+                    if index.is_none() && handler != &Value::NULL {
+                        ensure!(
+                            self.continuous_handlers.len() < 100_000,
+                            "continuous handler limit exceeded"
+                        );
+                        self.continuous_handlers.push(Some(handler.clone()));
+                    }
+                } else if let Some(index) = index {
+                    self.continuous_handlers[index] = None;
+                }
+                Ok(Value::Void)
+            }
             "System.readRegValue" => {
                 arg(0)?.unary("string")?;
                 // The Linux host has no Windows registry. Kirikiri SDL2 likewise
@@ -549,12 +617,35 @@ impl Host for Services {
                 .get(&arg(0)?.text())
                 .map(|v| Value::string(v))
                 .unwrap_or(Value::Void)),
+            "System.setArgument" => {
+                let name = arg(0)?.unary("string")?.text();
+                let value = arg(1)?.unary("string")?.text();
+                self.arguments.insert(name, value);
+                Ok(Value::Void)
+            }
+            "System.doCompact" => {
+                let level = match args.first() {
+                    None | Some(Value::Void) => 100,
+                    Some(value) => value.integer()? as i32,
+                };
+                // Upstream compacts its string/variant allocation pools at 5.
+                // Rust allocations have no equivalent retained free pools.
+                if level >= 10 {
+                    for archive in &mut self.storage.archives {
+                        archive.clear_cache();
+                    }
+                }
+                if level >= 15 {
+                    self.image_cache.clear();
+                }
+                Ok(Value::Void)
+            }
             "Scripts.setCallMissing" => {
                 vm.set_call_missing(arg(0)?)?;
                 Ok(Value::Void)
             }
             "Scripts.getClassNames" => vm.class_names(arg(0)?),
-            "Scripts.execStorage" | "Scripts.evalStorage" => {
+            "Scripts.execStorage" | "Scripts.evalStorage" | "Scripts.evalStorageDiscard" => {
                 let context = script_context(args.get(2));
                 self.script(
                     vm,
@@ -565,7 +656,7 @@ impl Host for Services {
                     budget,
                 )
             }
-            "Scripts.exec" | "Scripts.eval" => {
+            "Scripts.exec" | "Scripts.eval" | "Scripts.evalDiscard" => {
                 let offset = args.get(2).map(Value::integer).transpose()?.unwrap_or(0);
                 if !(0..=1_000_000).contains(&offset) {
                     return Err(unsupported("script line offset outside supported range"));
@@ -576,7 +667,7 @@ impl Host for Services {
                     .filter(|v| !matches!(v, Value::Void))
                     .map(Value::text)
                     .unwrap_or_else(|| {
-                        if name == "Scripts.eval" {
+                        if name.starts_with("Scripts.eval") {
                             "<eval>".into()
                         } else {
                             "<exec>".into()
@@ -688,6 +779,7 @@ impl Session {
         layer::register(&mut vm)?;
         font::register(&mut vm)?;
         sound::register(&mut vm)?;
+        let wave_flags_class = sound_flags::register(&mut vm)?;
         phase_vocoder::register(&mut vm)?;
         video_overlay::register(&mut vm)?;
         let system = vm.register_namespace("System")?;
@@ -709,6 +801,18 @@ impl Session {
         )?;
         for (key, value) in [
             ("exePath", format!("{}/", storage.project.display())),
+            (
+                "exeName",
+                storage
+                    .project
+                    .join(if otome_profile {
+                        "otomedomain.exe"
+                    } else {
+                        "krkrz_engine"
+                    })
+                    .display()
+                    .to_string(),
+            ),
             ("title", "krkrz_rs".into()),
             ("osName", std::env::consts::OS.into()),
             ("platformName", std::env::consts::OS.into()),
@@ -721,9 +825,13 @@ impl Session {
             "Debug.message",
             "Debug.notice",
             "System.getTickCount",
+            "System.addContinuousHandler",
+            "System.removeContinuousHandler",
             "System.readRegValue",
             "System.createAppLock",
             "System.getArgument",
+            "System.setArgument",
+            "System.doCompact",
             "Scripts.execStorage",
             "Scripts.evalStorage",
             "Scripts.exec",
@@ -739,6 +847,7 @@ impl Session {
             "Storages.extractStorageExt",
             "Storages.chopStorageExt",
             "Plugins.link",
+            "Plugins.getList",
         ] {
             vm.register_native(name)?;
         }
@@ -759,6 +868,7 @@ impl Session {
                 image_cache: graphics::ImageCache::new(graphics::automatic_limit()),
                 app_locks: app_lock::AppLocks::default(),
                 async_triggers: async_trigger::State::default(),
+                continuous_handlers: Vec::new(),
                 events: scheduler::EventQueue::default(),
                 timers: BTreeMap::new(),
                 layers: BTreeMap::new(),
@@ -767,6 +877,8 @@ impl Session {
                 fonts: fonts::FontBook::default(),
                 csv_parsers: BTreeMap::new(),
                 sounds: BTreeMap::new(),
+                wave_flags_class,
+                wave_flags: BTreeMap::new(),
                 vocoders: BTreeMap::new(),
                 videos: BTreeMap::new(),
                 psb_files: BTreeMap::new(),
@@ -781,6 +893,7 @@ impl Session {
                 sample_plugin: get_sample::State::default(),
                 arguments: BTreeMap::from([("-debugwin".into(), "no".into())]),
                 loaded_plugins: BTreeSet::new(),
+                plugin_names: Vec::new(),
                 depth: 0,
             },
             budget,
@@ -822,6 +935,10 @@ impl Session {
             .checked_sub(1)
             .ok_or_else(|| unsupported("host tick execution budget exceeded"))?;
         self.advance_clock(time_ms)?;
+        self.dispatch_continuous()?;
+        if self.services.events.exclusive_posted() {
+            return Ok(());
+        }
         let windows: Vec<_> = self.services.windows.keys().copied().collect();
         for id in windows {
             if self

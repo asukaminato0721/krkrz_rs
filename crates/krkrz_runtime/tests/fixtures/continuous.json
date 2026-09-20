@@ -1,0 +1,28 @@
+[
+  {
+    "name": "continuous_live_order",
+    "source": "var events=[],ready=false;var owner=%[name:'c'];var c=function(t){events.add(name);events.add(int(t>=0 && typeof t=='Integer'));System.removeContinuousHandler(c);ready=true;} incontextof owner;function a(t){events.add('a');System.removeContinuousHandler(a);System.removeContinuousHandler(b);System.addContinuousHandler(c);}function b(t){events.add('b');}System.addContinuousHandler(a);System.addContinuousHandler(a);System.addContinuousHandler(b);",
+    "await": "int(ready)",
+    "result": "events.join(',')",
+    "expected": {
+      "String": [
+        97,
+        44,
+        99,
+        44,
+        49
+      ]
+    }
+  },
+  {
+    "name": "continuous_property",
+    "source": "var events=[],ready=false;property handler {getter(){return function(){events.add('p');System.removeContinuousHandler(&handler);ready=true;};}}System.addContinuousHandler(&handler);",
+    "await": "int(ready)",
+    "result": "events.join(',')",
+    "expected": {
+      "String": [
+        112
+      ]
+    }
+  }
+]

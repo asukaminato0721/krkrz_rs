@@ -31,6 +31,8 @@ pub(crate) struct Sound {
     pub(crate) frequency: i32,
     owner: Value,
     pub(crate) filters: Value,
+    flags_object: Option<Value>,
+    pub(crate) labels_object: Option<Value>,
     constructed: bool,
     volume: i32,
     volume2: i32,
@@ -54,6 +56,8 @@ impl Default for Sound {
             frequency: 0,
             owner: Value::NULL,
             filters: Value::Void,
+            flags_object: None,
+            labels_object: None,
             constructed: false,
             volume: 100_000,
             volume2: 100_000,
@@ -206,7 +210,11 @@ impl Services {
             return Ok(Value::Void);
         }
         if operation == "@invalidate" {
-            self.sounds.remove(&id);
+            if let Some(sound) = self.sounds.remove(&id)
+                && let Some(labels) = sound.labels_object
+            {
+                vm.invalidate(&labels, self, budget)?;
+            }
             self.sample_plugin.instances.remove(&id);
             return Ok(Value::Void);
         }
@@ -221,6 +229,46 @@ impl Services {
             );
             let storage = arg(0)?.text();
             return self.sound_open(vm, context, id, &storage, budget);
+        }
+        if operation == "get:flags" {
+            if let Some(value) = &self.sounds[&id].flags_object {
+                return Ok(value.clone());
+            }
+            let class = self.wave_flags_class.clone();
+            let value = vm.construct(&class, std::slice::from_ref(context), self, budget)?;
+            self.sounds.get_mut(&id).unwrap().flags_object = Some(value.clone());
+            return Ok(value);
+        }
+        if operation == "get:labels" {
+            if let Some(value) = &self.sounds[&id].labels_object {
+                return Ok(value.clone());
+            }
+            let value = vm.new_dictionary()?;
+            if let Some(loaded) = &self.sounds[&id].loaded {
+                for label in loaded.stream.labels() {
+                    *budget = budget
+                        .checked_sub(1)
+                        .ok_or_else(|| unsupported("sound label execution budget exceeded"))?;
+                    let item = vm.new_dictionary()?;
+                    for (key, val) in [
+                        ("name", Value::string(&label.name)),
+                        ("samplePosition", Value::Integer(label.position as i64)),
+                        (
+                            "position",
+                            Value::Integer(
+                                (label.position * 1000 / loaded.audio.sample_rate as u64) as i64,
+                            ),
+                        ),
+                    ] {
+                        vm.set_member(&item, &Value::string(key), val)?;
+                    }
+                    if !label.name.is_empty() {
+                        vm.set_member(&value, &Value::string(&label.name), item)?;
+                    }
+                }
+            }
+            self.sounds.get_mut(&id).unwrap().labels_object = Some(value.clone());
+            return Ok(value);
         }
         let sound = self.sounds.get_mut(&id).unwrap();
         if operation == "WaveSoundBuffer" {

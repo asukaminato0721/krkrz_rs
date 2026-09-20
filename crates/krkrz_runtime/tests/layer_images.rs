@@ -102,6 +102,27 @@ return b.getMainPixel(0,0);
             .get(&project.path().join("pixels.png").to_string_lossy())
             .is_some()
     );
+    session.evaluate("System.doCompact(10)").unwrap();
+    assert!(
+        session
+            .services
+            .image_cache
+            .get(&project.path().join("pixels.png").to_string_lossy())
+            .is_some()
+    );
+    session.evaluate("System.doCompact(15)").unwrap();
+    assert!(
+        session
+            .services
+            .image_cache
+            .get(&project.path().join("pixels.png").to_string_lossy())
+            .is_none()
+    );
+    assert_eq!(
+        session.evaluate("b.getMainPixel(0,0)").unwrap(),
+        Value::Integer(0xff0000)
+    );
+    session.evaluate("b.loadImages('pixels.png')").unwrap();
     session.evaluate("System.graphicCacheLimit=0").unwrap();
     assert!(
         session

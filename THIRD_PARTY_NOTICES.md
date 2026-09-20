@@ -148,3 +148,14 @@ The windowEx state and notification bindings follow miahmie's `wtnbgo/windowEx`,
 revision `88c9be22ff8f9e6d42edbf4787092837f177a89a`, under the Kirikiri license
 reproduced above. Font parsing/rasterization uses `ttf-parser` (MIT/Apache-2.0)
 and `ab_glyph` (Apache-2.0). The test font is a generated synthetic triangle.
+
+Text rasterization also uses `freetype-rs` (MIT) with FreeType (FTL/GPLv2).
+Layer text coverage, shadow convolution, alpha tables and pixel blending follow
+Kirikiri Z `visual/CharacterData.cpp`, `visual/glgen/gengl.pl`, `maketab.c` and
+the historical IA32 colormap implementations at revision
+`516eae6decd3d3b58bdde24907d408aece38699a`, under the Kirikiri notice above.
+Font positioning follows `visual/win32/GDIFontRasterizer.cpp`; the FreeType
+backend in Kirikiroid2 was consulted. Array/Dictionary deep copying and Math
+semantics follow `tjs2/tjsArray.cpp`, `tjsDictionary.cpp` and `tjsMath.cpp`.
+Transition registration follows `krkrz/SamplePlugin/extrans/Main.cpp`, pinned
+in `docs/references.json`, under the Kirikiri notice above.

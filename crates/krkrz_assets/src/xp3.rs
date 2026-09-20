@@ -78,6 +78,12 @@ pub(crate) fn inflate(bytes: &[u8], size: u64, limit: u64) -> Result<Vec<u8>> {
     Ok(result)
 }
 impl Archive {
+    /// Release decoded segments without closing the mounted archive.
+    pub fn clear_cache(&mut self) {
+        self.cache.clear();
+        self.cache_bytes = 0;
+    }
+
     pub fn open(path: impl AsRef<Path>, limits: Limits) -> Result<Self> {
         let path = path.as_ref();
         let mut file = File::open(path).with_context(|| format!("open {}", path.display()))?;

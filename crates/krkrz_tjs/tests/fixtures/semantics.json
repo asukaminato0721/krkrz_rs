@@ -1490,5 +1490,26 @@
     "expected": {
       "Integer": 30
     }
+  },
+  {
+    "name": "class_property_caller",
+    "source": "class A {var x=2;property p {getter(){return x;}setter(v){x=v;}}}class B extends A {var BASE=A;function f(){BASE.p=7;return BASE.p;}}var b=new B();return b.f()*10+b.p;",
+    "expected": {
+      "Integer": 77
+    }
+  },
+  {
+    "name": "class_property_explicit_context",
+    "source": "class A {var x=2;property p {getter(){return x;}setter(v){x=v;}}}var a=new A(),b=new A();var c=A incontextof a;function f(){c.p=8;return c.p;}var v=(f incontextof b)();return v*100+a.p*10+b.p;",
+    "expected": {
+      "Integer": 882
+    }
+  },
+  {
+    "name": "class_property_global_context",
+    "source": "var x=3;class A {property p {getter(){return x;}setter(v){x=v;}}}A.p=9;return A.p*10+x;",
+    "expected": {
+      "Integer": 99
+    }
   }
 ]

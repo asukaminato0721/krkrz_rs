@@ -1,0 +1,128 @@
+[
+  {
+    "name": "sort_modes",
+    "source": "var out=[];var modes=['+','-','0','9','a','z','?'];for(var i=0;i<modes.count;i++){var a=['10','2','1'];a.sort(modes[i]);out.add(a.join(','));}return out.join('|');",
+    "expected": {
+      "String": [
+        49,
+        44,
+        49,
+        48,
+        44,
+        50,
+        124,
+        50,
+        44,
+        49,
+        48,
+        44,
+        49,
+        124,
+        49,
+        44,
+        50,
+        44,
+        49,
+        48,
+        124,
+        49,
+        48,
+        44,
+        50,
+        44,
+        49,
+        124,
+        49,
+        44,
+        49,
+        48,
+        44,
+        50,
+        124,
+        50,
+        44,
+        49,
+        48,
+        44,
+        49,
+        124,
+        49,
+        44,
+        49,
+        48,
+        44,
+        50
+      ]
+    }
+  },
+  {
+    "name": "sort_numbers",
+    "source": "var a=[10,2,1];var ret=a.sort();return a.join(',')+'|'+typeof ret;",
+    "expected": {
+      "String": [
+        49,
+        44,
+        50,
+        44,
+        49,
+        48,
+        124,
+        118,
+        111,
+        105,
+        100
+      ]
+    }
+  },
+  {
+    "name": "sort_stable_callback",
+    "source": "var a=[%[k:2,id:'a'],%[k:1,id:'b'],%[k:2,id:'c'],%[k:1,id:'d']];a.sort(function(a,b){return a.k<b.k;},true);var out=[];for(var i=0;i<a.count;i++)out.add(a[i].id);return out.join('');",
+    "expected": {
+      "String": [
+        98,
+        100,
+        97,
+        99
+      ]
+    }
+  },
+  {
+    "name": "sort_context",
+    "source": "class C {var direction=-1;function less(a,b){return a*direction<b*direction;}}var c=new C(),a=[1,3,2];a.sort(c.less);return a.join(',');",
+    "expected": {
+      "String": [
+        51,
+        44,
+        50,
+        44,
+        49
+      ]
+    }
+  },
+  {
+    "name": "sort_empty_single",
+    "source": "var a=[],b=[1];a.sort(null);b.sort(null);return a.count+'|'+b.join(',');",
+    "expected": {
+      "String": [
+        48,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "sort_error",
+    "source": "var a=[2,1];try{a.sort(function(a,b){throw 'compare';});}catch(e){return e;}return 'bad';",
+    "expected": {
+      "String": [
+        99,
+        111,
+        109,
+        112,
+        97,
+        114,
+        101
+      ]
+    }
+  }
+]

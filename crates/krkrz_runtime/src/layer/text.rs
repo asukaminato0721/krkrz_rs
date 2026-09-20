@@ -125,11 +125,11 @@ impl TextGlyph {
             }
             return Ok(result);
         }
+        result.left -= radius;
+        result.top -= radius;
         let radius = radius.unsigned_abs() as usize;
         result.width += 2 * radius;
         result.height += 2 * radius;
-        result.left -= radius as i32;
-        result.top -= radius as i32;
         ensure!(
             result.width * result.height <= 16_000_000,
             "text shadow bitmap exceeds size limit"
@@ -242,21 +242,21 @@ fn text_pixel(p: &mut [u8], coverage: i32, color: [u8; 3], face: i32, hold: bool
     let a = if opacity == 255 {
         coverage
     } else {
-        coverage * opacity >> 8
+        (coverage * opacity) >> 8
     };
     if face == 0 {
         let weight = text_alpha_weight(p[3], a as u8);
         for i in 0..3 {
-            p[i] = (p[i] as i32 + ((color[i] as i32 - p[i] as i32) * weight >> 8)) as u8;
+            p[i] = (p[i] as i32 + (((color[i] as i32 - p[i] as i32) * weight) >> 8)) as u8;
         }
         p[3] = (255 - (255 - p[3] as i32) * (255 - (a * 4).min(255)) / 255) as u8;
     } else if face == 1 {
         for i in 0..3 {
-            p[i] = (p[i] as i32 + ((color[i] as i32 - p[i] as i32) * a >> 6)) as u8;
+            p[i] = (p[i] as i32 + (((color[i] as i32 - p[i] as i32) * a) >> 6)) as u8;
         }
         if !hold {
             p[3] = if opacity == 255 {
-                (p[3] as i32 + (-(p[3] as i32) * a >> 6)) as u8
+                (p[3] as i32 + ((-(p[3] as i32) * a) >> 6)) as u8
             } else {
                 0
             };
@@ -264,18 +264,19 @@ fn text_pixel(p: &mut [u8], coverage: i32, color: [u8; 3], face: i32, hold: bool
     } else {
         if opacity == 255 {
             for i in 0..3 {
-                p[i] = (p[i] as i32 - (p[i] as i32 * a >> 6) + (color[i] as i32 * a >> 6)).min(255)
-                    as u8;
+                p[i] = (p[i] as i32 - ((p[i] as i32 * a) >> 6) + ((color[i] as i32 * a) >> 6))
+                    .min(255) as u8;
             }
-            p[3] = (p[3] as i32 + a * 4 - (p[3] as i32 * a >> 6)).min(255) as u8;
+            p[3] = (p[3] as i32 + a * 4 - ((p[3] as i32 * a) >> 6)).min(255) as u8;
             return;
         }
         let alpha = (a * 4).min(255);
         for i in 0..3 {
-            p[i] = ((p[i] as i32 * (255 - alpha) >> 8) + (color[i] as i32 * a >> 6)).min(255) as u8;
+            p[i] = (((p[i] as i32 * (255 - alpha)) >> 8) + ((color[i] as i32 * a) >> 6)).min(255)
+                as u8;
         }
         let d = p[3] as i32;
-        p[3] = (d + alpha - (d * alpha >> 8)).min(255) as u8;
+        p[3] = (d + alpha - ((d * alpha) >> 8)).min(255) as u8;
     }
 }
 

@@ -1,0 +1,120 @@
+[
+  {
+    "name": "exception_class",
+    "source": "var e=new Exception();return (Exception instanceof 'Class')+'|'+(e instanceof 'Exception');",
+    "expected": {
+      "String": [
+        49,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "exception_values",
+    "source": "var e=new Exception(123,456),d=new Exception(void,void);return (typeof e.message)+'|'+e.message+'|'+e.trace+'|'+d.message+'|'+d.trace;",
+    "expected": {
+      "String": [
+        73,
+        110,
+        116,
+        101,
+        103,
+        101,
+        114,
+        124,
+        49,
+        50,
+        51,
+        124,
+        52,
+        53,
+        54,
+        124,
+        124
+      ]
+    }
+  },
+  {
+    "name": "exception_inherit",
+    "source": "class E extends Exception { function E(m){super.Exception(m,'trace');} } try{throw new E('reason');}catch(e){return (e instanceof 'E')+'|'+(e instanceof 'Exception')+'|'+e.message+'|'+e.trace;}",
+    "expected": {
+      "String": [
+        49,
+        124,
+        49,
+        124,
+        114,
+        101,
+        97,
+        115,
+        111,
+        110,
+        124,
+        116,
+        114,
+        97,
+        99,
+        101
+      ]
+    }
+  },
+  {
+    "name": "exception_reinitialize",
+    "source": "var e=new Exception('a','b');e.Exception('c');e.finalize();return e.message+'|'+e.trace;",
+    "expected": {
+      "String": [
+        99,
+        124
+      ]
+    }
+  },
+  {
+    "name": "discarded_eval_swap",
+    "source": "global.a=1;global.b=2;Scripts.eval('a<->b');var failed=false;try{var r=Scripts.eval('a<->b');}catch{failed=true;}return a+'|'+b+'|'+failed;",
+    "expected": {
+      "String": [
+        50,
+        124,
+        49,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "plugin_list",
+    "source": "var before=Plugins.getList().count;Plugins.link('extrans.dll');Plugins.link('PackinOne.dll');Plugins.link('extrans.dll');var list=Plugins.getList(),out=[];for(var i=before;i<list.count;i++)out.add(list[i]);list.clear();return out.join('|')+'|'+(Plugins.getList().count-before);",
+    "expected": {
+      "String": [
+        101,
+        120,
+        116,
+        114,
+        97,
+        110,
+        115,
+        46,
+        100,
+        108,
+        108,
+        124,
+        80,
+        97,
+        99,
+        107,
+        105,
+        110,
+        79,
+        110,
+        101,
+        46,
+        100,
+        108,
+        108,
+        124,
+        50
+      ]
+    }
+  }
+]

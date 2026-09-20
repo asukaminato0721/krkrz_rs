@@ -6,6 +6,28 @@ use std::{path::Path, sync::Arc};
 
 #[test]
 #[ignore = "requires the installed Otome Domain game and KRKRZ_PROJECT_DIR"]
+fn original_startup_completes_framework_initialization() -> Result<()> {
+    use krkrz_runtime::Session;
+    use krkrz_tjs::Value;
+    let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
+    let saves = tempfile::tempdir()?;
+    let mut session = Session::open(Path::new(&project), Some(saves.path()), true, 100_000_000)?;
+    session.startup()?;
+    assert!(session.budget > 0);
+    assert_eq!(session.services.fonts.face_count(), 8);
+    assert_eq!(
+        session.evaluate("kag instanceof 'KAGWindow'")?,
+        Value::Integer(1)
+    );
+    assert_eq!(
+        session.evaluate("kag.fore.base instanceof 'Layer'")?,
+        Value::Integer(1)
+    );
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires the installed Otome Domain game and KRKRZ_PROJECT_DIR"]
 fn embedded_true_type_and_cff_fonts_rasterize_japanese() -> Result<()> {
     let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
     let mut storage = Storage::open(

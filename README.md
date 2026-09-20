@@ -1,14 +1,12 @@
 # Rust Kirikiri Z compatibility engine
 
 This repository contains an initial implementation toward the Otome Domain
-playable slice. **The game is not playable yet.** Original startup loads the
-framework through `Override.tjs`, registers eight embedded fonts, and constructs
-the game menus, including windowEx system menus. Execution currently stops in
-`MainWindow.tjs` at the missing Window.fullScreen API, after message layers,
-voice tracks (including PhaseVocoder), movie objects and zoom initialization.
-Movie decoding and native presentation remain unimplemented. The title,
-New Game, first choice, scene transition, and original save/load acceptance
-criteria have not been met. Execution failures never count as checkpoints.
+playable slice. **The game is not playable yet.** The original `startup.tjs`
+now completes framework initialization, including game menus, embedded fonts,
+message layers and audio objects. Deterministic ticks deliver timer, asynchronous
+and paint callbacks. Post-startup execution currently stops at `extNagano.dll`.
+Native presentation, required movies/effects, title interaction, New Game,
+first choice and original save/load acceptance remain incomplete.
 
 ## Build and verify
 
@@ -50,6 +48,8 @@ Kirikiri's original bytecode format. `exec` runs a source file in the standalone
 TJS VM and prints a JSON value; Kirikiri services are provided by the engine
 command or `exec NAME --runtime`. The runtime option uses the same Session as
 the engine, including plugin registration and shared execution budgets.
+Add `--advance-ms 1000 --step-ms 16` to deliver deterministic host ticks after
+execution, and repeat `--inspect EXPRESSION` to inspect resulting script state.
 Use `exec NAME --runtime --save-dir PATH` to select a separate writable directory.
 
 An unfiltered `verify` deliberately returns failure for the installation's
@@ -62,7 +62,7 @@ before reporting the failure. The entry is not hidden or treated as valid.
 cargo run -p krkrz_cli --bin krkrz_engine -- \
   --project-dir /path/to/otome_domain \
   --save-dir /path/outside/the/game/saves \
-  --budget 1000000 --trace /path/outside/the/game/new-trace.json
+  --budget 100000000 --trace /path/outside/the/game/new-trace.json
 ```
 
 `--project-dir` defaults to the current directory. The executor selects the
@@ -88,10 +88,10 @@ outside the installation.
 | Crate | Implemented | Still required for the slice |
 |---|---|---|
 | `krkrz_core` | Storage-name normalization, resource limits, source/input types, separate save path selection | Full Kirikiri URI/media normalization |
-| `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5, integer WAVE/Vorbis PCM, SLI loops and labels, checked AlphaMovie containers | TLG6, font integration, MPEG/AlphaMovie pixel decoding |
+| `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5/TLG6, integer WAVE/Vorbis PCM, SLI loops and labels, checked AlphaMovie containers | MPEG/AlphaMovie pixel decoding |
 | `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, switch/do/while/for control flow, comma/swap and eager logical-assignment operators, global unary-dot lookup, ordered class initializers and deferred base resolution, explicit invalidation/finalization, interpolation, default parameters, argument forwarding/rest/spread, octet values, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting, automatic object finalization/collection, original bytecode loader |
 | `krkrz_kag` | UTF-16 KAGParserEx tokenization, ordered attributes, labels, escaped brackets and multiline tags; runtime bindings provide expressions, macros, conditions, jumps/calls and label-based state restoration | Complete game-framework integration and replay validation |
-| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, TextRenderBase layout/timing, GdiPlus geometry, AlphaMovie metadata/transport controls, MenuItem state/tree/click dispatch, WIN32Dialog templates/bounded buffers/closed state, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
+| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, TextRenderBase layout/timing, GdiPlus geometry, AlphaMovie metadata/transport controls, MenuItem state/tree/click dispatch, WIN32Dialog templates/bounded buffers/closed state, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, private FreeType font rasterization and Layer.drawText, image loading/blits, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, transitions/effects/callback integration, SLI label expressions, original saves and replay |
 | `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, static inventory, primitive evaluation, startup diagnostics | Deterministic interactive replay, input-driven checkpoints, frame/audio comparison, native play |
 
 The compositor, scheduler, Window state and PCM mixer are tested components, not yet a game player. Window support currently covers construction, caption, visibility, client size, position, primary-layer lookup and resize/action callbacks in headless sessions. Explicit invalidation releases its native state and cancels pending callbacks. It does not create an OS window.

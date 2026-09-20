@@ -1,5 +1,6 @@
 //! TJS values, objects, source compiler, and a bounded register interpreter.
 //! Unsupported source constructs are errors; this is not a JavaScript adapter.
+mod array_sort;
 mod classes;
 mod compiler;
 mod dispatch;

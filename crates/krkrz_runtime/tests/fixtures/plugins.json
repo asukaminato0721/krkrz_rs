@@ -14,5 +14,42 @@
         49
       ]
     }
+  },
+  {
+    "name": "nagano_exports",
+    "source": "return (function(){Plugins.link('PackinOne.dll');var objs=[global,Layer,Window,System,Scripts,Math],before=[];for(var i=0;i<objs.count;i++){var keys=Scripts.getObjectKeys(objs[i]);before.add(keys.join(','));}Plugins.link('extNagano.dll');var out=[];for(var i=0;i<objs.count;i++){var keys=Scripts.getObjectKeys(objs[i]);out.add((keys.join(',')==before[i])?'same':keys.join(','));}return out.join('|');})();",
+    "expected": {
+      "String": [
+        115,
+        97,
+        109,
+        101,
+        124,
+        115,
+        97,
+        109,
+        101,
+        124,
+        115,
+        97,
+        109,
+        101,
+        124,
+        115,
+        97,
+        109,
+        101,
+        124,
+        115,
+        97,
+        109,
+        101,
+        124,
+        115,
+        97,
+        109,
+        101
+      ]
+    }
   }
 ]

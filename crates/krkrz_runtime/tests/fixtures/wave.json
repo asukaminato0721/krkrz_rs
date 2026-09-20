@@ -205,5 +205,70 @@
     "expected": {
       "Integer": 1
     }
+  },
+  {
+    "name": "flags_unloaded",
+    "source": "var w=new WaveSoundBuffer(null),f=w.flags;f[0]=123;return (f===w.flags)+'|'+(f instanceof 'WaveFlags')+'|'+f.count+'|'+f[0]+'|'+typeof global.WaveFlags;",
+    "expected": {
+      "String": [
+        49,
+        124,
+        49,
+        124,
+        49,
+        54,
+        124,
+        48,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "flags_loaded",
+    "source": "var w=new WaveSoundBuffer(null);w.open(System.exePath+'tone.wav');var f=w.flags;f[0]=10001;f[1]=-3;f[15]='9';return f[0]+'|'+f[1]+'|'+f[15];",
+    "expected": {
+      "String": [
+        57,
+        57,
+        57,
+        57,
+        124,
+        48,
+        124,
+        57
+      ]
+    }
+  },
+  {
+    "name": "flags_reset",
+    "source": "var w=new WaveSoundBuffer(null);w.open(System.exePath+'tone.wav');var f=w.flags;f[0]=44;f.reset();var a=f[0];f[0]=55;w.open(System.exePath+'tone.wav');return a+'|'+f[0]+'|'+(f===w.flags);",
+    "expected": {
+      "String": [
+        48,
+        124,
+        48,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "flags_errors",
+    "source": "var w=new WaveSoundBuffer(null),f=w.flags,out='';try{var x=f[16];}catch{out+='r';}try{f.count=2;}catch{out+='c';}return out;",
+    "expected": {
+      "String": [
+        114,
+        99
+      ]
+    }
   }
 ]

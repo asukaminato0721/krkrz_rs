@@ -16,6 +16,8 @@ fn original_missing_format_and_math_corpus() {
         include_str!("fixtures/sprintf.json"),
         include_str!("fixtures/math.json"),
         include_str!("fixtures/assign_struct.json"),
+        include_str!("fixtures/exceptions.json"),
+        include_str!("fixtures/array_sort.json"),
     ] {
         for case in serde_json::from_str::<Vec<Case>>(fixture).unwrap() {
             let project = tempfile::tempdir().unwrap();
@@ -55,6 +57,21 @@ global.o=new C();Scripts.setCallMissing(o);
     session.budget = 10_000;
     session.evaluate("o.loop=false").unwrap();
     assert_eq!(session.evaluate("o.x").unwrap(), Value::Integer(17));
+}
+
+#[test]
+fn sort_comparisons_share_budget_and_propagate_invalidation() {
+    let mut vm = krkrz_tjs::Vm::default();
+    let source =
+        krkrz_tjs::compile("sort", "var a=[3,2,1];a.sort(function(){while(true){};});").unwrap();
+    let error = vm.execute(&source, &mut (), &mut 100).unwrap_err();
+    assert!(error.downcast_ref::<VmAbort>().is_some());
+    let source = krkrz_tjs::compile(
+        "sort",
+        "var a=[3,2,1];a.sort(function(){invalidate a;return true;});",
+    )
+    .unwrap();
+    assert!(vm.execute(&source, &mut (), &mut 1000).is_err());
 }
 
 #[test]

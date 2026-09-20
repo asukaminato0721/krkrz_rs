@@ -1,5 +1,45 @@
 use krkrz_runtime::Session;
 use krkrz_tjs::Value;
+
+#[test]
+fn host_ticks_deliver_events_before_paint_and_preserve_hidden_updates() {
+    let dir = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("startup.tjs"),
+        r#"
+var events=[],w=new Window(),p=new Layer(w,null);
+w.visible=true;p.onPaint=function(){events.add('paint');p.update();};
+var t=new Timer(function(){events.add('timer');p.update();t.enabled=false;},'');
+t.interval=10;t.enabled=true;
+"#,
+    )
+    .unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), false, 10000).unwrap();
+    session.startup().unwrap();
+    session.tick(11).unwrap();
+    assert_eq!(
+        session.evaluate("events.join(',')").unwrap(),
+        Value::string("timer,paint")
+    );
+    session.evaluate("w.visible=false").unwrap();
+    session.tick(12).unwrap();
+    assert_eq!(session.evaluate("events.count").unwrap(), Value::Integer(2));
+    assert_eq!(
+        session.evaluate("p.callOnPaint").unwrap(),
+        Value::Integer(1)
+    );
+    session.evaluate("w.visible=true").unwrap();
+    session.tick(13).unwrap();
+    assert_eq!(
+        session.evaluate("events.join(',')").unwrap(),
+        Value::string("timer,paint,paint")
+    );
+    assert!(session.tick(12).is_err());
+    session.budget = 0;
+    assert!(session.tick(14).is_err());
+}
+
 #[test]
 fn nested_original_storage_calls_share_globals_and_budget() {
     let dir = tempfile::tempdir().unwrap();
@@ -241,7 +281,7 @@ fn declared_plugin_exports_do_not_hide_unimplemented_operations() {
     );
     assert_eq!(session.evaluate("Scripts.exec('var p=new CSVParser();p.init(\"a,b\");return p.getNextLine().join(\"/\");')").unwrap(), Value::string("a/b"));
     for call in [
-        "(new Layer(new Window(),null)).drawText(0,0,\"text\",0)",
+        "(new Layer(new Window(),null)).beginTransition(\"wave\")",
         "Layer.light(10,20)",
         "new Process()",
         "Storages.getTime(\"x\")",

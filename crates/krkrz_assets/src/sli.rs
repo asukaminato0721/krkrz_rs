@@ -180,7 +180,9 @@ impl LoopInfo {
                 }
             }
         }
-        info.sort();
+        // The label dictionary uses file order; the decoder sorts labels lazily.
+        info.links
+            .sort_by_key(|l| (l.from, Reverse(l.condition), Reverse(l.variable)));
         Ok(info)
     }
     /// Conditional links take priority over unconditional links at the same frame.

@@ -369,13 +369,27 @@ impl Default for Vm {
             random_state: [123456789, 362436069, 521288629, 88675123],
             depth: 0,
         };
-        for name in ["Array", "Dictionary", "Exception", "RegExp"] {
+        for name in ["Array", "Dictionary", "RegExp"] {
             vm.register_native(name).expect("initial TJS heap");
         }
+        let exception = vm
+            .define_class(&Class {
+                name: "Exception".into(),
+                bases: vec![],
+                methods: vec![],
+                properties: vec![],
+                initializer: None,
+            })
+            .expect("initial Exception class");
+        vm.register_native_method(&exception, "Exception", "Exception.construct")
+            .expect("Exception constructor");
+        vm.register_native_method(&exception, "finalize", "Exception.finalize")
+            .expect("Exception finalizer");
+        vm.globals.insert("Exception".into(), exception);
         vm.register_serialization(false)
             .expect("initial serialization members");
         let array = vm.globals["Array"].clone();
-        for method in ["assign", "assignStruct", "split"] {
+        for method in ["assign", "assignStruct", "split", "sort"] {
             vm.register_native_method(&array, method, &format!("Array.{method}"))
                 .expect("initial Array member");
             let array_id = vm.object_id(&array).expect("Array class");
@@ -427,6 +441,16 @@ impl Frame {
     }
 }
 impl Vm {
+    // TJS GPD/GPI/SPD/SPI use the current `this` when the receiver closure
+    // has no bound context. This also applies to properties on class objects.
+    fn property_receiver(value: &Value, context: usize) -> Value {
+        let mut value = value.clone();
+        if let Value::Object(reference) = &mut value {
+            reference.context.get_or_insert(context);
+        }
+        value
+    }
+
     pub(crate) fn allocate(&mut self, kind: ObjectKind) -> Result<Value> {
         if self.objects.len() >= 100_000 {
             return Err(unsupported("TJS object allocation limit exceeded"));
@@ -646,6 +670,38 @@ impl Vm {
         self.run(program, host, budget, frame)
     }
     /// Invoke a script callback from a native service using the same budget.
+    pub fn call_event_handler(
+        &mut self,
+        function: &Value,
+        context: &Value,
+        args: &[Value],
+        host: &mut impl Host,
+        budget: &mut u64,
+    ) -> Result<bool> {
+        // Native event delivery ignores invalid/non-callable dispatches, but
+        // propagates exceptions from valid handlers. Return values are unused.
+        let mut function = function.clone();
+        for _ in 0..128 {
+            let Ok(id) = self.object_id(&function) else {
+                return Ok(false);
+            };
+            match &self.objects[id].kind {
+                ObjectKind::Function(_) | ObjectKind::Native(_) | ObjectKind::Method { .. } => {
+                    self.invoke_result(&function, context, args, host, budget, false)?;
+                    return Ok(true);
+                }
+                ObjectKind::Property {
+                    getter: Some(_), ..
+                }
+                | ObjectKind::VariantProperty(_) => {
+                    function = self.read_property(&function, context, host, budget)?;
+                }
+                _ => return Ok(false),
+            }
+        }
+        Err(unsupported("event handler property recursion exceeded"))
+    }
+    /// Invoke a script callback and return its result using the same budget.
     pub fn call_function(
         &mut self,
         function: &Value,
@@ -948,7 +1004,7 @@ impl Vm {
                         raw,
                     } => {
                         registers[*out] = self.get_property(
-                            &registers[*object],
+                            &Self::property_receiver(&registers[*object], frame.context),
                             &registers[*key],
                             *optional,
                             *raw,
@@ -958,7 +1014,7 @@ impl Vm {
                     }
                     Op::TypeOfMember { out, object, key } => {
                         let (value, found) = self.get_property_presence(
-                            &registers[*object],
+                            &Self::property_receiver(&registers[*object], frame.context),
                             &registers[*key],
                             true,
                             false,
@@ -977,7 +1033,7 @@ impl Vm {
                         input,
                         raw,
                     } => self.set_property(
-                        &registers[*object],
+                        &Self::property_receiver(&registers[*object], frame.context),
                         &registers[*key],
                         registers[*input].clone(),
                         *raw,
@@ -1139,9 +1195,18 @@ impl Vm {
                         frame.withs.truncate(*withs);
                     }
                     Op::Throw { input } => {
+                        let value = registers[*input].clone();
+                        let message = self
+                            .get_member(&value, &Value::string("message"), true)
+                            .ok()
+                            .filter(|v| {
+                                matches!(v, Value::String(_) | Value::Integer(_) | Value::Real(_))
+                            })
+                            .unwrap_or_else(|| value.clone())
+                            .text();
                         return Err(anyhow::Error::new(Thrown {
-                            value: registers[*input].clone(),
-                            message: format!("TJS throw: {}", registers[*input].text()),
+                            value,
+                            message: format!("TJS throw: {message}"),
                         }));
                     }
                     Op::Return { input } => return Ok(Some(registers[*input].clone())),
@@ -1238,6 +1303,13 @@ impl Vm {
         let kind = self.objects[id].kind.clone();
         match kind {
             ObjectKind::Native(name) => match name.as_str() {
+                "Array.sort" => {
+                    let context = reference
+                        .context
+                        .map(Value::object)
+                        .unwrap_or_else(|| context.clone());
+                    self.array_sort(&context, args, host, budget)
+                }
                 "Array.assignStruct" | "Dictionary.assignStruct" => {
                     let context = reference
                         .context
@@ -1269,9 +1341,30 @@ impl Vm {
                 "RegExp" => self.regexp_new(args),
                 "Dictionary" => self.allocate(ObjectKind::Dictionary),
                 "Array" => self.allocate(ObjectKind::Array(vec![])),
-                "Exception" => {
-                    self.exception_object(&args.first().map(Value::text).unwrap_or_default())
+                "Exception.construct" => {
+                    let context = reference
+                        .context
+                        .map(Value::object)
+                        .unwrap_or_else(|| context.clone());
+                    self.set_member(
+                        &context,
+                        &Value::string("message"),
+                        args.first()
+                            .filter(|v| !matches!(v, Value::Void))
+                            .cloned()
+                            .unwrap_or_else(|| Value::string("")),
+                    )?;
+                    self.set_member(
+                        &context,
+                        &Value::string("trace"),
+                        args.get(1)
+                            .filter(|v| !matches!(v, Value::Void))
+                            .cloned()
+                            .unwrap_or_else(|| Value::string("")),
+                    )?;
+                    Ok(Value::Void)
                 }
+                "Exception.finalize" => Ok(Value::Void),
                 _ if name.starts_with("Math.") => self.math_call(&name[5..], args, result_needed),
                 _ if name.starts_with("ScriptsEx.") => {
                     let context = reference
@@ -1322,11 +1415,13 @@ impl Vm {
         }
     }
     pub(crate) fn exception_object(&mut self, message: &str) -> Result<Value> {
-        let value = self.allocate(ObjectKind::Dictionary)?;
+        let value = self.allocate(ObjectKind::Instance)?;
         let id = self.object_id(&value)?;
         self.objects[id].classes.push("Exception".into());
+        self.register_native_method(&value, "Exception", "Exception.construct")?;
+        self.register_native_method(&value, "finalize", "Exception.finalize")?;
         self.set_member(&value, &Value::string("message"), Value::string(message))?;
-        self.set_member(&value, &Value::string("trace"), Value::string(message))?;
+        self.set_member(&value, &Value::string("trace"), Value::string(""))?;
         Ok(value)
     }
 }

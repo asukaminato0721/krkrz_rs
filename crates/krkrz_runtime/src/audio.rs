@@ -28,6 +28,7 @@ pub struct SoundStream {
     audio: Arc<Audio>,
     info: LoopInfo,
     flags: [i32; 16],
+    labels_sorted: bool,
     position: u64,
     crossfade: Option<CrossFade>,
     pub ignore_links: bool,
@@ -48,11 +49,15 @@ impl SoundStream {
             info.labels.iter().all(|l| !l.name.starts_with(':')),
             "SLI label expressions are not implemented"
         );
+        // Label dictionaries expose file order until the first decoding pass.
+        let labels = std::mem::take(&mut info.labels);
         info.sort();
+        info.labels = labels;
         Ok(Self {
             audio,
             info,
             flags: [0; 16],
+            labels_sorted: false,
             position: 0,
             crossfade: None,
             ignore_links: false,
@@ -78,6 +83,18 @@ impl SoundStream {
             .context("sound flag index out of range")? = value.clamp(0, 9999);
         Ok(())
     }
+    pub fn flag(&self, index: usize) -> Result<i32> {
+        self.flags
+            .get(index)
+            .copied()
+            .context("sound flag index out of range")
+    }
+    pub fn reset_flags(&mut self) {
+        self.flags.fill(0);
+    }
+    pub fn labels(&self) -> &[krkrz_assets::sli::Label] {
+        &self.info.labels
+    }
     /// Render at the source rate. EOF returns a short block; labels use output frames.
     /// Crossfade state persists across calls, so output does not depend on block size.
     pub fn render(&mut self, frames: usize) -> Result<AudioBlock> {
@@ -96,6 +113,10 @@ impl SoundStream {
         mut positions: Option<&mut Vec<u64>>,
     ) -> Result<AudioBlock> {
         ensure!(frames <= 1_000_000, "audio block exceeds frame limit");
+        if !self.labels_sorted {
+            self.info.labels.sort_by_key(|label| label.position);
+            self.labels_sorted = true;
+        }
         let channels = self.audio.channels as usize;
         let total = self.audio.frames() as u64;
         let mut out = AudioBlock::default();

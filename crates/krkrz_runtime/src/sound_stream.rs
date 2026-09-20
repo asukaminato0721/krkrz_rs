@@ -120,6 +120,10 @@ impl Services {
             pipeline,
             ended: false,
         });
+        // WaveImpl recreates this dictionary only when an SLI file was read.
+        if exists && let Some(labels) = sound.labels_object.take() {
+            vm.invalidate(&labels, self, budget)?;
+        }
         self.sound_status(vm, context, id, "stop", budget)?;
         Ok(Value::Void)
     }

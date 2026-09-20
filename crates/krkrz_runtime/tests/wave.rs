@@ -30,6 +30,37 @@ fn original_wave_corpus() {
 }
 
 #[test]
+fn original_wave_label_corpus() {
+    let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/wave_labels.json")).unwrap();
+    for case in cases {
+        let project = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        for name in ["tone.wav", "plain.wav"] {
+            std::fs::write(
+                project.path().join(name),
+                include_bytes!("fixtures/tone.wav"),
+            )
+            .unwrap();
+        }
+        std::fs::write(
+            project.path().join("tone.wav.sli"),
+            include_bytes!("fixtures/tone.wav.sli"),
+        )
+        .unwrap();
+        std::fs::write(project.path().join("case.tjs"), &case.source).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), false, 10000).unwrap();
+        assert_eq!(
+            session
+                .execute_storage("case.tjs")
+                .unwrap_or_else(|e| panic!("{}: {e:#}", case.name)),
+            case.expected,
+            "{}",
+            case.name
+        );
+    }
+}
+
+#[test]
 fn pcm_preview_loops_labels_and_eof() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
@@ -160,5 +191,44 @@ fn label_callback_cancels_stale_eof_and_later_labels() {
     assert_eq!(
         session.evaluate("w.samplePosition").unwrap(),
         Value::Integer(0)
+    );
+}
+
+#[test]
+fn script_flags_control_conditional_pcm_links() {
+    let project = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    std::fs::write(
+        project.path().join("tone.wav"),
+        include_bytes!("fixtures/tone.wav"),
+    )
+    .unwrap();
+    std::fs::write(
+        project.path().join("tone.wav.sli"),
+        "#2.00\nLink { From=4; To=1; Condition=eq; RefValue=0; CondVar=0; }",
+    )
+    .unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), false, 10000).unwrap();
+    session
+        .evaluate(
+            "Scripts.exec(\"global.w=new WaveSoundBuffer(null);w.open('tone.wav');w.play();\")",
+        )
+        .unwrap();
+    let sound = session.evaluate("w").unwrap();
+    assert_eq!(
+        session.render_sound_source(&sound, 5).unwrap().samples,
+        [0, 8192, -16384, 32767, 8192]
+    );
+    session.evaluate("w.samplePosition=0").unwrap();
+    session.evaluate("w.flags[0]=1").unwrap();
+    let block = session.render_sound_source(&sound, 5).unwrap();
+    let pcm = krkrz_assets::media::Audio::decode_wave(include_bytes!("fixtures/tone.wav"), 10000)
+        .unwrap();
+    assert_eq!(block.samples, pcm.samples[..5]);
+    session.evaluate("w.samplePosition=0").unwrap();
+    session.evaluate("w.flags.reset()").unwrap();
+    assert_eq!(
+        session.render_sound_source(&sound, 5).unwrap().samples[4],
+        8192
     );
 }
