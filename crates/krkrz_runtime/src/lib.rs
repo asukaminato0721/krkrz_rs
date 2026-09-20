@@ -29,6 +29,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
+pub use window_ex::SystemMenuItem;
 #[derive(Clone, Debug, Serialize)]
 pub struct TraceEvent {
     pub time_ms: u64,
@@ -438,6 +439,12 @@ impl Host for Services {
                 }
             }
             "System.getTickCount" => Ok(Value::Integer(self.time_ms as i64)),
+            "System.readRegValue" => {
+                arg(0)?.unary("string")?;
+                // The Linux host has no Windows registry. Kirikiri SDL2 likewise
+                // reports a missing value, allowing scripts to use their defaults.
+                Ok(Value::Void)
+            }
             "System.get:screenWidth" => Ok(Value::Integer(self.screen_size.0.into())),
             "System.get:screenHeight" => Ok(Value::Integer(self.screen_size.1.into())),
             "System.addFont" => {
@@ -616,6 +623,7 @@ impl Session {
             "Debug.message",
             "Debug.notice",
             "System.getTickCount",
+            "System.readRegValue",
             "System.createAppLock",
             "System.getArgument",
             "Scripts.execStorage",

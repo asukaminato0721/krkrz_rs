@@ -10,6 +10,7 @@ pub struct WindowState {
     pub minimized: bool,
     pub maximized: bool,
     pub caption: String,
+    pub border_style: i32,
     pub inner_width: i32,
     pub inner_height: i32,
     pub left: i32,
@@ -27,6 +28,7 @@ impl Default for WindowState {
             minimized: false,
             maximized: false,
             caption: String::new(),
+            border_style: 2,
             inner_width: 10,
             inner_height: 10,
             left: 0,
@@ -55,6 +57,7 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
     for name in [
         "visible",
         "caption",
+        "borderStyle",
         "innerWidth",
         "innerHeight",
         "left",
@@ -97,6 +100,7 @@ impl WindowState {
             return Ok(match key {
                 "visible" => Value::Integer(i64::from(self.visible)),
                 "caption" => Value::string(&self.caption),
+                "borderStyle" => Value::Integer(self.border_style.into()),
                 "innerWidth" => Value::Integer(self.inner_width.into()),
                 "innerHeight" => Value::Integer(self.inner_height.into()),
                 "left" => Value::Integer(self.left.into()),
@@ -127,6 +131,7 @@ impl WindowState {
             }
             "set:visible" => self.visible = arg(0)?.truth()?,
             "set:caption" => self.caption = arg(0)?.text(),
+            "set:borderStyle" => self.border_style = coordinate(arg(0)?)?,
             "set:innerWidth" => self.set_size(dimension(arg(0)?)?, self.inner_height),
             "set:innerHeight" => self.set_size(self.inner_width, dimension(arg(0)?)?),
             "set:left" => self.left = coordinate(arg(0)?)?,

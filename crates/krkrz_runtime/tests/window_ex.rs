@@ -28,6 +28,67 @@ fn original_window_ex_corpus() {
 }
 const SETUP: &str =
     "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');";
+
+#[test]
+fn system_menu_snapshot_reset_and_selection_callback() {
+    let project = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("case.tjs"), format!(
+        "{SETUP}global.w=new Window();w.registerExEvent();global.selected=void;w.onExSystemMenuSelected=function(item){{global.selected=item.state;return 7;}};global.leaf=%[caption:'first',state:42,checked:1,group:1];global.disabled=%[caption:'disabled',state:99,enabled:0];w.exSystemMenu=[%[caption:'hidden',visible:0],%[caption:'-'],%[caption:'parent',children:[leaf,disabled]]];"
+    )).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), false, 50_000).unwrap();
+    session.execute_storage("case.tjs").unwrap();
+    let window = session.evaluate("w").unwrap();
+    let items = session.system_menu(&window).unwrap();
+    assert_eq!(items.len(), 2);
+    assert!(items[0].command.is_none());
+    let leaf = &items[1].children[0];
+    assert_eq!(leaf.caption, "first");
+    assert!(leaf.checked && leaf.radio);
+    let command = leaf.command.unwrap();
+    assert_eq!(command, 0xefff);
+    assert!(session.select_system_menu(&window, command - 1).is_err());
+    assert_eq!(
+        session.select_system_menu(&window, command).unwrap(),
+        Value::Integer(7)
+    );
+    assert_eq!(session.evaluate("selected").unwrap(), Value::Integer(42));
+    session
+        .evaluate("(leaf.caption='updated',leaf.state=43)")
+        .unwrap();
+    assert_eq!(
+        session.system_menu(&window).unwrap()[1].children[0].caption,
+        "first"
+    );
+    session.select_system_menu(&window, command).unwrap();
+    assert_eq!(session.evaluate("selected").unwrap(), Value::Integer(43));
+    session.evaluate("w.resetExSystemMenu()").unwrap();
+    assert_eq!(
+        session.system_menu(&window).unwrap()[1].children[0].caption,
+        "updated"
+    );
+    session.evaluate("w.exSystemMenu=null").unwrap();
+    assert!(session.system_menu(&window).unwrap().is_empty());
+    assert!(session.select_system_menu(&window, command).is_err());
+    session.evaluate("invalidate w").unwrap();
+    assert!(session.system_menu(&window).is_err());
+}
+
+#[test]
+fn system_menu_callbacks_share_limits_and_handle_invalidation() {
+    for body in [
+        "var a=%[caption:'cycle'];a.children=[a];w.exSystemMenu=[a];",
+        "class C{property caption{getter(){while(1){}}}}w.exSystemMenu=[new C()];",
+    ] {
+        let error = run(
+            &format!("{SETUP}var w=new Window();w.registerExEvent();{body}"),
+            2000,
+        )
+        .unwrap_err();
+        assert!(error.downcast_ref::<VmAbort>().is_some(), "{error:#}");
+    }
+    assert_eq!(run(&format!("{SETUP}global.w=new Window();w.registerExEvent();class C{{property caption{{getter(){{invalidate global.w;return 'gone';}}}}}}try{{w.exSystemMenu=[new C()];}}catch(e){{return isvalid w;}}return 99;"), 10_000).unwrap(), Value::Integer(0));
+}
 #[test]
 fn callbacks_share_budget_and_handle_reentrant_invalidation() {
     let source = format!(

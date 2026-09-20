@@ -76,5 +76,26 @@
         116
       ]
     }
+  },
+  {
+    "name": "window_border_style_super",
+    "source": "class W extends Window{function W(){super.Window();}property borderStyle{getter(){return super.borderStyle;}setter(v){super.borderStyle=v;}}}var w=new W(),r=[w.borderStyle];for(var i=0;i<6;i++){w.borderStyle=i;r.add(w.borderStyle);}return r.join(\",\");",
+    "expected": {
+      "String": [
+        50,
+        44,
+        48,
+        44,
+        49,
+        44,
+        50,
+        44,
+        51,
+        44,
+        52,
+        44,
+        53
+      ]
+    }
   }
 ]

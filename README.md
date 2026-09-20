@@ -1,11 +1,10 @@
 # Rust Kirikiri Z compatibility engine
 
 This repository contains an initial implementation toward the Otome Domain
-playable slice. **The game is not playable yet.** Original startup now
-executes archive setup, plugin registration, `AppConfig.tjs`, `Config.tjs` and
-application locking, compatibility scripts and framework definitions through
-`LineModeEx.tjs`. Execution currently stops in `MainWindow.tjs` at the unsupported
-`windowEx.dll` plugin requested by the compatibility layer. The title,
+playable slice. **The game is not playable yet.** Original startup loads the
+framework through `Override.tjs`, registers eight embedded fonts, and constructs
+the game menus, including windowEx system menus. Execution currently stops in
+`MainWindow.tjs` at the missing `Timer` class, before primary-layer creation. The title,
 New Game, first choice, scene transition, and original save/load acceptance
 criteria have not been met. Execution failures never count as checkpoints.
 

@@ -6,6 +6,71 @@ use krkrz_tjs::{Value, Vm, unsupported};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
+/// A snapshot of a script-defined system menu, shared by native and replay hosts.
+#[derive(Clone, Debug)]
+pub struct SystemMenuItem {
+    pub command: Option<u16>,
+    pub caption: String,
+    pub checked: bool,
+    pub radio: bool,
+    pub enabled: bool,
+    pub menu_break: i32,
+    pub insert_position: Option<i32>,
+    pub insert_command: Option<i32>,
+    pub children: Vec<SystemMenuItem>,
+    source: Value,
+}
+
+impl crate::Session {
+    pub fn system_menu(&self, window: &Value) -> Result<&[SystemMenuItem]> {
+        Ok(&self
+            .services
+            .window_ex
+            .windows
+            .get(&id(window)?)
+            .context("Window extension is not registered")?
+            .system_menu)
+    }
+
+    /// Deliver a host selection using the same command IDs as windowEx.
+    pub fn select_system_menu(&mut self, window: &Value, command: u16) -> Result<Value> {
+        fn find(items: &[SystemMenuItem], command: u16) -> Option<Value> {
+            for item in items {
+                if !item.enabled {
+                    continue;
+                }
+                if item.command == Some(command) {
+                    return Some(item.source.clone());
+                }
+                if let Some(value) = find(&item.children, command) {
+                    return Some(value);
+                }
+            }
+            None
+        }
+        let source = find(self.system_menu(window)?, command)
+            .context("system menu command is absent or disabled")?;
+        let callback = self.vm.get_property(
+            window,
+            &Value::string("onExSystemMenuSelected"),
+            true,
+            false,
+            &mut self.services,
+            &mut self.budget,
+        )?;
+        if matches!(callback, Value::Void) {
+            return Ok(Value::Void);
+        }
+        self.vm.call_function(
+            &callback,
+            window,
+            &[source],
+            &mut self.services,
+            &mut self.budget,
+        )
+    }
+}
+
 #[derive(Deserialize)]
 struct Interface {
     exports: BTreeMap<String, Exports>,
@@ -29,6 +94,8 @@ pub(crate) struct Window {
     nc_mouse: bool,
     events: [bool; 4],
     hooks: [u32; 32],
+    system_menu_source: Option<Value>,
+    system_menu: Vec<SystemMenuItem>,
 }
 pub(crate) struct State {
     spelling: Option<String>,
@@ -111,6 +178,179 @@ fn charge(budget: &mut u64) -> Result<()> {
     Ok(())
 }
 impl Services {
+    fn build_system_menu(
+        &mut self,
+        vm: &mut Vm,
+        list: &Value,
+        command: &mut u16,
+        depth: usize,
+        budget: &mut u64,
+    ) -> Result<Vec<SystemMenuItem>> {
+        if *list == Value::NULL {
+            return Ok(Vec::new());
+        }
+        if depth >= 64 {
+            return Err(unsupported("system menu nesting limit exceeded"));
+        }
+        let count = vm.get_property(list, &Value::string("count"), true, false, self, budget)?;
+        let Value::Integer(count) = count else {
+            return Ok(Vec::new());
+        };
+        let count = count as i32;
+        if count > 4096 {
+            return Err(unsupported("system menu item limit exceeded"));
+        }
+        let mut items = Vec::new();
+        for index in 0..count {
+            charge(budget)?;
+            let value = vm.get_property(
+                list,
+                &Value::Integer(index.into()),
+                true,
+                false,
+                self,
+                budget,
+            )?;
+            let Value::Object(reference) = value else {
+                anyhow::bail!("system menu item must be an Object");
+            };
+            let Some(object) = reference.object else {
+                continue;
+            };
+            // AsObjectNoAddRef ignores the input closure's bound context.
+            let receiver = Value::Object(krkrz_tjs::ObjectRef {
+                object: Some(object),
+                context: Some(object),
+            });
+            let mut get = |services: &mut Self, vm: &mut Vm, key: &str| {
+                vm.get_property(
+                    &receiver,
+                    &Value::string(key),
+                    true,
+                    false,
+                    services,
+                    budget,
+                )
+            };
+            let visible = get(self, vm, "visible")?;
+            if !matches!(visible, Value::Void) && visible.integer()? as i32 == 0 {
+                continue;
+            }
+            let caption = get(self, vm, "caption")?.unary("string")?.text();
+            let mut item = SystemMenuItem {
+                command: None,
+                caption,
+                checked: false,
+                radio: false,
+                enabled: true,
+                menu_break: 0,
+                insert_position: None,
+                insert_command: None,
+                children: Vec::new(),
+                source: Value::object(object),
+            };
+            if item.caption != "-" {
+                let children = get(self, vm, "children")?;
+                if let Value::Object(reference) = children {
+                    let children = reference.object.map_or(Value::NULL, |object| {
+                        Value::Object(krkrz_tjs::ObjectRef {
+                            object: Some(object),
+                            context: Some(object),
+                        })
+                    });
+                    item.children =
+                        self.build_system_menu(vm, &children, command, depth + 1, budget)?;
+                }
+                if item.children.is_empty() {
+                    if *command < 0xe000 {
+                        return Err(unsupported("system menu command limit exceeded"));
+                    }
+                    item.command = Some(*command);
+                    *command -= 1;
+                    let checked = vm.get_property(
+                        &receiver,
+                        &Value::string("checked"),
+                        true,
+                        false,
+                        self,
+                        budget,
+                    )?;
+                    item.checked =
+                        !matches!(checked, Value::Void) && checked.integer()? as i32 != 0;
+                    let group = vm.get_property(
+                        &receiver,
+                        &Value::string("group"),
+                        true,
+                        false,
+                        self,
+                        budget,
+                    )?;
+                    item.radio = matches!(group, Value::Integer(n) if n as i32 > 0);
+                }
+                let enabled = vm.get_property(
+                    &receiver,
+                    &Value::string("enabled"),
+                    true,
+                    false,
+                    self,
+                    budget,
+                )?;
+                item.enabled = matches!(enabled, Value::Void) || enabled.integer()? as i32 != 0;
+            }
+            item.menu_break = vm
+                .get_property(
+                    &receiver,
+                    &Value::string("break"),
+                    true,
+                    false,
+                    self,
+                    budget,
+                )?
+                .integer()? as i32;
+            let position = vm.get_property(
+                &receiver,
+                &Value::string("insertPos"),
+                true,
+                false,
+                self,
+                budget,
+            )?;
+            if let Value::Integer(n) = position {
+                item.insert_position = (n as i32 >= 0).then_some(n as i32);
+            } else {
+                let command = vm.get_property(
+                    &receiver,
+                    &Value::string("insertID"),
+                    true,
+                    false,
+                    self,
+                    budget,
+                )?;
+                if let Value::Integer(n) = command {
+                    item.insert_command = (n as i32 >= 0).then_some(n as i32);
+                }
+            }
+            items.push(item);
+        }
+        Ok(items)
+    }
+
+    fn rebuild_system_menu(&mut self, vm: &mut Vm, window: usize, budget: &mut u64) -> Result<()> {
+        let state = self
+            .window_ex
+            .windows
+            .get_mut(&window)
+            .context("Window extension is not registered")?;
+        state.system_menu.clear();
+        let source = state.system_menu_source.clone().unwrap_or(Value::NULL);
+        let items = self.build_system_menu(vm, &source, &mut 0xefff, 0, budget)?;
+        self.window_ex
+            .windows
+            .get_mut(&window)
+            .context("Window invalidated while building its system menu")?
+            .system_menu = items;
+        Ok(())
+    }
     fn notification_dictionary(&mut self, vm: &mut Vm) -> Result<Value> {
         let class = vm
             .globals
@@ -205,6 +445,36 @@ impl Services {
                 self.windows.get(&id).is_some_and(|w| w.constructed),
                 "context has no constructed Window native instance"
             );
+            if name == "resetExSystemMenu" {
+                if self
+                    .window_ex
+                    .windows
+                    .get(&id)
+                    .is_some_and(|w| !w.system_menu.is_empty())
+                {
+                    self.rebuild_system_menu(vm, id, budget)?;
+                }
+                return Ok(Value::Void);
+            }
+            if name == "set:exSystemMenu" {
+                let state = self
+                    .window_ex
+                    .windows
+                    .get_mut(&id)
+                    .context("Invalid operation for Read-only or Write-only property")?;
+                state.system_menu.clear();
+                let Value::Object(reference) = arg(0)? else {
+                    anyhow::bail!("exSystemMenu requires an Object");
+                };
+                state.system_menu_source = reference.object.map(|object| {
+                    Value::Object(krkrz_tjs::ObjectRef {
+                        object: Some(object),
+                        context: Some(object),
+                    })
+                });
+                self.rebuild_system_menu(vm, id, budget)?;
+                return Ok(Value::Void);
+            }
             if name == "registerExEvent" {
                 self.window_ex.windows.entry(id).or_default();
                 for (index, event) in ["onResizing", "onMoving", "onMove", "onNcMouseMove"]
@@ -236,13 +506,9 @@ impl Services {
                     "enableNCMouseEvent" => {
                         Value::Integer(state.is_some_and(|s| s.nc_mouse).into())
                     }
-                    "exSystemMenu" => {
-                        if state.is_some() {
-                            Value::NULL
-                        } else {
-                            Value::Void
-                        }
-                    }
+                    "exSystemMenu" => state.map_or(Value::Void, |state| {
+                        state.system_menu_source.clone().unwrap_or(Value::NULL)
+                    }),
                     _ => {
                         return Err(unsupported(format!(
                             "windowEx native window property: {property}"

@@ -299,5 +299,73 @@
         100
       ]
     }
+  },
+  {
+    "name": "array_remove_values",
+    "source": "var a=[1,1.0,\"1\",void,null,1],n=a.remove(1);return [n,typeof a[0],typeof a[1],a[2]===void,a[3]===null,a.count].join(\"|\");",
+    "expected": {
+      "String": [
+        50,
+        124,
+        82,
+        101,
+        97,
+        108,
+        124,
+        83,
+        116,
+        114,
+        105,
+        110,
+        103,
+        124,
+        49,
+        124,
+        49,
+        124,
+        52
+      ]
+    }
+  },
+  {
+    "name": "array_remove_flags",
+    "source": "var a=[2,2,2,2],r=[];r.add(a.remove(2,false));r.add(a.remove(2,void));r.add(a.remove(2,0.5));r.add(a.count);return r.join(\"|\");",
+    "expected": {
+      "String": [
+        49,
+        124,
+        49,
+        124,
+        50,
+        124,
+        48
+      ]
+    }
+  },
+  {
+    "name": "array_remove_identity",
+    "source": "var f=function{},a=%[],b=%[],v=[f incontextof a,f incontextof b,f incontextof a],r=[];r.add(v.remove(f incontextof a));r.add(v.count);r.add(v[0] === (f incontextof b));return r.join(\"|\");",
+    "expected": {
+      "String": [
+        50,
+        124,
+        49,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "array_remove_missing",
+    "source": "var a=[1,2],n=0;try{a.remove();}catch(e){n++;}return n+\",\"+a.join(\",\");",
+    "expected": {
+      "String": [
+        49,
+        44,
+        49,
+        44,
+        50
+      ]
+    }
   }
 ]

@@ -9426,5 +9426,130 @@
         70
       ]
     }
+  },
+  {
+    "name": "window_ex_reset_without_custom_menu",
+    "source": "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');var w=new Window(),r=[];r.add(typeof w.resetExSystemMenu());w.registerExEvent();r.add(typeof w.resetExSystemMenu());r.add(w.exSystemMenu===null);return r.join('|');",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100,
+        124,
+        118,
+        111,
+        105,
+        100,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "system_menu_identity",
+    "source": "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');var w=new Window();w.registerExEvent();var a=[%[caption:\"-\"],%[caption:\"parent\",children:[%[caption:\"leaf\",checked:1,group:1]]]],r=[];w.exSystemMenu=a;r.add(w.exSystemMenu===a);r.add(typeof w.resetExSystemMenu());r.add(w.exSystemMenu===a);w.exSystemMenu=null;r.add(w.exSystemMenu===null);return r.join(\"|\");",
+    "expected": {
+      "String": [
+        49,
+        124,
+        118,
+        111,
+        105,
+        100,
+        124,
+        49,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "system_menu_getters",
+    "source": "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');var w=new Window();w.registerExEvent();global.log=[];class C{property visible{getter(){global.log.add(\"visible\");return 1;}}property caption{getter(){global.log.add(\"caption\");return \"leaf\";}}property children{getter(){global.log.add(\"children\");return void;}}property checked{getter(){global.log.add(\"checked\");return 0;}}property group{getter(){global.log.add(\"group\");return 0;}}property enabled{getter(){global.log.add(\"enabled\");return 1;}}property insertPos{getter(){global.log.add(\"position\");return void;}}property insertID{getter(){global.log.add(\"id\");return void;}}}w.exSystemMenu=[new C()];return log.join(\",\");",
+    "expected": {
+      "String": [
+        118,
+        105,
+        115,
+        105,
+        98,
+        108,
+        101,
+        44,
+        99,
+        97,
+        112,
+        116,
+        105,
+        111,
+        110,
+        44,
+        99,
+        104,
+        105,
+        108,
+        100,
+        114,
+        101,
+        110,
+        44,
+        99,
+        104,
+        101,
+        99,
+        107,
+        101,
+        100,
+        44,
+        103,
+        114,
+        111,
+        117,
+        112,
+        44,
+        101,
+        110,
+        97,
+        98,
+        108,
+        101,
+        100,
+        44,
+        112,
+        111,
+        115,
+        105,
+        116,
+        105,
+        111,
+        110,
+        44,
+        105,
+        100
+      ]
+    }
+  },
+  {
+    "name": "system_menu_nonarray",
+    "source": "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');var w=new Window();w.registerExEvent();var a=%[x:1],r=[];w.exSystemMenu=a;r.add(w.exSystemMenu===a);r.add(typeof w.resetExSystemMenu());try{w.exSystemMenu=1;}catch(e){r.add(\"error\");}r.add(w.exSystemMenu===a);return r.join(\"|\");",
+    "expected": {
+      "String": [
+        49,
+        124,
+        118,
+        111,
+        105,
+        100,
+        124,
+        101,
+        114,
+        114,
+        111,
+        114,
+        124,
+        49
+      ]
+    }
   }
 ]

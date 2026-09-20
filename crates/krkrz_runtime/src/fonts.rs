@@ -34,7 +34,7 @@ impl FontBook {
     pub fn names(&self) -> impl Iterator<Item = &str> {
         self.names.keys().map(String::as_str)
     }
-    /// Register complete TTF/OTF/TTC data. Invalid fonts return zero, as addFont does.
+    /// Register complete TTF/OTF/TTC data and return its face count, or zero for invalid data.
     pub fn add(&mut self, data: Vec<u8>) -> Result<u32> {
         let hash: [u8; 32] = Sha256::digest(&data).into();
         if let Some(count) = self.sources.get(&hash) {
