@@ -78,5 +78,10 @@
     "name": "win32dialog",
     "url": "https://github.com/wtnbgo/win32dialog",
     "revision": "9658169f6af0159adb2739d22d9a6ebb8cec4981"
+  },
+  {
+    "name": "windowEx",
+    "url": "https://github.com/wtnbgo/windowEx",
+    "revision": "88c9be22ff8f9e6d42edbf4787092837f177a89a"
   }
 ]

@@ -541,6 +541,20 @@ impl Vm {
         }
         Ok(value)
     }
+    /// Install a class member that is not copied into constructed instances.
+    pub fn register_native_static_value(
+        &mut self,
+        receiver: &Value,
+        member: &str,
+        value: Value,
+    ) -> Result<()> {
+        self.set_member(receiver, &Value::string(member), value)?;
+        let id = self.object_id(receiver)?;
+        self.objects[id]
+            .member_flags
+            .insert(member.encode_utf16().collect(), crate::scripts_ex::STATIC);
+        Ok(())
+    }
     /// Attach an explicitly named host operation to an object or nested class.
     pub fn register_native_method(
         &mut self,
@@ -1099,7 +1113,14 @@ impl Vm {
                             if let Some(thrown) = error.downcast_ref::<Thrown>() {
                                 thrown.value.clone()
                             } else {
-                                self.exception_object(&format!("{error:#}"))?
+                                let exception =
+                                    self.exception_object(&error.root_cause().to_string())?;
+                                self.set_member(
+                                    &exception,
+                                    &Value::string("trace"),
+                                    Value::string(&format!("{error:#}")),
+                                )?;
+                                exception
                             };
                         frame.scopes.truncate(handler.scopes);
                         frame.withs.truncate(handler.withs);

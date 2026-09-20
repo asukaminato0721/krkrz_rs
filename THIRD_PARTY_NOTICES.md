@@ -123,3 +123,13 @@ Sources: `MenuItemIntf.cpp`, `MenuItemIntf.h`, `WindowMenu.cpp`, `WindowMenu.h`,
 `Main.cpp` and `ObjectList.h`. Copyright (C) 2000 W.Dee <dee@kikyou.info> and
 contributors. The Kirikiri license reproduced above applies. No Windows native
 menu code or original plugin binary is linked into the Rust engine.
+
+## WIN32Dialog
+
+The Rust WIN32Dialog template/data implementation follows `wtnbgo/win32dialog`,
+revision `9658169f6af0159adb2739d22d9a6ebb8cec4981`, by miahmie.
+Sources: `main.cpp`, `dialog.hpp` and `dialog_config.hpp`. The project's readme
+specifies the Kirikiri license reproduced above. ncbind conversion and property
+access behavior follows the pinned Kirikiroid2 `ncbind.hpp`. Registration values
+and behavioral fixtures are observations of the installed plugin. No Windows
+plugin binary or platform UI code is linked into the Rust engine.

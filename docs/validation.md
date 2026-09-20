@@ -4,17 +4,17 @@ Recorded on 2026-09-20 against the installation at
 `/home/w/.wine/drive_c/otome_domain`. Installation files and Windows saves were
 read only. Research and decoded samples are outside the repository.
 
-Workspace build, formatting, and Clippy with warnings denied passed. All 95
+Workspace build, formatting, and Clippy with warnings denied passed. All 100
 synthetic tests passed, including 151 TJS cases, 37 ScriptsEx plugin cases,
 25 serialization cases, 27 CSVParser cases, 15 System cases, 22 sound-control cases, 13 getSample cases,
-11 decoded-WAV cases, 36 PSBFile cases, 80 TextRender cases, 39 layerExDraw/reached-language cases, 18 AlphaMovie API cases, 24 menu/reached-language cases and one plugin-alias case.
+11 decoded-WAV cases, 36 PSBFile cases, 80 TextRender cases, 39 layerExDraw/reached-language cases, 18 AlphaMovie API cases, 24 menu/reached-language cases, 21 WIN32Dialog cases and one plugin-alias case.
 All 151 TJS cases matched
 the installed Kirikiri Z 1.2.0.3 executable in separate isolated processes.
 Habakiri matched 137 cases; fourteen interpolation/RegExp, real formatting and
 octet differences are explicitly excluded from that Java comparison and covered
 by the original-engine run.
 All nine opt-in installed-game tests passed; they remain ignored by default.
-The real startup run reaches the missing `win32dialog.dll` plugin documented below.
+The real startup run reaches the missing `windowEx.dll` plugin documented below.
 
 All 37 ScriptsEx cases match the installed PackinOne component in isolated
 original-engine runs. They cover object contexts, dictionary key/count reflection,
@@ -103,11 +103,11 @@ system/Initialize.tjs:465:1 at VM instruction 990
 system/Initialize.tjs:275:2 at VM instruction 11
 MainWindow.tjs:16:7 at VM instruction 22
 ... k2compat plugin dispatch ...
-unsupported Kirikiri native operation: Plugins.link(win32dialog.dll)
+unsupported Kirikiri native operation: Plugins.link(windowEx.dll)
 ```
 
 No startup guard or original script was removed or replaced. The next reached
-missing feature is the native dialog plugin interface. Plugin loading registers
+missing feature is the Window extensions plugin interface. Plugin loading registers
 implemented ScriptsEx/saveStruct/CSVParser components and declarations for the
 observed remaining exports. Layer, Process, TemporaryFiles and KAGParser native
 construction and unfinished methods still raise explicit uncatchable engine
@@ -559,3 +559,44 @@ Menu bars, popups, HMENU access, keyboard accelerator delivery, host-specific
 key-name tables, HWND proxy objects and automatic collection remain unfinished.
 Native menu presentation calls fail explicitly; no title/playthrough, frame/audio
 comparison or original save/load acceptance has passed.
+
+## WIN32Dialog data model
+
+Twenty-one synthetic cases compare the Rust binding with the installed
+`win32dialog.dll`. They cover 1,012 observed constants, required constructor
+arguments, modeless coercion, closed-state metadata/progress errors, default
+callbacks, repeated construction, explicit finalization, template field getter
+order, void-valued properties, copied templates, Blob endianness/truncation,
+invalidation, repeated plugin linking, and static method/nested-class visibility.
+The newer source includes absent APIs (`setActive`, Blob dword-long methods and
+several constants); those are not declared in the installed-game profile.
+
+Five Rust tests check the corpus, buffer bounds and allocation limits, explicit
+errors for raw pointers/platform operations, reentrant invalidation during
+property reads, shared execution budgets, exception messages and traces, and
+owned UTF-16 template layout with four-byte alignment after source invalidation.
+Caught native errors now put their message in `message` and the full Rust/VM
+context in `trace`; unhandled errors retain their storage and instruction context.
+
+Fixture SHA-256 (`crates/krkrz_runtime/tests/fixtures/dialog.json`):
+`60e07e8de88c67d0dcdad020c98d4e586ae9e92482eb2323ce7a591e35b68708`.
+Installed DLL SHA-256:
+`e3e877c24614bf88e49fcfa979e99100188226824a96f71ab67ed670949517ad`.
+Registration data SHA-256 (`crates/krkrz_runtime/data/win32dialog.json`):
+`c300aa1544a839969b7c9eb280c646f8d1c4afe8cde33353e854cacc56585e4c`.
+
+```sh
+xvfb-run -a python3 tools/check_original_tjs.py /path/to/otomedomain.exe \
+  --fixtures crates/krkrz_runtime/tests/fixtures/dialog.json --runtime \
+  --plugin win32dialog.dll=/path/to/plugin/win32dialog.dll
+```
+
+Templates use the community source's extended dialog layout. The Rust layout
+unit test does not establish native dialog visual fidelity. Blob allocation is
+limited to 16 MiB, assembled templates to 16 MiB and each template string to one
+million UTF-16 units; invalid bounds are rejected before memory access. No raw
+process pointer is exposed. Modal/modeless display, control interaction, resource
+DLL loading, icons, drawing and progress dialogs still require a Linux host
+implementation. Startup passes dialog registration but stops at
+`Plugins.link(windowEx.dll)` in `MainWindow.tjs:16` via `k2compat.tjs`.
+No title, story, native playthrough or save/load acceptance has passed.

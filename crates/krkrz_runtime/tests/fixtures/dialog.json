@@ -1,0 +1,549 @@
+[
+  {
+    "name": "defaults",
+    "source": "Plugins.link('win32dialog.dll');var d=new WIN32Dialog(null);return [d.modeless,d.isValid,d.HWND,d.propsheet,d.progress,typeof d.icon].join('|');",
+    "expected": {
+      "String": [
+        48,
+        124,
+        48,
+        124,
+        48,
+        124,
+        48,
+        124,
+        48,
+        124,
+        118,
+        111,
+        105,
+        100
+      ]
+    }
+  },
+  {
+    "name": "constructor_arguments",
+    "source": "Plugins.link('win32dialog.dll');var a=[];try{new WIN32Dialog();}catch(e){a.add('error');}for(var i=0;i<3;i++){try{var d=new WIN32Dialog([null,void,%[]][i]);a.add(d.modeless);}catch(e){a.add('error');}}return a.join('|');",
+    "expected": {
+      "String": [
+        101,
+        114,
+        114,
+        111,
+        114,
+        124,
+        48,
+        124,
+        101,
+        114,
+        114,
+        111,
+        114,
+        124,
+        48
+      ]
+    }
+  },
+  {
+    "name": "modeless",
+    "source": "Plugins.link('win32dialog.dll');var d=new WIN32Dialog(null),a=[];var v=[1,0,0.5,-0.5,4294967296,-1,'2'];for(var i=0;i<v.count;i++){d.modeless=v[i];a.add(d.modeless);}return a.join('|');",
+    "expected": {
+      "String": [
+        49,
+        124,
+        48,
+        124,
+        49,
+        124,
+        49,
+        124,
+        49,
+        124,
+        49,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "callbacks",
+    "source": "Plugins.link('win32dialog.dll');var d=new WIN32Dialog(null);return [d.onInit(0,0,0),d.onCommand(0,0,0),d.onHScroll(0,0,0),d.onVScroll(0,0,0),d.onSize(0,0,0)].join('|');",
+    "expected": {
+      "String": [
+        48,
+        124,
+        48,
+        124,
+        48,
+        124,
+        48,
+        124,
+        48
+      ]
+    }
+  },
+  {
+    "name": "closed_progress",
+    "source": "Plugins.link('win32dialog.dll');var d=new WIN32Dialog(null),a=[];try{d.progressValue;}catch(e){a.add(e.message);}try{d.progressCanceled=1;}catch(e){a.add(e.message);}d.close(0);d.closeProgress();return a.join('|');",
+    "expected": {
+      "String": [
+        100,
+        105,
+        97,
+        108,
+        111,
+        103,
+        32,
+        105,
+        115,
+        32,
+        110,
+        111,
+        116,
+        32,
+        112,
+        114,
+        111,
+        103,
+        114,
+        101,
+        115,
+        115,
+        32,
+        109,
+        111,
+        100,
+        101,
+        46,
+        124,
+        100,
+        105,
+        97,
+        108,
+        111,
+        103,
+        32,
+        105,
+        115,
+        32,
+        110,
+        111,
+        116,
+        32,
+        112,
+        114,
+        111,
+        103,
+        114,
+        101,
+        115,
+        115,
+        32,
+        109,
+        111,
+        100,
+        101,
+        46
+      ]
+    }
+  },
+  {
+    "name": "header_count",
+    "source": "Plugins.link('win32dialog.dll');var h=new WIN32Dialog.Header(),a=[h.dlgItems];h.dlgItems=65537;a.add(h.dlgItems);h.store(%['dlgItems'=>3]);a.add(h.dlgItems);h.dlgItems=-1;a.add(h.dlgItems);return a.join('|');",
+    "expected": {
+      "String": [
+        48,
+        124,
+        49,
+        124,
+        49,
+        124,
+        54,
+        53,
+        53,
+        51,
+        53
+      ]
+    }
+  },
+  {
+    "name": "header_reads",
+    "source": "Plugins.link('win32dialog.dll');var trace='';class C{property x{getter(){trace+='x';return 2;}}property title{getter(){trace+='t';return 'hi';}}property typeFace{getter(){trace+='f';return 'font';}}}var h=new WIN32Dialog.Header();h.store(new C());return trace;",
+    "expected": {
+      "String": [
+        120,
+        120,
+        116,
+        116,
+        102,
+        102
+      ]
+    }
+  },
+  {
+    "name": "void_read",
+    "source": "Plugins.link('win32dialog.dll');var n=0;class C{property x{getter(){n++;return void;}}}var h=new WIN32Dialog.Header();h.store(new C());return n;",
+    "expected": {
+      "Integer": 2
+    }
+  },
+  {
+    "name": "items_reads",
+    "source": "Plugins.link('win32dialog.dll');var trace='';class C{property id{getter(){trace+='i';return 20;}}property windowClass{getter(){trace+='w';return 'BUTTON';}}property title{getter(){trace+='t';return 'a';}}}var h=new WIN32Dialog.Items();h.store(new C());return trace;",
+    "expected": {
+      "String": [
+        105,
+        105,
+        119,
+        119,
+        116,
+        116
+      ]
+    }
+  },
+  {
+    "name": "template_copy",
+    "source": "Plugins.link('win32dialog.dll');var d=new WIN32Dialog(null),h=new WIN32Dialog.Header(),i=new WIN32Dialog.Items();h.store(%[style:64,title:'title',typeFace:'Arial',pointSize:12]);h.dlgItems=1;i.store(%[id:1,windowClass:128,title:'ok']);d.makeTemplate(h,i);invalidate h;invalidate i;return [d.isValid,d.HWND,isvalid d].join('|');",
+    "expected": {
+      "String": [
+        48,
+        124,
+        48,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "header_reconstruct",
+    "source": "Plugins.link('win32dialog.dll');var h=new WIN32Dialog.Header();h.dlgItems=12;h.Header();return h.dlgItems;",
+    "expected": {
+      "Integer": 0
+    }
+  },
+  {
+    "name": "dialog_reconstruct",
+    "source": "Plugins.link('win32dialog.dll');var d=new WIN32Dialog(null);d.modeless=1;d.WIN32Dialog(null);return d.modeless;",
+    "expected": {
+      "Integer": 0
+    }
+  },
+  {
+    "name": "blob_zero",
+    "source": "Plugins.link('win32dialog.dll');var b=new WIN32Dialog.Blob(8);return [b.getByte(0),b.getWord(1),b.getDWord(4)].join('|');",
+    "expected": {
+      "String": [
+        48,
+        124,
+        48,
+        124,
+        48
+      ]
+    }
+  },
+  {
+    "name": "blob_endian",
+    "source": "Plugins.link('win32dialog.dll');var b=new WIN32Dialog.Blob(8);b.setDWord(1,0x89abcdef);return [b.getByte(1),b.getWord(2),b.getDWord(1)].join('|');",
+    "expected": {
+      "String": [
+        50,
+        51,
+        57,
+        124,
+        52,
+        51,
+        57,
+        56,
+        49,
+        124,
+        50,
+        51,
+        48,
+        57,
+        55,
+        51,
+        55,
+        57,
+        54,
+        55
+      ]
+    }
+  },
+  {
+    "name": "blob_truncate",
+    "source": "Plugins.link('win32dialog.dll');var b=new WIN32Dialog.Blob(8);b.setWord(0,-1);b.setByte(2,258);b.setDWord(4,4294967297);return [b.getWord(0),b.getByte(2),b.getDWord(4)].join('|');",
+    "expected": {
+      "String": [
+        54,
+        53,
+        53,
+        51,
+        53,
+        124,
+        50,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "invalidated",
+    "source": "Plugins.link('win32dialog.dll');var b=new WIN32Dialog.Blob(8),h=new WIN32Dialog.Header(),d=new WIN32Dialog(null);invalidate b;invalidate h;invalidate d;return [isvalid b,isvalid h,isvalid d].join('|');",
+    "expected": {
+      "String": [
+        48,
+        124,
+        48,
+        124,
+        48
+      ]
+    }
+  },
+  {
+    "name": "relink",
+    "source": "Plugins.link('win32dialog.dll');var c=WIN32Dialog;Plugins.link('win32dialog.dll');var a=[c===WIN32Dialog];try{Plugins.link('WIN32Dialog.dll');}catch(e){a.add(e.message);}a.add(c===WIN32Dialog);return a.join('|');",
+    "expected": {
+      "String": [
+        49,
+        124,
+        65,
+        108,
+        114,
+        101,
+        97,
+        100,
+        121,
+        32,
+        114,
+        101,
+        103,
+        105,
+        115,
+        116,
+        101,
+        114,
+        100,
+        32,
+        99,
+        108,
+        97,
+        115,
+        115,
+        46,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "constants",
+    "source": "Plugins.link('win32dialog.dll');var keys=[\"BLACK_BRUSH\",\"BM_CLICK\",\"BM_GETCHECK\",\"BM_GETIMAGE\",\"BM_GETSTATE\",\"BM_SETCHECK\",\"BM_SETDONTCLICK\",\"BM_SETIMAGE\",\"BM_SETSTATE\",\"BM_SETSTYLE\",\"BN_CLICKED\",\"BN_DBLCLK\",\"BN_DISABLE\",\"BN_DOUBLECLICKED\",\"BN_HILITE\",\"BN_KILLFOCUS\",\"BN_PAINT\",\"BN_PUSHED\",\"BN_SETFOCUS\",\"BN_UNHILITE\",\"BN_UNPUSHED\",\"BST_CHECKED\",\"BST_FOCUS\",\"BST_INDETERMINATE\",\"BST_PUSHED\",\"BST_UNCHECKED\",\"BS_3STATE\",\"BS_AUTO3STATE\",\"BS_AUTOCHECKBOX\",\"BS_AUTORADIOBUTTON\",\"BS_BITMAP\",\"BS_BOTTOM\",\"BS_CENTER\",\"BS_CHECKBOX\",\"BS_DEFPUSHBUTTON\",\"BS_FLAT\",\"BS_GROUPBOX\",\"BS_ICON\",\"BS_LEFT\",\"BS_LEFTTEXT\",\"BS_MULTILINE\",\"BS_NOTIFY\",\"BS_OWNERDRAW\",\"BS_PUSHBOX\",\"BS_PUSHBUTTON\",\"BS_PUSHLIKE\",\"BS_RADIOBUTTON\",\"BS_RIGHT\",\"BS_RIGHTBUTTON\",\"BS_TEXT\",\"BS_TOP\",\"BS_TYPEMASK\",\"BS_USERBUTTON\",\"BS_VCENTER\",\"CBN_CLOSEUP\",\"CBN_DBLCLK\",\"CBN_DROPDOWN\",\"CBN_EDITCHANGE\",\"CBN_EDITUPDATE\",\"CBN_ERRSPACE\",\"CBN_KILLFOCUS\",\"CBN_SELCHANGE\",\"CBN_SELENDCANCEL\",\"CBN_SELENDOK\",\"CBN_SETFOCUS\",\"CBS_AUTOHSCROLL\",\"CBS_DISABLENOSCROLL\",\"CBS_DROPDOWN\",\"CBS_DROPDOWNLIST\",\"CBS_HASSTRINGS\",\"CBS_LOWERCASE\",\"CBS_NOINTEGRALHEIGHT\",\"CBS_OEMCONVERT\",\"CBS_OWNERDRAWFIXED\",\"CBS_OWNERDRAWVARIABLE\",\"CBS_SIMPLE\",\"CBS_SORT\",\"CBS_UPPERCASE\",\"CB_ADDSTRING\",\"CB_DELETESTRING\",\"CB_DIR\",\"CB_ERR\",\"CB_ERRSPACE\",\"CB_FINDSTRING\",\"CB_FINDSTRINGEXACT\",\"CB_GETCOMBOBOXINFO\",\"CB_GETCOUNT\",\"CB_GETCURSEL\",\"CB_GETDROPPEDCONTROLRECT\",\"CB_GETDROPPEDSTATE\",\"CB_GETDROPPEDWIDTH\",\"CB_GETEDITSEL\",\"CB_GETEXTENDEDUI\",\"CB_GETHORIZONTALEXTENT\",\"CB_GETITEMDATA\",\"CB_GETITEMHEIGHT\",\"CB_GETLBTEXT\",\"CB_GETLBTEXTLEN\",\"CB_GETLOCALE\",\"CB_GETTOPINDEX\",\"CB_INITSTORAGE\",\"CB_INSERTSTRING\",\"CB_LIMITTEXT\",\"CB_MSGMAX\",\"CB_OKAY\",\"CB_RESETCONTENT\",\"CB_SELECTSTRING\",\"CB_SETCURSEL\",\"CB_SETDROPPEDWIDTH\",\"CB_SETEDITSEL\",\"CB_SETEXTENDEDUI\",\"CB_SETHORIZONTALEXTENT\",\"CB_SETITEMDATA\",\"CB_SETITEMHEIGHT\",\"CB_SETLOCALE\",\"CB_SETTOPINDEX\",\"CB_SHOWDROPDOWN\",\"DC_HASDEFID\",\"DLGC_BUTTON\",\"DLGC_DEFPUSHBUTTON\",\"DLGC_HASSETSEL\",\"DLGC_RADIOBUTTON\",\"DLGC_STATIC\",\"DLGC_UNDEFPUSHBUTTON\",\"DLGC_WANTALLKEYS\",\"DLGC_WANTARROWS\",\"DLGC_WANTCHARS\",\"DLGC_WANTMESSAGE\",\"DLGC_WANTTAB\",\"DM_GETDEFID\",\"DM_REPOSITION\",\"DM_SETDEFID\",\"DS_3DLOOK\",\"DS_ABSALIGN\",\"DS_CENTER\",\"DS_CENTERMOUSE\",\"DS_CONTEXTHELP\",\"DS_CONTROL\",\"DS_FIXEDSYS\",\"DS_LOCALEDIT\",\"DS_MODALFRAME\",\"DS_NOFAILCREATE\",\"DS_NOIDLEMSG\",\"DS_SETFONT\",\"DS_SETFOREGROUND\",\"DS_SHELLFONT\",\"DS_SYSMODAL\",\"EC_LEFTMARGIN\",\"EC_RIGHTMARGIN\",\"EC_USEFONTINFO\",\"EIMES_CANCELCOMPSTRINFOCUS\",\"EIMES_COMPLETECOMPSTRKILLFOCUS\",\"EIMES_GETCOMPSTRATONCE\",\"EMSIS_COMPOSITIONSTRING\",\"EM_CANUNDO\",\"EM_CHARFROMPOS\",\"EM_EMPTYUNDOBUFFER\",\"EM_FMTLINES\",\"EM_GETFIRSTVISIBLELINE\",\"EM_GETHANDLE\",\"EM_GETIMESTATUS\",\"EM_GETLIMITTEXT\",\"EM_GETLINE\",\"EM_GETLINECOUNT\",\"EM_GETMARGINS\",\"EM_GETMODIFY\",\"EM_GETPASSWORDCHAR\",\"EM_GETRECT\",\"EM_GETSEL\",\"EM_GETTHUMB\",\"EM_GETWORDBREAKPROC\",\"EM_LIMITTEXT\",\"EM_LINEFROMCHAR\",\"EM_LINEINDEX\",\"EM_LINELENGTH\",\"EM_LINESCROLL\",\"EM_POSFROMCHAR\",\"EM_REPLACESEL\",\"EM_SCROLL\",\"EM_SCROLLCARET\",\"EM_SETHANDLE\",\"EM_SETIMESTATUS\",\"EM_SETLIMITTEXT\",\"EM_SETMARGINS\",\"EM_SETMODIFY\",\"EM_SETPASSWORDCHAR\",\"EM_SETREADONLY\",\"EM_SETRECT\",\"EM_SETRECTNP\",\"EM_SETSEL\",\"EM_SETTABSTOPS\",\"EM_SETWORDBREAKPROC\",\"EM_UNDO\",\"EN_ALIGN_LTR_EC\",\"EN_ALIGN_RTL_EC\",\"EN_CHANGE\",\"EN_ERRSPACE\",\"EN_HSCROLL\",\"EN_KILLFOCUS\",\"EN_MAXTEXT\",\"EN_SETFOCUS\",\"EN_UPDATE\",\"EN_VSCROLL\",\"ES_AUTOHSCROLL\",\"ES_AUTOVSCROLL\",\"ES_CENTER\",\"ES_LEFT\",\"ES_LOWERCASE\",\"ES_MULTILINE\",\"ES_NOHIDESEL\",\"ES_NUMBER\",\"ES_OEMCONVERT\",\"ES_PASSWORD\",\"ES_READONLY\",\"ES_RIGHT\",\"ES_UPPERCASE\",\"ES_WANTRETURN\",\"FW_BOLD\",\"FW_DONTCARE\",\"FW_EXTRABOLD\",\"FW_EXTRALIGHT\",\"FW_HEAVY\",\"FW_LIGHT\",\"FW_MEDIUM\",\"FW_NORMAL\",\"FW_SEMIBOLD\",\"FW_THIN\",\"GWL_EXSTYLE\",\"GWL_ID\",\"GWL_STYLE\",\"HOLLOW_BRUSH\",\"ICC_ANIMATE_CLASS\",\"ICC_BAR_CLASSES\",\"ICC_COOL_CLASSES\",\"ICC_DATE_CLASSES\",\"ICC_HOTKEY_CLASS\",\"ICC_INTERNET_CLASSES\",\"ICC_LINK_CLASS\",\"ICC_LISTVIEW_CLASSES\",\"ICC_NATIVEFNTCTL_CLASS\",\"ICC_PAGESCROLLER_CLASS\",\"ICC_PROGRESS_CLASS\",\"ICC_STANDARD_CLASSES\",\"ICC_TAB_CLASSES\",\"ICC_TREEVIEW_CLASSES\",\"ICC_UPDOWN_CLASS\",\"ICC_USEREX_CLASSES\",\"ICC_WIN95_CLASSES\",\"IDABORT\",\"IDCANCEL\",\"IDCLOSE\",\"IDCONTINUE\",\"IDHELP\",\"IDIGNORE\",\"IDNO\",\"IDOK\",\"IDRETRY\",\"IDTIMEOUT\",\"IDTRYAGAIN\",\"IDYES\",\"ID_PSREBOOTSYSTEM\",\"ID_PSRESTARTWINDOWS\",\"LBN_DBLCLK\",\"LBN_ERRSPACE\",\"LBN_KILLFOCUS\",\"LBN_SELCANCEL\",\"LBN_SELCHANGE\",\"LBN_SETFOCUS\",\"LBS_COMBOBOX\",\"LBS_DISABLENOSCROLL\",\"LBS_EXTENDEDSEL\",\"LBS_HASSTRINGS\",\"LBS_MULTICOLUMN\",\"LBS_MULTIPLESEL\",\"LBS_NODATA\",\"LBS_NOINTEGRALHEIGHT\",\"LBS_NOREDRAW\",\"LBS_NOSEL\",\"LBS_NOTIFY\",\"LBS_OWNERDRAWFIXED\",\"LBS_OWNERDRAWVARIABLE\",\"LBS_SORT\",\"LBS_STANDARD\",\"LBS_USETABSTOPS\",\"LBS_WANTKEYBOARDINPUT\",\"LB_ADDFILE\",\"LB_ADDSTRING\",\"LB_CTLCODE\",\"LB_DELETESTRING\",\"LB_DIR\",\"LB_ERR\",\"LB_ERRSPACE\",\"LB_FINDSTRING\",\"LB_FINDSTRINGEXACT\",\"LB_GETANCHORINDEX\",\"LB_GETCARETINDEX\",\"LB_GETCOUNT\",\"LB_GETCURSEL\",\"LB_GETHORIZONTALEXTENT\",\"LB_GETITEMDATA\",\"LB_GETITEMHEIGHT\",\"LB_GETITEMRECT\",\"LB_GETLISTBOXINFO\",\"LB_GETLOCALE\",\"LB_GETSEL\",\"LB_GETSELCOUNT\",\"LB_GETSELITEMS\",\"LB_GETTEXT\",\"LB_GETTEXTLEN\",\"LB_GETTOPINDEX\",\"LB_INITSTORAGE\",\"LB_INSERTSTRING\",\"LB_ITEMFROMPOINT\",\"LB_MSGMAX\",\"LB_OKAY\",\"LB_RESETCONTENT\",\"LB_SELECTSTRING\",\"LB_SELITEMRANGE\",\"LB_SELITEMRANGEEX\",\"LB_SETANCHORINDEX\",\"LB_SETCARETINDEX\",\"LB_SETCOLUMNWIDTH\",\"LB_SETCOUNT\",\"LB_SETCURSEL\",\"LB_SETHORIZONTALEXTENT\",\"LB_SETITEMDATA\",\"LB_SETITEMHEIGHT\",\"LB_SETLOCALE\",\"LB_SETSEL\",\"LB_SETTABSTOPS\",\"LB_SETTOPINDEX\",\"LVM_APPROXIMATEVIEWRECT\",\"LVM_ARRANGE\",\"LVM_CANCELEDITLABEL\",\"LVM_CREATEDRAGIMAGE\",\"LVM_DELETEALLITEMS\",\"LVM_DELETECOLUMN\",\"LVM_DELETEITEM\",\"LVM_EDITLABELA\",\"LVM_EDITLABELW\",\"LVM_ENABLEGROUPVIEW\",\"LVM_ENSUREVISIBLE\",\"LVM_FINDITEMA\",\"LVM_FINDITEMW\",\"LVM_FIRST\",\"LVM_GETBKCOLOR\",\"LVM_GETBKIMAGEA\",\"LVM_GETBKIMAGEW\",\"LVM_GETCALLBACKMASK\",\"LVM_GETCOLUMNA\",\"LVM_GETCOLUMNORDERARRAY\",\"LVM_GETCOLUMNW\",\"LVM_GETCOLUMNWIDTH\",\"LVM_GETCOUNTPERPAGE\",\"LVM_GETEDITCONTROL\",\"LVM_GETEMPTYTEXT\",\"LVM_GETEXTENDEDLISTVIEWSTYLE\",\"LVM_GETFOCUSEDGROUP\",\"LVM_GETFOOTERINFO\",\"LVM_GETFOOTERITEM\",\"LVM_GETFOOTERITEMRECT\",\"LVM_GETFOOTERRECT\",\"LVM_GETGROUPCOUNT\",\"LVM_GETGROUPINFO\",\"LVM_GETGROUPINFOBYINDEX\",\"LVM_GETGROUPMETRICS\",\"LVM_GETGROUPRECT\",\"LVM_GETGROUPSTATE\",\"LVM_GETHEADER\",\"LVM_GETHOTCURSOR\",\"LVM_GETHOTITEM\",\"LVM_GETHOVERTIME\",\"LVM_GETIMAGELIST\",\"LVM_GETINSERTMARK\",\"LVM_GETINSERTMARKCOLOR\",\"LVM_GETINSERTMARKRECT\",\"LVM_GETISEARCHSTRINGA\",\"LVM_GETISEARCHSTRINGW\",\"LVM_GETITEMA\",\"LVM_GETITEMCOUNT\",\"LVM_GETITEMINDEXRECT\",\"LVM_GETITEMPOSITION\",\"LVM_GETITEMRECT\",\"LVM_GETITEMSPACING\",\"LVM_GETITEMSTATE\",\"LVM_GETITEMTEXTA\",\"LVM_GETITEMTEXTW\",\"LVM_GETITEMW\",\"LVM_GETNEXTITEM\",\"LVM_GETNEXTITEMINDEX\",\"LVM_GETNUMBEROFWORKAREAS\",\"LVM_GETORIGIN\",\"LVM_GETOUTLINECOLOR\",\"LVM_GETSELECTEDCOLUMN\",\"LVM_GETSELECTEDCOUNT\",\"LVM_GETSELECTIONMARK\",\"LVM_GETSTRINGWIDTHA\",\"LVM_GETSTRINGWIDTHW\",\"LVM_GETSUBITEMRECT\",\"LVM_GETTEXTBKCOLOR\",\"LVM_GETTEXTCOLOR\",\"LVM_GETTILEINFO\",\"LVM_GETTILEVIEWINFO\",\"LVM_GETTOOLTIPS\",\"LVM_GETTOPINDEX\",\"LVM_GETUNICODEFORMAT\",\"LVM_GETVIEW\",\"LVM_GETVIEWRECT\",\"LVM_GETWORKAREAS\",\"LVM_HASGROUP\",\"LVM_HITTEST\",\"LVM_INSERTCOLUMNA\",\"LVM_INSERTCOLUMNW\",\"LVM_INSERTGROUP\",\"LVM_INSERTGROUPSORTED\",\"LVM_INSERTITEMA\",\"LVM_INSERTITEMW\",\"LVM_INSERTMARKHITTEST\",\"LVM_ISGROUPVIEWENABLED\",\"LVM_ISITEMVISIBLE\",\"LVM_MAPIDTOINDEX\",\"LVM_MAPINDEXTOID\",\"LVM_MOVEGROUP\",\"LVM_MOVEITEMTOGROUP\",\"LVM_REDRAWITEMS\",\"LVM_REMOVEALLGROUPS\",\"LVM_REMOVEGROUP\",\"LVM_SCROLL\",\"LVM_SETBKCOLOR\",\"LVM_SETBKIMAGEA\",\"LVM_SETBKIMAGEW\",\"LVM_SETCALLBACKMASK\",\"LVM_SETCOLUMNA\",\"LVM_SETCOLUMNORDERARRAY\",\"LVM_SETCOLUMNW\",\"LVM_SETCOLUMNWIDTH\",\"LVM_SETEXTENDEDLISTVIEWSTYLE\",\"LVM_SETGROUPINFO\",\"LVM_SETGROUPMETRICS\",\"LVM_SETHOTCURSOR\",\"LVM_SETHOTITEM\",\"LVM_SETHOVERTIME\",\"LVM_SETICONSPACING\",\"LVM_SETIMAGELIST\",\"LVM_SETINSERTMARK\",\"LVM_SETINSERTMARKCOLOR\",\"LVM_SETITEMA\",\"LVM_SETITEMCOUNT\",\"LVM_SETITEMINDEXSTATE\",\"LVM_SETITEMPOSITION\",\"LVM_SETITEMPOSITION32\",\"LVM_SETITEMSTATE\",\"LVM_SETITEMTEXTA\",\"LVM_SETITEMTEXTW\",\"LVM_SETITEMW\",\"LVM_SETOUTLINECOLOR\",\"LVM_SETSELECTEDCOLUMN\",\"LVM_SETSELECTIONMARK\",\"LVM_SETTEXTBKCOLOR\",\"LVM_SETTEXTCOLOR\",\"LVM_SETTILEINFO\",\"LVM_SETTILEVIEWINFO\",\"LVM_SETTOOLTIPS\",\"LVM_SETUNICODEFORMAT\",\"LVM_SETVIEW\",\"LVM_SETWORKAREAS\",\"LVM_SORTGROUPS\",\"LVM_SORTITEMS\",\"LVM_SORTITEMSEX\",\"LVM_SUBITEMHITTEST\",\"LVM_UPDATE\",\"LVNI_ABOVE\",\"LVNI_ALL\",\"LVNI_BELOW\",\"LVNI_CUT\",\"LVNI_DIRECTIONMASK\",\"LVNI_DROPHILITED\",\"LVNI_FOCUSED\",\"LVNI_PREVIOUS\",\"LVNI_SAMEGROUPONLY\",\"LVNI_SELECTED\",\"LVNI_STATEMASK\",\"LVNI_TOLEFT\",\"LVNI_TORIGHT\",\"LVNI_VISIBLEONLY\",\"LVNI_VISIBLEORDER\",\"LVN_BEGINDRAG\",\"LVN_BEGINLABELEDITA\",\"LVN_BEGINLABELEDITW\",\"LVN_BEGINRDRAG\",\"LVN_BEGINSCROLL\",\"LVN_COLUMNCLICK\",\"LVN_COLUMNDROPDOWN\",\"LVN_COLUMNOVERFLOWCLICK\",\"LVN_DELETEALLITEMS\",\"LVN_DELETEITEM\",\"LVN_ENDLABELEDITA\",\"LVN_ENDLABELEDITW\",\"LVN_ENDSCROLL\",\"LVN_GETDISPINFOA\",\"LVN_GETDISPINFOW\",\"LVN_GETEMPTYMARKUP\",\"LVN_GETINFOTIPA\",\"LVN_GETINFOTIPW\",\"LVN_HOTTRACK\",\"LVN_INCREMENTALSEARCHA\",\"LVN_INCREMENTALSEARCHW\",\"LVN_INSERTITEM\",\"LVN_ITEMACTIVATE\",\"LVN_ITEMCHANGED\",\"LVN_ITEMCHANGING\",\"LVN_KEYDOWN\",\"LVN_LINKCLICK\",\"LVN_MARQUEEBEGIN\",\"LVN_ODCACHEHINT\",\"LVN_ODFINDITEMA\",\"LVN_ODFINDITEMW\",\"LVN_ODSTATECHANGED\",\"LVN_SETDISPINFOA\",\"LVN_SETDISPINFOW\",\"LVS_ALIGNLEFT\",\"LVS_ALIGNMASK\",\"LVS_ALIGNTOP\",\"LVS_AUTOARRANGE\",\"LVS_EDITLABELS\",\"LVS_EX_AUTOAUTOARRANGE\",\"LVS_EX_AUTOCHECKSELECT\",\"LVS_EX_AUTOSIZECOLUMNS\",\"LVS_EX_BORDERSELECT\",\"LVS_EX_CHECKBOXES\",\"LVS_EX_COLUMNOVERFLOW\",\"LVS_EX_COLUMNSNAPPOINTS\",\"LVS_EX_DOUBLEBUFFER\",\"LVS_EX_FLATSB\",\"LVS_EX_FULLROWSELECT\",\"LVS_EX_GRIDLINES\",\"LVS_EX_HEADERDRAGDROP\",\"LVS_EX_HEADERINALLVIEWS\",\"LVS_EX_HIDELABELS\",\"LVS_EX_INFOTIP\",\"LVS_EX_JUSTIFYCOLUMNS\",\"LVS_EX_LABELTIP\",\"LVS_EX_MULTIWORKAREAS\",\"LVS_EX_ONECLICKACTIVATE\",\"LVS_EX_REGIONAL\",\"LVS_EX_SIMPLESELECT\",\"LVS_EX_SINGLEROW\",\"LVS_EX_SNAPTOGRID\",\"LVS_EX_SUBITEMIMAGES\",\"LVS_EX_TRACKSELECT\",\"LVS_EX_TRANSPARENTBKGND\",\"LVS_EX_TRANSPARENTSHADOWTEXT\",\"LVS_EX_TWOCLICKACTIVATE\",\"LVS_EX_UNDERLINECOLD\",\"LVS_EX_UNDERLINEHOT\",\"LVS_ICON\",\"LVS_LIST\",\"LVS_NOCOLUMNHEADER\",\"LVS_NOLABELWRAP\",\"LVS_NOSCROLL\",\"LVS_NOSORTHEADER\",\"LVS_OWNERDATA\",\"LVS_OWNERDRAWFIXED\",\"LVS_REPORT\",\"LVS_SHAREIMAGELISTS\",\"LVS_SHOWSELALWAYS\",\"LVS_SINGLESEL\",\"LVS_SMALLICON\",\"LVS_SORTASCENDING\",\"LVS_SORTDESCENDING\",\"LVS_TYPEMASK\",\"LVS_TYPESTYLEMASK\",\"MB_ABORTRETRYIGNORE\",\"MB_APPLMODAL\",\"MB_CANCELTRYCONTINUE\",\"MB_DEFAULT_DESKTOP_ONLY\",\"MB_DEFBUTTON1\",\"MB_DEFBUTTON2\",\"MB_DEFBUTTON3\",\"MB_DEFBUTTON4\",\"MB_HELP\",\"MB_ICONASTERISK\",\"MB_ICONERROR\",\"MB_ICONEXCLAMATION\",\"MB_ICONHAND\",\"MB_ICONINFORMATION\",\"MB_ICONQUESTION\",\"MB_ICONSTOP\",\"MB_ICONWARNING\",\"MB_OK\",\"MB_OKCANCEL\",\"MB_OWNER_CENTER\",\"MB_RETRYCANCEL\",\"MB_RIGHT\",\"MB_RTLREADING\",\"MB_SERVICE_NOTIFICATION\",\"MB_SERVICE_NOTIFICATION_NT3X\",\"MB_SETFOREGROUND\",\"MB_SYSTEMMODAL\",\"MB_TASKMODAL\",\"MB_TOPMOST\",\"MB_YESNO\",\"MB_YESNOCANCEL\",\"NULL_BRUSH\",\"ODA_DRAWENTIRE\",\"ODA_FOCUS\",\"ODA_SELECT\",\"ODS_CHECKED\",\"ODS_COMBOBOXEDIT\",\"ODS_DEFAULT\",\"ODS_DISABLED\",\"ODS_FOCUS\",\"ODS_GRAYED\",\"ODS_SELECTED\",\"ODT_BUTTON\",\"ODT_COMBOBOX\",\"ODT_LISTBOX\",\"ODT_LISTVIEW\",\"ODT_MENU\",\"ODT_STATIC\",\"ODT_TAB\",\"PBM_DELTAPOS\",\"PBM_GETBARCOLOR\",\"PBM_GETBKCOLOR\",\"PBM_GETPOS\",\"PBM_GETRANGE\",\"PBM_GETSTATE\",\"PBM_GETSTEP\",\"PBM_SETBARCOLOR\",\"PBM_SETBKCOLOR\",\"PBM_SETMARQUEE\",\"PBM_SETPOS\",\"PBM_SETRANGE\",\"PBM_SETSTATE\",\"PBM_SETSTEP\",\"PBM_STEPIT\",\"PBST_ERROR\",\"PBST_NORMAL\",\"PBST_PAUSED\",\"PBS_MARQUEE\",\"PBS_SMOOTH\",\"PBS_SMOOTHREVERSE\",\"PBS_VERTICAL\",\"PROP_LG_CXDLG\",\"PROP_LG_CYDLG\",\"PROP_MED_CXDLG\",\"PROP_MED_CYDLG\",\"PROP_SM_CXDLG\",\"PROP_SM_CYDLG\",\"PSBTN_APPLYNOW\",\"PSBTN_BACK\",\"PSBTN_CANCEL\",\"PSBTN_FINISH\",\"PSBTN_HELP\",\"PSBTN_MAX\",\"PSBTN_NEXT\",\"PSBTN_OK\",\"PSM_ADDPAGE\",\"PSM_APPLY\",\"PSM_CANCELTOCLOSE\",\"PSM_CHANGED\",\"PSM_ENABLEWIZBUTTONS\",\"PSM_GETCURRENTPAGEHWND\",\"PSM_GETRESULT\",\"PSM_GETTABCONTROL\",\"PSM_HWNDTOINDEX\",\"PSM_IDTOINDEX\",\"PSM_INDEXTOHWND\",\"PSM_INDEXTOID\",\"PSM_INDEXTOPAGE\",\"PSM_INSERTPAGE\",\"PSM_ISDIALOGMESSAGE\",\"PSM_PAGETOINDEX\",\"PSM_PRESSBUTTON\",\"PSM_QUERYSIBLINGS\",\"PSM_REBOOTSYSTEM\",\"PSM_RECALCPAGESIZES\",\"PSM_REMOVEPAGE\",\"PSM_RESTARTWINDOWS\",\"PSM_SETBUTTONTEXT\",\"PSM_SETCURSEL\",\"PSM_SETCURSELID\",\"PSM_SETFINISHTEXT\",\"PSM_SETHEADERSUBTITLE\",\"PSM_SETHEADERTITLE\",\"PSM_SETNEXTTEXT\",\"PSM_SETTITLE\",\"PSM_SETWIZBUTTONS\",\"PSM_SHOWWIZBUTTONS\",\"PSM_UNCHANGED\",\"PSNRET_INVALID\",\"PSNRET_INVALID_NOCHANGEPAGE\",\"PSNRET_MESSAGEHANDLED\",\"PSNRET_NOERROR\",\"PSN_APPLY\",\"PSN_GETOBJECT\",\"PSN_HELP\",\"PSN_KILLACTIVE\",\"PSN_QUERYCANCEL\",\"PSN_QUERYINITIALFOCUS\",\"PSN_RESET\",\"PSN_SETACTIVE\",\"PSN_TRANSLATEACCELERATOR\",\"PSN_WIZBACK\",\"PSN_WIZFINISH\",\"PSN_WIZNEXT\",\"PSWIZBF_ELEVATIONREQUIRED\",\"PSWIZB_BACK\",\"PSWIZB_CANCEL\",\"PSWIZB_DISABLEDFINISH\",\"PSWIZB_FINISH\",\"PSWIZB_NEXT\",\"PSWIZB_RESTORE\",\"PSWIZB_SHOW\",\"PSWIZF_SETCOLOR\",\"SBM_ENABLE_ARROWS\",\"SBM_GETPOS\",\"SBM_GETRANGE\",\"SBM_GETSCROLLBARINFO\",\"SBM_GETSCROLLINFO\",\"SBM_SETPOS\",\"SBM_SETRANGE\",\"SBM_SETRANGEREDRAW\",\"SBM_SETSCROLLINFO\",\"SBS_BOTTOMALIGN\",\"SBS_HORZ\",\"SBS_LEFTALIGN\",\"SBS_RIGHTALIGN\",\"SBS_SIZEBOX\",\"SBS_SIZEBOXBOTTOMRIGHTALIGN\",\"SBS_SIZEBOXTOPLEFTALIGN\",\"SBS_SIZEGRIP\",\"SBS_TOPALIGN\",\"SBS_VERT\",\"SB_BOTTOM\",\"SB_ENDSCROLL\",\"SB_LEFT\",\"SB_LINEDOWN\",\"SB_LINELEFT\",\"SB_LINERIGHT\",\"SB_LINEUP\",\"SB_PAGEDOWN\",\"SB_PAGELEFT\",\"SB_PAGERIGHT\",\"SB_PAGEUP\",\"SB_RIGHT\",\"SB_THUMBPOSITION\",\"SB_THUMBTRACK\",\"SB_TOP\",\"SIF_ALL\",\"SIF_DISABLENOSCROLL\",\"SIF_PAGE\",\"SIF_POS\",\"SIF_RANGE\",\"SIF_TRACKPOS\",\"SS_BITMAP\",\"SS_BLACKFRAME\",\"SS_BLACKRECT\",\"SS_CENTER\",\"SS_CENTERIMAGE\",\"SS_EDITCONTROL\",\"SS_ELLIPSISMASK\",\"SS_ENDELLIPSIS\",\"SS_ENHMETAFILE\",\"SS_ETCHEDFRAME\",\"SS_ETCHEDHORZ\",\"SS_ETCHEDVERT\",\"SS_GRAYFRAME\",\"SS_GRAYRECT\",\"SS_ICON\",\"SS_LEFT\",\"SS_LEFTNOWORDWRAP\",\"SS_NOPREFIX\",\"SS_NOTIFY\",\"SS_OWNERDRAW\",\"SS_PATHELLIPSIS\",\"SS_REALSIZECONTROL\",\"SS_REALSIZEIMAGE\",\"SS_RIGHT\",\"SS_RIGHTJUST\",\"SS_SIMPLE\",\"SS_SUNKEN\",\"SS_TYPEMASK\",\"SS_USERITEM\",\"SS_WHITEFRAME\",\"SS_WHITERECT\",\"SS_WORDELLIPSIS\",\"STM_GETICON\",\"STM_GETIMAGE\",\"STM_MSGMAX\",\"STM_SETICON\",\"STM_SETIMAGE\",\"STN_CLICKED\",\"STN_DBLCLK\",\"STN_DISABLE\",\"STN_ENABLE\",\"SW_FORCEMINIMIZE\",\"SW_HIDE\",\"SW_MAXIMIZE\",\"SW_MINIMIZE\",\"SW_NORMAL\",\"SW_RESTORE\",\"SW_SHOW\",\"SW_SHOWDEFAULT\",\"SW_SHOWMAXIMIZED\",\"SW_SHOWMINIMIZED\",\"SW_SHOWMINNOACTIVE\",\"SW_SHOWNA\",\"SW_SHOWNOACTIVATE\",\"SW_SHOWNORMAL\",\"TBCD_CHANNEL\",\"TBCD_THUMB\",\"TBCD_TICS\",\"TBM_CLEARSEL\",\"TBM_CLEARTICS\",\"TBM_GETBUDDY\",\"TBM_GETCHANNELRECT\",\"TBM_GETLINESIZE\",\"TBM_GETNUMTICS\",\"TBM_GETPAGESIZE\",\"TBM_GETPOS\",\"TBM_GETPTICS\",\"TBM_GETRANGEMAX\",\"TBM_GETRANGEMIN\",\"TBM_GETSELEND\",\"TBM_GETSELSTART\",\"TBM_GETTHUMBLENGTH\",\"TBM_GETTHUMBRECT\",\"TBM_GETTIC\",\"TBM_GETTICPOS\",\"TBM_GETTOOLTIPS\",\"TBM_GETUNICODEFORMAT\",\"TBM_SETBUDDY\",\"TBM_SETLINESIZE\",\"TBM_SETPAGESIZE\",\"TBM_SETPOS\",\"TBM_SETRANGE\",\"TBM_SETRANGEMAX\",\"TBM_SETRANGEMIN\",\"TBM_SETSEL\",\"TBM_SETSELEND\",\"TBM_SETSELSTART\",\"TBM_SETTHUMBLENGTH\",\"TBM_SETTIC\",\"TBM_SETTICFREQ\",\"TBM_SETTIPSIDE\",\"TBM_SETTOOLTIPS\",\"TBM_SETUNICODEFORMAT\",\"TBS_AUTOTICKS\",\"TBS_BOTH\",\"TBS_BOTTOM\",\"TBS_DOWNISLEFT\",\"TBS_ENABLESELRANGE\",\"TBS_FIXEDLENGTH\",\"TBS_HORZ\",\"TBS_LEFT\",\"TBS_NOTHUMB\",\"TBS_NOTICKS\",\"TBS_NOTIFYBEFOREMOVE\",\"TBS_REVERSED\",\"TBS_RIGHT\",\"TBS_TOOLTIPS\",\"TBS_TOP\",\"TBS_TRANSPARENTBKGND\",\"TBS_VERT\",\"TBTS_BOTTOM\",\"TBTS_LEFT\",\"TBTS_RIGHT\",\"TBTS_TOP\",\"TB_BOTTOM\",\"TB_ENDTRACK\",\"TB_LINEDOWN\",\"TB_LINEUP\",\"TB_PAGEDOWN\",\"TB_PAGEUP\",\"TB_THUMBPOSITION\",\"TB_THUMBTRACK\",\"TB_TOP\",\"TCHT_NOWHERE\",\"TCHT_ONITEM\",\"TCHT_ONITEMICON\",\"TCHT_ONITEMLABEL\",\"TCIF_IMAGE\",\"TCIF_PARAM\",\"TCIF_RTLREADING\",\"TCIF_STATE\",\"TCIF_TEXT\",\"TCIS_BUTTONPRESSED\",\"TCIS_HIGHLIGHTED\",\"TCM_ADJUSTRECT\",\"TCM_DELETEALLITEMS\",\"TCM_DELETEITEM\",\"TCM_DESELECTALL\",\"TCM_GETCURFOCUS\",\"TCM_GETCURSEL\",\"TCM_GETEXTENDEDSTYLE\",\"TCM_GETIMAGELIST\",\"TCM_GETITEMCOUNT\",\"TCM_GETITEMRECT\",\"TCM_GETROWCOUNT\",\"TCM_GETTOOLTIPS\",\"TCM_GETUNICODEFORMAT\",\"TCM_HIGHLIGHTITEM\",\"TCM_HITTEST\",\"TCM_REMOVEIMAGE\",\"TCM_SETCURFOCUS\",\"TCM_SETCURSEL\",\"TCM_SETEXTENDEDSTYLE\",\"TCM_SETIMAGELIST\",\"TCM_SETITEMEXTRA\",\"TCM_SETITEMSIZE\",\"TCM_SETMINTABWIDTH\",\"TCM_SETPADDING\",\"TCM_SETTOOLTIPS\",\"TCM_SETUNICODEFORMAT\",\"TCN_FOCUSCHANGE\",\"TCN_GETOBJECT\",\"TCN_KEYDOWN\",\"TCN_SELCHANGE\",\"TCN_SELCHANGING\",\"TCS_BOTTOM\",\"TCS_BUTTONS\",\"TCS_EX_FLATSEPARATORS\",\"TCS_EX_REGISTERDROP\",\"TCS_FIXEDWIDTH\",\"TCS_FLATBUTTONS\",\"TCS_FOCUSNEVER\",\"TCS_FOCUSONBUTTONDOWN\",\"TCS_FORCEICONLEFT\",\"TCS_FORCELABELLEFT\",\"TCS_HOTTRACK\",\"TCS_MULTILINE\",\"TCS_MULTISELECT\",\"TCS_OWNERDRAWFIXED\",\"TCS_RAGGEDRIGHT\",\"TCS_RIGHT\",\"TCS_RIGHTJUSTIFY\",\"TCS_SCROLLOPPOSITE\",\"TCS_SINGLELINE\",\"TCS_TABS\",\"TCS_TOOLTIPS\",\"TCS_VERTICAL\",\"TRBN_THUMBPOSCHANGING\",\"WB_ISDELIMITER\",\"WB_LEFT\",\"WB_RIGHT\",\"WHITE_BRUSH\",\"WIZ_BODYCX\",\"WIZ_BODYX\",\"WIZ_CXBMP\",\"WIZ_CXDLG\",\"WIZ_CYDLG\",\"WS_BORDER\",\"WS_CAPTION\",\"WS_CHILD\",\"WS_CHILDWINDOW\",\"WS_CLIPCHILDREN\",\"WS_CLIPSIBLINGS\",\"WS_DISABLED\",\"WS_DLGFRAME\",\"WS_EX_ACCEPTFILES\",\"WS_EX_APPWINDOW\",\"WS_EX_CLIENTEDGE\",\"WS_EX_COMPOSITED\",\"WS_EX_CONTEXTHELP\",\"WS_EX_CONTROLPARENT\",\"WS_EX_DLGMODALFRAME\",\"WS_EX_LAYERED\",\"WS_EX_LAYOUTRTL\",\"WS_EX_LEFT\",\"WS_EX_LEFTSCROLLBAR\",\"WS_EX_LTRREADING\",\"WS_EX_MDICHILD\",\"WS_EX_NOACTIVATE\",\"WS_EX_NOINHERITLAYOUT\",\"WS_EX_NOPARENTNOTIFY\",\"WS_EX_OVERLAPPEDWINDOW\",\"WS_EX_PALETTEWINDOW\",\"WS_EX_RIGHT\",\"WS_EX_RIGHTSCROLLBAR\",\"WS_EX_RTLREADING\",\"WS_EX_STATICEDGE\",\"WS_EX_TOOLWINDOW\",\"WS_EX_TOPMOST\",\"WS_EX_TRANSPARENT\",\"WS_EX_WINDOWEDGE\",\"WS_GROUP\",\"WS_HSCROLL\",\"WS_ICONIC\",\"WS_MAXIMIZE\",\"WS_MAXIMIZEBOX\",\"WS_MINIMIZE\",\"WS_MINIMIZEBOX\",\"WS_OVERLAPPED\",\"WS_OVERLAPPEDWINDOW\",\"WS_POPUP\",\"WS_POPUPWINDOW\",\"WS_SIZEBOX\",\"WS_SYSMENU\",\"WS_TABSTOP\",\"WS_THICKFRAME\",\"WS_TILED\",\"WS_TILEDWINDOW\",\"WS_VISIBLE\",\"WS_VSCROLL\"];var h=0;for(var i=0;i<keys.count;i++)h=((h*31)^WIN32Dialog[keys[i]])&0xffffffff;return keys.count+':'+h;",
+    "expected": {
+      "String": [
+        49,
+        48,
+        48,
+        53,
+        58,
+        49,
+        51,
+        52,
+        56,
+        51,
+        49,
+        54,
+        54,
+        55,
+        54
+      ]
+    }
+  },
+  {
+    "name": "static_visibility",
+    "source": "Plugins.link('win32dialog.dll');var d=new WIN32Dialog(null);return [typeof WIN32Dialog.messageBox,typeof d.messageBox,typeof WIN32Dialog.initCommonControls,typeof d.initCommonControls,typeof d.Header,WIN32Dialog.WS_VISIBLE===d.WS_VISIBLE].join('|');",
+    "expected": {
+      "String": [
+        79,
+        98,
+        106,
+        101,
+        99,
+        116,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        124,
+        79,
+        98,
+        106,
+        101,
+        99,
+        116,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "finalize_state",
+    "source": "Plugins.link('win32dialog.dll');var d=new WIN32Dialog(null),h=new WIN32Dialog.Header(),b=new WIN32Dialog.Blob(8);d.modeless=1;h.dlgItems=4;b.setByte(0,23);d.finalize();h.finalize();b.finalize();var a=[isvalid d,isvalid h,isvalid b];try{a.add(d.modeless);}catch(e){a.add('error');}try{a.add(h.dlgItems);}catch(e){a.add('error');}try{a.add(b.getByte(0));}catch(e){a.add('error');}return a.join('|');",
+    "expected": {
+      "String": [
+        49,
+        124,
+        49,
+        124,
+        49,
+        124,
+        49,
+        124,
+        52,
+        124,
+        50,
+        51
+      ]
+    }
+  },
+  {
+    "name": "legacy_exports",
+    "source": "Plugins.link('win32dialog.dll');var names=['GWL_WNDPROC','GWL_HINSTANCE','GWL_HWNDPARENT','GWL_USERDATA','DWL_DLGPROC','DWL_MSGRESULT','DWL_USER'],a=[];for(var i=0;i<names.count;i++){var k=names[i];a.add(k+':'+WIN32Dialog[k]);}return a.join('|');",
+    "expected": {
+      "String": [
+        71,
+        87,
+        76,
+        95,
+        87,
+        78,
+        68,
+        80,
+        82,
+        79,
+        67,
+        58,
+        45,
+        52,
+        124,
+        71,
+        87,
+        76,
+        95,
+        72,
+        73,
+        78,
+        83,
+        84,
+        65,
+        78,
+        67,
+        69,
+        58,
+        45,
+        54,
+        124,
+        71,
+        87,
+        76,
+        95,
+        72,
+        87,
+        78,
+        68,
+        80,
+        65,
+        82,
+        69,
+        78,
+        84,
+        58,
+        45,
+        56,
+        124,
+        71,
+        87,
+        76,
+        95,
+        85,
+        83,
+        69,
+        82,
+        68,
+        65,
+        84,
+        65,
+        58,
+        45,
+        50,
+        49,
+        124,
+        68,
+        87,
+        76,
+        95,
+        68,
+        76,
+        71,
+        80,
+        82,
+        79,
+        67,
+        58,
+        52,
+        124,
+        68,
+        87,
+        76,
+        95,
+        77,
+        83,
+        71,
+        82,
+        69,
+        83,
+        85,
+        76,
+        84,
+        58,
+        48,
+        124,
+        68,
+        87,
+        76,
+        95,
+        85,
+        83,
+        69,
+        82,
+        58,
+        56
+      ]
+    }
+  }
+]

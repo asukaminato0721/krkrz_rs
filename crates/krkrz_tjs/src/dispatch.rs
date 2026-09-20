@@ -40,7 +40,8 @@ impl Vm {
         Ok(Value::Integer(i64::from(removed)))
     }
 
-    pub(crate) fn has_member(&self, receiver: &Value, key: &Value) -> Result<bool> {
+    /// Check whether a member exists without invoking its getter.
+    pub fn has_member(&self, receiver: &Value, key: &Value) -> Result<bool> {
         if matches!(receiver, Value::String(_)) {
             return Ok(false);
         }

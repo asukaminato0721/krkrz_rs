@@ -5,7 +5,7 @@ playable slice. **The game is not playable yet.** Original startup now
 executes archive setup, plugin registration, `AppConfig.tjs`, `Config.tjs` and
 application locking, compatibility scripts and framework definitions through
 `LineModeEx.tjs`. Execution currently stops in `MainWindow.tjs` at the unsupported
-`win32dialog.dll` plugin requested by the compatibility layer. The title,
+`windowEx.dll` plugin requested by the compatibility layer. The title,
 New Game, first choice, scene transition, and original save/load acceptance
 criteria have not been met. Execution failures never count as checkpoints.
 
@@ -90,7 +90,7 @@ outside the installation.
 | `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5, integer WAVE/Vorbis PCM, SLI loops and labels, checked AlphaMovie containers | TLG6, font integration, MPEG/AlphaMovie pixel decoding |
 | `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, switch/do/while/for control flow, comma/swap and eager logical-assignment operators, global unary-dot lookup, ordered class initializers and deferred base resolution, explicit invalidation/finalization, interpolation, default parameters, argument forwarding/rest/spread, octet values, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting, automatic object finalization/collection, original bytecode loader |
 | `krkrz_kag` | Ordered tags/attributes, labels, text/escaped brackets, multiline tags, explicit jump/call/return and restorable cursor | Macros, conditionals, parameter expansion, script-driven parser bindings, complete KAGParserEx state |
-| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, TextRenderBase layout/timing, GdiPlus geometry, AlphaMovie metadata/transport controls, MenuItem state/tree/click dispatch, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
+| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, TextRenderBase layout/timing, GdiPlus geometry, AlphaMovie metadata/transport controls, MenuItem state/tree/click dispatch, WIN32Dialog templates/bounded buffers/closed state, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
 | `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, static inventory, primitive evaluation, startup diagnostics | Deterministic interactive replay, input-driven checkpoints, frame/audio comparison, native play |
 
 The compositor, scheduler, Window state and PCM mixer are tested components, not yet a game player. Window support currently covers construction, caption, visibility, client size, position, primary-layer lookup and resize/action callbacks in headless sessions. Explicit invalidation releases its native state and cancels pending callbacks. It does not create an OS window.
@@ -188,3 +188,9 @@ It supports item properties, insertion and display ordering, radio groups, child
 array caching, shortcut conversion, and deferred click callbacks. Native menu
 bars, popups and OS shortcut delivery are not implemented. Shortcut name tables
 use stable English defaults until a platform keyboard adapter is available.
+
+The WIN32Dialog binding registers the installed plugin's observed constants and
+interfaces. It supports closed-dialog state, Header/Items storage and copied
+binary templates, and bounded Blob byte/word/dword access. Native dialogs,
+controls, OS handles, drawing, message boxes and pointer-based buffer operations
+remain explicit unsupported operations.

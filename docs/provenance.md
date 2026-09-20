@@ -174,6 +174,16 @@ DLL's behavior. Keyboard names in those tests are controlled because the source
 uses Windows keyboard-layout APIs. Bound callback identity and string-escape
 corrections follow Kirikiri Z `tjsInterCodeExec.cpp` and `tjsLex.cpp`.
 
-The next dialog source reference is `wtnbgo/win32dialog` revision
+The dialog source reference is `wtnbgo/win32dialog` revision
 `9658169f6af0159adb2739d22d9a6ebb8cec4981`, by miahmie, under the Kirikiri
-license. It is currently research only; no dialog code has been ported yet.
+license. `main.cpp`, `dialog.hpp`, `dialog_config.hpp` and the pinned ncbind
+converters guide the Rust registration/data implementation. Native template fields
+and binary layout are adapted with the notice in `THIRD_PARTY_NOTICES.md`.
+Direct member probes against the installed DLL establish the supported export
+profile, including seven legacy constants absent from the newer source. Export
+candidate probing is not exhaustive class enumeration (the DLL rejects that).
+No resource DLL or platform GUI code is executed by Rust.
+
+The next Window-extension reference is `wtnbgo/windowEx` revision
+`88c9be22ff8f9e6d42edbf4787092837f177a89a`, by miahmie. Its source is cached
+outside the repository and has not been ported yet.

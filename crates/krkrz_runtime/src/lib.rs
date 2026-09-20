@@ -4,6 +4,7 @@ mod app_lock;
 pub mod audio;
 pub mod compositor;
 mod csv;
+mod dialog;
 mod get_sample;
 pub mod graphics;
 mod layer_draw;
@@ -49,6 +50,7 @@ pub struct Services {
     text_renderers: BTreeMap<usize, text_render::Renderer>,
     layer_draw: layer_draw::State,
     menus: menu::State,
+    dialogs: dialog::State,
     alpha_movies: BTreeMap<usize, alpha_movie::Player>,
     alpha_movie_links: BTreeSet<String>,
     sound_global_volume: i32,
@@ -143,6 +145,9 @@ impl Host for Services {
         }
         if let Some(operation) = name.strip_prefix("TextRenderBase.") {
             return self.text_render_call(vm, operation, context, args, budget);
+        }
+        if let Some(operation) = name.strip_prefix("WIN32Dialog.") {
+            return self.dialog_call(vm, operation, context, args, budget);
         }
         if let Some(operation) = name.strip_prefix("PSBFile.") {
             return self.psb_call(vm, operation, context, args, budget);
@@ -321,6 +326,11 @@ impl Host for Services {
                             text_render::register(vm)?;
                             self.loaded_plugins.insert("textrender.dll".into());
                         }
+                        Ok(Value::Void)
+                    }
+                    "win32dialog.dll" => {
+                        self.dialogs
+                            .link(vm, path.rsplit('/').next().unwrap_or(""))?;
                         Ok(Value::Void)
                     }
                     "menu.dll" => {
@@ -566,6 +576,7 @@ impl Session {
                 text_renderers: BTreeMap::new(),
                 layer_draw: layer_draw::State::default(),
                 menus: menu::State::default(),
+                dialogs: dialog::State::default(),
                 alpha_movies: BTreeMap::new(),
                 alpha_movie_links: BTreeSet::new(),
                 sound_global_volume: 100_000,
