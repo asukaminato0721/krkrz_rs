@@ -76,6 +76,13 @@ ID 6 and stopped on a click. `tools/replays/otome-settings-auto.json` reproduces
 this. Audio controls were checked through state and presentation, without a
 listening-quality assertion.
 
+The original backlog now opens and renders the collected dialogue, closes on
+Escape without advancing the current entry, and permits Auto to resume and
+stop afterward. `tools/replays/otome-backlog-auto.json` records the UI sequence.
+TextRender's configurable kinsoku handling passes 72 original-engine cases,
+including boundary wrapping, timing and render bounds. Nine complex cases that
+would move an entire narrow line still return an explicit unsupported error.
+
 `Layer.doGrayScale` matches four original pixel cases; `Layer.adjustGamma`
 matches eight, including additive alpha, clipping and channel-specific ranges.
 `Layer.fillAlpha` matches eleven original cases, preserving RGB and setting

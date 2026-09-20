@@ -245,3 +245,12 @@ PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
 LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
 NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+
+## Executable application icons
+
+PE32/PE32+ resource parsing and ICO group reconstruction use `pelite` 0.10.0
+(MIT), <https://github.com/CasualX/pelite>. The existing `image` crate decodes
+the resulting ICO image. The application reads the user's installed executable
+without loading or executing it. Tests construct synthetic PE resources; no
+original game executable, icon, or artwork is distributed with this repository.

@@ -6,7 +6,7 @@ use anyhow::{Context, Result, ensure};
 pub const MAX_EXECUTABLE_BYTES: usize = 64 * 1024 * 1024;
 const MAX_ICON_BYTES: usize = 16 * 1024 * 1024;
 
-/// Extract the application's icon. Kirikiri 2 uses MAINICON; Kirikiri Z uses
+/// Extract the application's icon, preferring MAINICON and Kirikiri Z's
 /// resource 107. Other executables fall back to their first group icon.
 pub fn decode(bytes: &[u8]) -> Result<Option<Image>> {
     ensure!(

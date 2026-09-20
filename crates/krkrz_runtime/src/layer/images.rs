@@ -428,3 +428,44 @@ fn apply_key(image: &mut Arc<Image>, key: u32) -> Result<()> {
 fn color(p: &[u8]) -> u32 {
     ((p[0] as u32) << 16) | ((p[1] as u32) << 8) | p[2] as u32
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cached_images_share_until_color_key_changes_pixels() {
+        let project = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        Image {
+            width: 2,
+            height: 1,
+            rgba: vec![1, 2, 3, 255, 4, 5, 6, 255],
+        }
+        .write_png(&project.path().join("shared.png"))
+        .unwrap();
+        let mut session =
+            crate::Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+        session.services.image_cache.set_limit(4096);
+        let (first, _) = session
+            .services
+            .read_graphic("shared.png", &mut 100_000)
+            .unwrap();
+        let (mut second, _) = session
+            .services
+            .read_graphic("shared.png", &mut 100_000)
+            .unwrap();
+        assert!(Arc::ptr_eq(&first, &second));
+        apply_key(&mut second, 0x1fffffff).unwrap();
+        assert!(Arc::ptr_eq(&first, &second));
+        apply_key(&mut second, 0x010203).unwrap();
+        assert!(!Arc::ptr_eq(&first, &second));
+        assert_eq!(first.rgba[3], 255);
+        assert_eq!(second.rgba[3], 0);
+        let (cached, _) = session
+            .services
+            .read_graphic("shared.png", &mut 100_000)
+            .unwrap();
+        assert!(Arc::ptr_eq(&first, &cached));
+    }
+}

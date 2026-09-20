@@ -120,6 +120,8 @@ selected save directory, so keep it separate from original saves.
 `tools/replays/otome-settings-auto.json` checks message speed, BGM volume and
 mute controls, and automatic dialogue advance through the original menus.
 It uses a fresh save directory and the installation's default settings.
+`tools/replays/otome-backlog-auto.json` checks dialogue history, Escape to
+close it, and automatic playback afterward.
 
 An unfiltered `verify` deliberately returns failure for the installation's
 malformed protection-notice entry. It verifies all other resolved resources
@@ -138,8 +140,10 @@ cargo run --release -p krkrz_cli --bin krkrz_engine -- \
 Otome Domain Cx profile when `otomedomain.exe` is present; `--otome-domain`
 selects it explicitly. It never executes the Windows executable or DLLs.
 
-`--icon /path/to/icon.ico` sets the native window icon (PNG, JPEG, BMP and TLG
-also work). On Wayland this uses `xdg_toplevel_icon_v1` when the compositor
+The native window automatically uses the icon embedded in `otomedomain.exe`.
+Other projects use an executable matching the directory name, or the only EXE
+in that directory. `--icon /path/to/icon.ico` overrides this choice (PNG, JPEG,
+BMP and TLG also work). On Wayland this uses `xdg_toplevel_icon_v1` when the compositor
 supports it. The frontend uses winit **0.31.0-beta.3**, the latest prerelease,
 because stable 0.30.13 does not include that protocol. See
 [dependency validation](docs/dependency-upgrade.md) for compatibility checks.

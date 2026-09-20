@@ -113,63 +113,6 @@ fn icon_executable(project: &std::path::Path) -> Result<Option<std::path::PathBu
         .or_else(|| (executables.len() == 1).then(|| executables.remove(0))))
 }
 
-#[cfg(test)]
-mod icon_tests {
-    use super::*;
-
-    #[test]
-    fn application_executable_is_preferred_to_updaters() {
-        let project = tempfile::tempdir().unwrap();
-        for name in ["updater.exe", "OtomeDomain.EXE", "readme.txt"] {
-            std::fs::write(project.path().join(name), b"").unwrap();
-        }
-        assert_eq!(
-            icon_executable(project.path())
-                .unwrap()
-                .unwrap()
-                .file_name()
-                .unwrap(),
-            "OtomeDomain.EXE"
-        );
-        let generic = tempfile::tempdir().unwrap();
-        assert!(icon_executable(generic.path()).unwrap().is_none());
-        std::fs::write(generic.path().join("game.exe"), b"").unwrap();
-        assert_eq!(
-            icon_executable(generic.path())
-                .unwrap()
-                .unwrap()
-                .file_name()
-                .unwrap(),
-            "game.exe"
-        );
-        std::fs::write(generic.path().join("updater.exe"), b"").unwrap();
-        assert!(icon_executable(generic.path()).unwrap().is_none());
-        let matching = generic
-            .path()
-            .join(generic.path().file_name().unwrap())
-            .with_extension("exe");
-        std::fs::write(&matching, b"").unwrap();
-        assert_eq!(icon_executable(generic.path()).unwrap(), Some(matching));
-    }
-
-    #[test]
-    fn explicit_image_overrides_auto_detection_and_reports_invalid_input() {
-        let project = tempfile::tempdir().unwrap();
-        std::fs::write(project.path().join("otomedomain.exe"), b"malformed PE").unwrap();
-        assert!(project_icon(project.path(), None).unwrap().is_none());
-        let icon = project.path().join("icon.png");
-        krkrz_assets::media::Image {
-            width: 2,
-            height: 2,
-            rgba: [1, 2, 3, 255].repeat(4),
-        }
-        .write_png(&icon)
-        .unwrap();
-        assert!(project_icon(project.path(), Some(&icon)).unwrap().is_some());
-        assert!(project_icon(project.path(), Some(&project.path().join("missing.ico"))).is_err());
-    }
-}
-
 pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Result<()> {
     let mut event_loop = EventLoop::new()?;
     let mut host = Host {
@@ -718,5 +661,62 @@ fn cursor_icon(cursor: i32) -> winit::cursor::CursorIcon {
         -21 => Pointer,
         1 => VerticalText,
         _ => Default,
+    }
+}
+
+#[cfg(test)]
+mod icon_tests {
+    use super::*;
+
+    #[test]
+    fn application_executable_is_preferred_to_updaters() {
+        let project = tempfile::tempdir().unwrap();
+        for name in ["updater.exe", "OtomeDomain.EXE", "readme.txt"] {
+            std::fs::write(project.path().join(name), b"").unwrap();
+        }
+        assert_eq!(
+            icon_executable(project.path())
+                .unwrap()
+                .unwrap()
+                .file_name()
+                .unwrap(),
+            "OtomeDomain.EXE"
+        );
+        let generic = tempfile::tempdir().unwrap();
+        assert!(icon_executable(generic.path()).unwrap().is_none());
+        std::fs::write(generic.path().join("game.exe"), b"").unwrap();
+        assert_eq!(
+            icon_executable(generic.path())
+                .unwrap()
+                .unwrap()
+                .file_name()
+                .unwrap(),
+            "game.exe"
+        );
+        std::fs::write(generic.path().join("updater.exe"), b"").unwrap();
+        assert!(icon_executable(generic.path()).unwrap().is_none());
+        let matching = generic
+            .path()
+            .join(generic.path().file_name().unwrap())
+            .with_extension("exe");
+        std::fs::write(&matching, b"").unwrap();
+        assert_eq!(icon_executable(generic.path()).unwrap(), Some(matching));
+    }
+
+    #[test]
+    fn explicit_image_overrides_auto_detection_and_reports_invalid_input() {
+        let project = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join("otomedomain.exe"), b"malformed PE").unwrap();
+        assert!(project_icon(project.path(), None).unwrap().is_none());
+        let icon = project.path().join("icon.png");
+        krkrz_assets::media::Image {
+            width: 2,
+            height: 2,
+            rgba: [1, 2, 3, 255].repeat(4),
+        }
+        .write_png(&icon)
+        .unwrap();
+        assert!(project_icon(project.path(), Some(&icon)).unwrap().is_some());
+        assert!(project_icon(project.path(), Some(&project.path().join("missing.ico"))).is_err());
     }
 }
