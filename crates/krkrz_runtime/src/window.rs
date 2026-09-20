@@ -16,6 +16,7 @@ pub struct WindowState {
     pub left: i32,
     pub top: i32,
     pub primary_layer: Value,
+    pub(crate) draw_device: Value,
     pub(crate) registered_objects: Vec<Value>,
     pub(crate) invalidating: bool,
     pub(crate) resize_pending: bool,
@@ -34,6 +35,7 @@ impl Default for WindowState {
             left: 0,
             top: 0,
             primary_layer: Value::NULL,
+            draw_device: Value::Void,
             registered_objects: Vec::new(),
             invalidating: false,
             resize_pending: false,
@@ -106,6 +108,7 @@ impl WindowState {
                 "left" => Value::Integer(self.left.into()),
                 "top" => Value::Integer(self.top.into()),
                 "primaryLayer" => self.primary_layer.clone(),
+                "drawDevice" => self.draw_device.clone(),
                 _ => return Err(unsupported(format!("unsupported Window property: {key}"))),
             });
         }

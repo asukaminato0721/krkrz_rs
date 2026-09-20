@@ -6,6 +6,7 @@ pub mod audio;
 pub mod compositor;
 mod csv;
 mod dialog;
+mod draw_device;
 mod font;
 pub mod fonts;
 mod get_sample;
@@ -50,6 +51,7 @@ pub struct Services {
     pub trace_enabled: bool,
     pub windows: BTreeMap<usize, window::WindowState>,
     main_window: Option<usize>,
+    draw_devices: draw_device::Devices,
     /// The headless display size. A native host replaces it before startup.
     pub screen_size: (u32, u32),
     pub image_cache: graphics::ImageCache,
@@ -145,6 +147,9 @@ impl Host for Services {
         args: &[Value],
         budget: &mut u64,
     ) -> Result<Value> {
+        if let Some(operation) = name.strip_prefix("BasicDrawDevice.") {
+            return self.draw_device_call(operation, context);
+        }
         if let Some(operation) = name.strip_prefix("WindowEx.") {
             return self.window_ex_call(vm, operation, context, args, budget);
         }
@@ -224,8 +229,22 @@ impl Host for Services {
                         self.messages.push(format!("{error:#}"));
                     }
                 }
+                if let Some(window) = self.windows.get(&id) {
+                    let device = window.draw_device.clone();
+                    if matches!(device, Value::Object(_)) && device != Value::NULL {
+                        vm.invalidate(&device, self, budget)?;
+                    }
+                }
                 self.windows.remove(&id);
                 self.window_ex.windows.remove(&id);
+                return Ok(Value::Void);
+            }
+            if operation == "set:drawDevice" {
+                let value = args
+                    .first()
+                    .context("Window.drawDevice: missing value")?
+                    .clone();
+                self.set_draw_device(vm, id, value, budget)?;
                 return Ok(Value::Void);
             }
             let first_window = !self
@@ -256,6 +275,13 @@ impl Host for Services {
                 if first_window {
                     self.main_window = Some(id);
                 }
+                let class = self
+                    .draw_devices
+                    .class
+                    .clone()
+                    .context("BasicDrawDevice class is missing")?;
+                let device = vm.construct(&class, &[], self, budget)?;
+                self.set_draw_device(vm, id, device, budget)?;
                 return Ok(Value::Void);
             }
             if operation == "onResize" {
@@ -613,6 +639,7 @@ impl Session {
         // budget. User scripts retain the full caller-supplied budget.
         vm.execute(&constants, &mut (), &mut 100_000)?;
         window::register(&mut vm)?;
+        let draw_device_class = draw_device::register(&mut vm)?;
         async_trigger::register(&mut vm)?;
         timer::register(&mut vm)?;
         layer::register(&mut vm)?;
@@ -671,6 +698,7 @@ impl Session {
                 trace_enabled: false,
                 windows: BTreeMap::new(),
                 main_window: None,
+                draw_devices: draw_device::Devices::new(draw_device_class),
                 screen_size: (1280, 720),
                 image_cache: graphics::ImageCache::new(graphics::automatic_limit()),
                 app_locks: app_lock::AppLocks::default(),

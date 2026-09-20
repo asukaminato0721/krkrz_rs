@@ -265,7 +265,12 @@ impl Vm {
                 .is_some_and(|o| matches!(o.kind, ObjectKind::Property { .. }))
         {
             if object.context.is_none() {
-                object.context = Some(self.object_id(receiver)?);
+                object.context = Some(match receiver {
+                    Value::Object(reference) => {
+                        reference.context.unwrap_or(self.object_id(receiver)?)
+                    }
+                    _ => self.object_id(receiver)?,
+                });
             }
             if !raw {
                 return self.read_property(&value, receiver, host, budget);
@@ -335,7 +340,12 @@ impl Vm {
         let context = reference
             .context
             .map(Value::object)
-            .unwrap_or_else(|| receiver.clone());
+            .unwrap_or_else(|| match receiver {
+                Value::Object(reference) if reference.context.is_some() => {
+                    Value::object(reference.context.unwrap())
+                }
+                _ => receiver.clone(),
+            });
         self.invoke(&getter, &context, &[], host, budget)
     }
     pub(crate) fn write_property(
@@ -357,7 +367,12 @@ impl Vm {
         let context = reference
             .context
             .map(Value::object)
-            .unwrap_or_else(|| receiver.clone());
+            .unwrap_or_else(|| match receiver {
+                Value::Object(reference) if reference.context.is_some() => {
+                    Value::object(reference.context.unwrap())
+                }
+                _ => receiver.clone(),
+            });
         self.invoke(&setter, &context, &[value], host, budget)?;
         Ok(())
     }

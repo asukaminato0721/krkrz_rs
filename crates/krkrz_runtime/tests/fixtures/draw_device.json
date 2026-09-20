@@ -1,0 +1,63 @@
+[
+  {
+    "name": "device_default",
+    "source": "var w=new Window(),d=w.drawDevice;return [d instanceof 'BasicDrawDevice',d===w.drawDevice,typeof global.BasicDrawDevice,typeof Window.BasicDrawDevice].join('|');",
+    "expected": {
+      "String": [
+        49,
+        124,
+        49,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        124,
+        79,
+        98,
+        106,
+        101,
+        99,
+        116
+      ]
+    }
+  },
+  {
+    "name": "device_lifetime",
+    "source": "var w=new Window(),a=w.drawDevice,b=new Window.BasicDrawDevice();w.drawDevice=b;var r=[isvalid a,isvalid b,w.drawDevice===b];w.drawDevice=void;r.add(isvalid b);r.add(typeof w.drawDevice);var c=new Window.BasicDrawDevice();w.drawDevice=c;invalidate w;r.add(isvalid c);return r.join('|');",
+    "expected": {
+      "String": [
+        48,
+        124,
+        49,
+        124,
+        49,
+        124,
+        48,
+        124,
+        118,
+        111,
+        105,
+        100,
+        124,
+        48
+      ]
+    }
+  },
+  {
+    "name": "device_ctor",
+    "source": "var w=new Window(),d=w.drawDevice;d.BasicDrawDevice();return [isvalid d,w.drawDevice===d].join('|');",
+    "expected": {
+      "String": [
+        49,
+        124,
+        49
+      ]
+    }
+  }
+]
