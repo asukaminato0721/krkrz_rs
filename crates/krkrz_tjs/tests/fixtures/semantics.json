@@ -220,7 +220,7 @@
   },
   {
     "name": "string_utf16_length",
-    "source": "return \"a😀\".length;",
+    "source": "return \"a\ud83d\ude00\".length;",
     "expected": {
       "Integer": 3
     }
@@ -1440,6 +1440,55 @@
         50,
         56
       ]
+    }
+  },
+  {
+    "name": "property_receiver_rebound_get",
+    "source": "class A {property p {getter(){return this.x;}}}var a=new A(),b=new A();a.x=31;b.x=32;return [(A incontextof b).p,(a incontextof b).p].join(',');",
+    "expected": {
+      "String": [
+        51,
+        50,
+        44,
+        51,
+        49
+      ]
+    }
+  },
+  {
+    "name": "property_receiver_rebound_set",
+    "source": "class A {property p {setter(v){this.x=v;}}}var a=new A(),b=new A();a.x=31;b.x=32;(A incontextof b).p=33;(a incontextof b).p=34;return [a.x,b.x].join(',');",
+    "expected": {
+      "String": [
+        51,
+        52,
+        44,
+        51,
+        51
+      ]
+    }
+  },
+  {
+    "name": "property_receiver_raw_context",
+    "source": "global.x=30;class A {property p {getter(){return this.x;}}}A.x=36;var b=new A();b.x=35;var p=&(A incontextof b).p,q=&A.p,r=&b.p;return [p,q,r].join(',');",
+    "expected": {
+      "String": [
+        51,
+        48,
+        44,
+        51,
+        48,
+        44,
+        51,
+        53
+      ]
+    }
+  },
+  {
+    "name": "property_receiver_raw_use",
+    "source": "global.x=30;class A {property p {getter(){return this.x;}}}A.x=36;var b=new A();b.x=35;var p=&(A incontextof b).p;var o=%[x:37];&o.q=p;return o.q;",
+    "expected": {
+      "Integer": 30
     }
   }
 ]

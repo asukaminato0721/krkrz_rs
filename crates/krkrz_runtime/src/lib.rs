@@ -11,6 +11,7 @@ mod font;
 pub mod fonts;
 mod get_sample;
 pub mod graphics;
+mod kag_parser;
 mod layer;
 mod layer_draw;
 mod menu;
@@ -62,6 +63,7 @@ pub struct Services {
     timers: BTreeMap<usize, timer::Timer>,
     layers: BTreeMap<usize, layer::Layer>,
     font_objects: BTreeMap<usize, font::Font>,
+    kag_parsers: BTreeMap<usize, std::rc::Rc<std::cell::RefCell<kag_parser::Parser>>>,
     csv_parsers: BTreeMap<usize, csv::Parser>,
     sounds: BTreeMap<usize, sound::Sound>,
     psb_files: BTreeMap<usize, Option<psb_file::File>>,
@@ -147,6 +149,9 @@ impl Host for Services {
         args: &[Value],
         budget: &mut u64,
     ) -> Result<Value> {
+        if let Some(operation) = name.strip_prefix("KAGParser.") {
+            return self.kag_call(vm, operation, context, args, budget);
+        }
         if let Some(operation) = name.strip_prefix("BasicDrawDevice.") {
             return self.draw_device_call(operation, context);
         }
@@ -392,7 +397,7 @@ impl Host for Services {
                     }
                     "kagparserex.dll" => {
                         if !self.loaded_plugins.contains("kagparserex.dll") {
-                            plugins::declare_class(vm, "KAGParser")?;
+                            kag_parser::register(vm)?;
                             self.loaded_plugins.insert("kagparserex.dll".into());
                         }
                         Ok(Value::Void)
@@ -512,6 +517,7 @@ impl Host for Services {
                 .get(&arg(0)?.text())
                 .map(|v| Value::string(v))
                 .unwrap_or(Value::Void)),
+            "Scripts.getClassNames" => vm.class_names(arg(0)?),
             "Scripts.execStorage" | "Scripts.evalStorage" => {
                 let context = script_context(args.get(2));
                 self.script(
@@ -676,6 +682,7 @@ impl Session {
             "Scripts.evalStorage",
             "Scripts.exec",
             "Scripts.eval",
+            "Scripts.getClassNames",
             "Storages.addAutoPath",
             "Storages.isExistentStorage",
             "Storages.getPlacedPath",
@@ -707,6 +714,7 @@ impl Session {
                 timers: BTreeMap::new(),
                 layers: BTreeMap::new(),
                 font_objects: BTreeMap::new(),
+                kag_parsers: BTreeMap::new(),
                 fonts: fonts::FontBook::default(),
                 csv_parsers: BTreeMap::new(),
                 sounds: BTreeMap::new(),

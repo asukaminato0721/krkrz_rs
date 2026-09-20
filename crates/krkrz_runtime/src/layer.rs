@@ -29,6 +29,8 @@ pub(crate) struct Layer {
     visible: bool,
     enabled: bool,
     opacity: i32,
+    cursor: i32,
+    image_modified: bool,
     hit_type: i32,
     hit_threshold: i32,
     neutral: [u8; 4],
@@ -66,6 +68,8 @@ impl Default for Layer {
             visible: false,
             enabled: true,
             opacity: 255,
+            cursor: 0,
+            image_modified: true,
             hit_type: 0,
             hit_threshold: 16,
             neutral: [255, 255, 255, 0],
@@ -144,6 +148,7 @@ impl Layer {
             self.image_left = 0;
             self.image_top = 0;
         }
+        self.image_modified = true;
         self.reset_clip()
     }
     fn resize_image(&mut self, w: i32, h: i32, available: usize) -> Result<()> {
@@ -165,6 +170,7 @@ impl Layer {
             height: h as u32,
             rgba,
         });
+        self.image_modified = true;
         self.reset_clip()
     }
     fn size(&mut self, w: i32, h: i32, available: usize) -> Result<()> {
@@ -263,6 +269,8 @@ impl Layer {
                 "visible" => self.visible.into(),
                 "enabled" => self.enabled.into(),
                 "opacity" => self.opacity,
+                "cursor" => self.cursor,
+                "imageModified" => self.image_modified.into(),
                 "hitType" => self.hit_type,
                 "hitThreshold" => self.hit_threshold,
                 _ => return Err(unsupported(format!("unsupported Layer operation: {op}"))),
@@ -275,6 +283,13 @@ impl Layer {
             "set:visible" => self.visible = arg(0)?.truth()?,
             "set:enabled" => self.enabled = arg(0)?.truth()?,
             "set:opacity" => self.opacity = n(0)?.clamp(0, 255),
+            "set:imageModified" => self.image_modified = arg(0)?.truth()?,
+            "set:cursor" => {
+                if matches!(arg(0)?, Value::String(_)) {
+                    return Err(unsupported("Layer cursor image loading is not implemented"));
+                }
+                self.cursor = n(0)?;
+            }
             "set:holdAlpha" => self.hold_alpha = arg(0)?.truth()?,
             "set:face" => self.face = n(0)?,
             "set:hitType" => self.hit_type = n(0)?,
@@ -288,6 +303,7 @@ impl Layer {
                     self.allocate(available)?;
                 } else {
                     self.image = None;
+                    self.image_modified = true;
                 }
             }
             "set:type" => {
@@ -302,6 +318,7 @@ impl Layer {
                     };
                     if matches!(kind, 0 | 6 | 7) {
                         self.image = None;
+                        self.image_modified = true;
                     } else {
                         self.allocate(available)?;
                     }
@@ -393,6 +410,7 @@ impl Layer {
                     } else {
                         p[..3].copy_from_slice(&rgb(color)?);
                     }
+                    self.image_modified = true;
                 }
             }
             "fillRect" => {
@@ -415,6 +433,7 @@ impl Layer {
                     rgb(color & 0xffffff)?
                 };
                 let image = self.image.as_mut().context("layer has no image")?;
+                self.image_modified = true;
                 for y in top.max(0)..bottom.min(image.height as i32) {
                     for x in left.max(0)..right.min(image.width as i32) {
                         let i = (y as usize * image.width as usize + x as usize) * 4;
@@ -587,10 +606,6 @@ impl Services {
             self.layer_reparent(id, parent)?;
             return Ok(Value::Void);
         }
-        ensure!(
-            self.layers[&id].constructed,
-            "Layer constructor has not run"
-        );
         match op {
             "get:absoluteOrderMode" => {
                 return Ok(Value::Integer(self.layers[&id].absolute_mode.into()));
@@ -612,7 +627,14 @@ impl Services {
                 self.layer_reparent(id, object(arg(0)?)?)?;
                 return Ok(Value::Void);
             }
-            "get:window" => return Ok(bound(self.layers[&id].window)),
+            "get:window" => {
+                let layer = &self.layers[&id];
+                return Ok(if layer.constructed {
+                    bound(layer.window)
+                } else {
+                    Value::NULL
+                });
+            }
             "get:isPrimary" => return Ok(Value::Integer((self.layers[&id].root == id).into())),
             "get:font" => {
                 if let Some(font) = &self.layers[&id].font {

@@ -448,5 +448,65 @@
         114
       ]
     }
+  },
+  {
+    "name": "layer_before_base_constructor",
+    "source": "class L extends Layer { function L(w,p) { left=7;top=8;cursor=-2;global.before=[left,top,width,height,hasImage,isPrimary,window===null,cursor].join(\"|\"); super.Layer(w,p); } } var w=new Window(),p=new Layer(w,null),l=new L(w,p);return global.before+\":\"+[l.left,l.top,l.cursor,l.window===w].join(\"|\");",
+    "expected": {
+      "String": [
+        55,
+        124,
+        56,
+        124,
+        51,
+        50,
+        124,
+        51,
+        50,
+        124,
+        49,
+        124,
+        48,
+        124,
+        49,
+        124,
+        45,
+        50,
+        58,
+        55,
+        124,
+        56,
+        124,
+        45,
+        50,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "layer_image_modified",
+    "source": "var w=new Window(),p=new Layer(w,null),l=new Layer(w,p),r=[l.imageModified];l.imageModified=false;l.left=2;r.add(l.imageModified);l.setMainPixel(0,0,0);r.add(l.imageModified);l.imageModified=false;l.setMaskPixel(-1,-1,255);r.add(l.imageModified);l.fillRect(0,0,0,0,0);r.add(l.imageModified);l.fillRect(0,0,1,1,0);r.add(l.imageModified);l.imageModified=false;l.setImageSize(40,40);r.add(l.imageModified);l.imageModified=false;l.hasImage=false;r.add(l.imageModified);l.imageModified=false;l.hasImage=true;r.add(l.imageModified);return r.join(\"|\");",
+    "expected": {
+      "String": [
+        49,
+        124,
+        48,
+        124,
+        49,
+        124,
+        48,
+        124,
+        48,
+        124,
+        49,
+        124,
+        49,
+        124,
+        49,
+        124,
+        49
+      ]
+    }
   }
 ]

@@ -16,7 +16,7 @@ fn index(key: &Value) -> Option<i64> {
     }
 }
 impl Vm {
-    pub(crate) fn dictionary_assign(
+    pub fn dictionary_assign(
         &mut self,
         receiver: &Value,
         args: &[Value],
@@ -179,7 +179,7 @@ impl Vm {
         Ok(Value::Void)
     }
 
-    pub(crate) fn delete_member(&mut self, receiver: &Value, key: &Value) -> Result<Value> {
+    pub fn delete_member(&mut self, receiver: &Value, key: &Value) -> Result<Value> {
         let id = self.object_handle(receiver)?;
         if !self.objects[id].valid || matches!(self.objects[id].kind, ObjectKind::ReadOnly(_)) {
             return Ok(Value::Integer(0));

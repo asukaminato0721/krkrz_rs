@@ -55,6 +55,9 @@ and text stream encoding follow Kirikiri Z `tjs2/tjsArray.cpp`,
 `saveStruct/Main.cpp` and Kirikiroid2 `src/plugins/saveStruct.cpp`, adjusted
 against the installed plugin's output. The historical plugin lists Go Watanabe
 and miahmie as authors and specifies the same Kirikiri license below.
+KAGParserEx parsing, macro expansion and native parser state follow wamsoft/KAGParserEx
+`KAGParser.cpp`, Copyright (C) 2000 W.Dee <dee@kikyou.info> and contributors,
+under the same Kirikiri license below. The pinned revision is in `docs/references.json`.
 CSVParser parsing, row callbacks and stream boundaries follow historical
 `csvParser/Main.cpp`, by Go Watanabe, under the same Kirikiri license. The
 installed PackinOne storage-mode behavior was established by comparison.

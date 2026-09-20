@@ -40,6 +40,28 @@ impl Vm {
         };
         Ok(Value::Integer(i64::from(result)))
     }
+    /// Native Scripts.getClassNames: registered instance names, descendant first.
+    pub fn class_names(&mut self, value: &Value) -> Result<Value> {
+        let object = &self.objects[self.object_id(value)?];
+        let mut names: Vec<Value> = object.classes.iter().map(|n| Value::string(n)).collect();
+        if names.is_empty() {
+            let native = match &object.kind {
+                ObjectKind::Array(_) => Some("Array"),
+                ObjectKind::Dictionary => Some("Dictionary"),
+                ObjectKind::RegExp { .. } => Some("RegExp"),
+                ObjectKind::ReadOnly(view) => match view.data.as_ref() {
+                    crate::ReadOnlyData::Array(_) => Some("Array"),
+                    crate::ReadOnlyData::Dictionary(_) => Some("Dictionary"),
+                    _ => None,
+                },
+                _ => None,
+            };
+            if let Some(name) = native {
+                names.push(Value::string(name));
+            }
+        }
+        self.new_native_array(names)
+    }
     pub(crate) fn define_property(
         &mut self,
         definition: &Property,
@@ -179,6 +201,8 @@ impl Vm {
         else {
             bail!("invalid class object")
         };
+        let context = self.object_id(instance)?;
+        self.objects[context].classes.push(definition.name.clone());
         for expression in &definition.bases {
             let mut frame = Frame::global();
             frame.context = self.object_id(instance)?;
@@ -186,8 +210,6 @@ impl Vm {
             let base = self.object_id(&base)?;
             self.initialize_instance(base, instance, host, budget, depth + 1)?;
         }
-        let context = self.object_id(instance)?;
-        self.objects[context].classes.push(definition.name.clone());
         if let Some(initializer) = native_initializer {
             host.call_with_context(self, &initializer, instance, &[], budget)?;
             self.objects[context].native_finalizers.push(format!(
@@ -257,6 +279,11 @@ impl Vm {
         budget: &mut u64,
     ) -> Result<Value> {
         let mut value = self.resolve_member(receiver, key, optional, host, budget)?;
+        // IGNOREPROP returns the stored closure unchanged. Binding the receiver
+        // here would turn an unbound property reference into a bound property.
+        if raw {
+            return Ok(value);
+        }
         if let Value::Object(object) = &mut value
             && let Some(id) = object.object
             && self
@@ -272,9 +299,7 @@ impl Vm {
                     _ => self.object_id(receiver)?,
                 });
             }
-            if !raw {
-                return self.read_property(&value, receiver, host, budget);
-            }
+            return self.read_property(&value, receiver, host, budget);
         }
         Ok(value)
     }

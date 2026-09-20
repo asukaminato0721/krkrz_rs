@@ -243,7 +243,6 @@ fn declared_plugin_exports_do_not_hide_unimplemented_operations() {
     for call in [
         "(new Layer(new Window(),null)).drawText(0,0,\"text\",0)",
         "Layer.light(10,20)",
-        "new KAGParser()",
         "new Process()",
         "Storages.getTime(\"x\")",
     ] {
