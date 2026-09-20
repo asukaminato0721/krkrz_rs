@@ -11,7 +11,7 @@ pub(crate) fn path(project: &Path, root: &Path, name: &str) -> Result<PathBuf> {
         "archive or NUL in writable storage name"
     );
     let normalized = name.replace('\\', "/");
-    let candidate = Path::new(&normalized);
+    let candidate = Path::new(krkrz_core::local_storage_path(&normalized));
     let relative = if candidate.is_absolute() {
         candidate
             .strip_prefix(root)

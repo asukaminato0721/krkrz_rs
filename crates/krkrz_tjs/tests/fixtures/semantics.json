@@ -220,7 +220,7 @@
   },
   {
     "name": "string_utf16_length",
-    "source": "return \"a\ud83d\ude00\".length;",
+    "source": "return \"a😀\".length;",
     "expected": {
       "Integer": 3
     }
@@ -1399,6 +1399,47 @@
     "source": "class C extends 1{}return 1;",
     "expected": {
       "Integer": 1
+    }
+  },
+  {
+    "name": "class_direct",
+    "source": "class A{var x=11;function get(){return this.x;}} class B extends A{var x=22;function get2(){return global.A.get();}} var b=new B();return b.get2();",
+    "expected": {
+      "Integer": 22
+    }
+  },
+  {
+    "name": "class_indirect",
+    "source": "class A{function f(){return this.x;}}class B extends A{var x=23;function g(){var key=\"f\";return global.A[key]();}}return (new B()).g();",
+    "expected": {
+      "Integer": 23
+    }
+  },
+  {
+    "name": "class_bound_receiver",
+    "source": "class A{function f(){return this.x;}}var a=new A(),b=new A();a.x=24;b.x=25;return (A incontextof b).f();",
+    "expected": {
+      "Integer": 25
+    }
+  },
+  {
+    "name": "class_detached",
+    "source": "class A{function f(){return this.x;}}class B extends A{var x=26;function g(){var f=A.f;return f();}}return (new B()).g();",
+    "expected": {
+      "Integer": 26
+    }
+  },
+  {
+    "name": "dictionary_unbound_receiver",
+    "source": "global.x=27;var d=%[x:28,f:function(){return this.x;}];return [(d incontextof null).f(),d.f()].join(\",\");",
+    "expected": {
+      "String": [
+        50,
+        55,
+        44,
+        50,
+        56
+      ]
     }
   }
 ]

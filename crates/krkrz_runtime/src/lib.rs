@@ -45,6 +45,9 @@ pub struct Services {
     pub messages: Vec<String>,
     pub trace_enabled: bool,
     pub windows: BTreeMap<usize, window::WindowState>,
+    main_window: Option<usize>,
+    /// The headless display size. A native host replaces it before startup.
+    pub screen_size: (u32, u32),
     pub image_cache: graphics::ImageCache,
     pub fonts: fonts::FontBook,
     app_locks: app_lock::AppLocks,
@@ -168,6 +171,14 @@ impl Host for Services {
             return self.csv_call(vm, operation, context, args, budget);
         }
         if let Some(operation) = name.strip_prefix("Window.") {
+            if operation == "get:mainWindow" {
+                return Ok(self.main_window.map_or(Value::NULL, |id| {
+                    Value::Object(ObjectRef {
+                        object: Some(id),
+                        context: Some(id),
+                    })
+                }));
+            }
             let Value::Object(reference) = context else {
                 anyhow::bail!("Window requires an object context")
             };
@@ -179,10 +190,31 @@ impl Host for Services {
                 return Ok(Value::Void);
             }
             if operation == "@invalidate" {
+                if self.main_window == Some(id) {
+                    self.main_window = None;
+                }
+                let registered = if let Some(window) = self.windows.get_mut(&id) {
+                    window.invalidating = true;
+                    std::mem::take(&mut window.registered_objects)
+                } else {
+                    Vec::new()
+                };
+                for object in registered {
+                    if let Err(error) = vm.invalidate(&object, self, budget) {
+                        if error.downcast_ref::<krkrz_tjs::VmAbort>().is_some() {
+                            return Err(error);
+                        }
+                        self.messages.push(format!("{error:#}"));
+                    }
+                }
                 self.windows.remove(&id);
                 self.window_ex.windows.remove(&id);
                 return Ok(Value::Void);
             }
+            let first_window = !self
+                .windows
+                .values()
+                .any(|window| window.constructed && !window.invalidating);
             let window = self
                 .windows
                 .get_mut(&id)
@@ -204,6 +236,9 @@ impl Host for Services {
                     .get_member(&system, &Value::string("title"), false)?
                     .text();
                 window.constructed = true;
+                if first_window {
+                    self.main_window = Some(id);
+                }
                 return Ok(Value::Void);
             }
             if operation == "onResize" {
@@ -403,6 +438,8 @@ impl Host for Services {
                 }
             }
             "System.getTickCount" => Ok(Value::Integer(self.time_ms as i64)),
+            "System.get:screenWidth" => Ok(Value::Integer(self.screen_size.0.into())),
+            "System.get:screenHeight" => Ok(Value::Integer(self.screen_size.1.into())),
             "System.addFont" => {
                 let name = arg(0)?.text();
                 if self.storage.resolve(&name).is_err() {
@@ -556,6 +593,9 @@ impl Session {
         async_trigger::register(&mut vm)?;
         sound::register(&mut vm)?;
         let system = vm.register_namespace("System")?;
+        for name in ["screenWidth", "screenHeight"] {
+            vm.register_native_property(&system, name, Some(&format!("System.get:{name}")), None)?;
+        }
         vm.register_native_property(
             &system,
             "graphicCacheLimit",
@@ -568,7 +608,7 @@ impl Session {
             ("osName", std::env::consts::OS.into()),
             ("platformName", std::env::consts::OS.into()),
             ("versionString", "1.2.0.3".into()),
-            ("dataPath", format!("{}/", save_dir.display())),
+            ("dataPath", format!("file://.{}/", save_dir.display())),
         ] {
             vm.set_member(&system, &Value::string(key), Value::string(&value))?;
         }
@@ -603,6 +643,8 @@ impl Session {
                 messages: vec![],
                 trace_enabled: false,
                 windows: BTreeMap::new(),
+                main_window: None,
+                screen_size: (1280, 720),
                 image_cache: graphics::ImageCache::new(graphics::automatic_limit()),
                 app_locks: app_lock::AppLocks::default(),
                 async_triggers: async_trigger::State::default(),

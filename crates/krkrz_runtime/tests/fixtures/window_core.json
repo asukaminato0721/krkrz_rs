@@ -1,0 +1,80 @@
+[
+  {
+    "name": "window_main",
+    "source": "var r=[Window.mainWindow===null];var a=new Window(),b=new Window();r.add(Window.mainWindow===a);r.add(typeof a.mainWindow);invalidate a;r.add(Window.mainWindow===null);var c=new Window();r.add(Window.mainWindow===null);invalidate b;invalidate c;var d=new Window();r.add(Window.mainWindow===d);return r.join(\"|\");",
+    "expected": {
+      "String": [
+        49,
+        124,
+        49,
+        124,
+        79,
+        98,
+        106,
+        101,
+        99,
+        116,
+        124,
+        49,
+        124,
+        49,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "window_lifetime",
+    "source": "global.log=[];class C{var name;function C(n){name=n;}function finalize(){global.log.add(name);}}var w=new Window(),a=new C(\"a\"),b=new C(\"b\"),c=new C(\"c\");w.add(a);w.add(a);w.add(b);w.add(c);w.remove(b);invalidate w;return [log.join(\",\"),isvalid a,isvalid b,isvalid c].join(\"|\");",
+    "expected": {
+      "String": [
+        97,
+        44,
+        99,
+        124,
+        48,
+        124,
+        49,
+        124,
+        48
+      ]
+    }
+  },
+  {
+    "name": "window_lifetime_reentrant",
+    "source": "global.log=[];global.w=new Window();class C{var n;function C(v){n=v;}function finalize(){global.log.add(n);global.w.remove(global.b);global.w.add(global.c);if(n==1)throw \"failure\";}}global.a=new C(1);global.b=new C(2);global.c=new C(3);w.add(a);w.add(b);invalidate w;return [log.join(\",\"),isvalid a,isvalid b,isvalid c].join(\"|\");",
+    "expected": {
+      "String": [
+        49,
+        44,
+        50,
+        124,
+        49,
+        124,
+        48,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "native_base_constructor",
+    "source": "System.title=\"Context test\";class W extends Window{function W(){global.Window.Window();}}var w=new W();return w.caption;",
+    "expected": {
+      "String": [
+        67,
+        111,
+        110,
+        116,
+        101,
+        120,
+        116,
+        32,
+        116,
+        101,
+        115,
+        116
+      ]
+    }
+  }
+]

@@ -22,23 +22,13 @@ fn interface() -> Result<Interface> {
         "../data/window_ex.json"
     ))?)
 }
+#[derive(Default)]
 pub(crate) struct Window {
     disable_resize: bool,
     disable_move: bool,
     nc_mouse: bool,
     events: [bool; 4],
     hooks: [u32; 32],
-}
-impl Default for Window {
-    fn default() -> Self {
-        Self {
-            disable_resize: false,
-            disable_move: false,
-            nc_mouse: false,
-            events: [false; 4],
-            hooks: [0; 32],
-        }
-    }
 }
 pub(crate) struct State {
     spelling: Option<String>,

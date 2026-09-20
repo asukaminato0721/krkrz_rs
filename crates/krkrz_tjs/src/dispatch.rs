@@ -351,8 +351,8 @@ impl Vm {
                 return Ok(items.get(i as usize).cloned().unwrap_or(Value::Void));
             }
             if [
-                "add", "push", "pop", "shift", "unshift", "erase", "insert", "clear", "reverse",
-                "join", "find",
+                "add", "push", "pop", "shift", "unshift", "erase", "remove", "insert", "clear",
+                "reverse", "join", "find",
             ]
             .contains(&name.as_str())
             {
@@ -550,6 +550,23 @@ impl Vm {
             bail!("array method on non-array object")
         };
         match name {
+            "remove" => {
+                let value = arg(0)?;
+                let all = args.get(1).map(Value::truth).transpose()?.unwrap_or(true);
+                *budget = budget
+                    .checked_sub(items.len() as u64)
+                    .ok_or_else(|| unsupported("Array.remove execution budget exceeded"))?;
+                let mut removed = 0;
+                items.retain(|item| {
+                    if (all || removed == 0) && value.strict_equal(item) {
+                        removed += 1;
+                        false
+                    } else {
+                        true
+                    }
+                });
+                Ok(Value::Integer(removed))
+            }
             "add" => {
                 ensure!(items.len() < 1_000_000, "array exceeds limit");
                 let i = items.len();

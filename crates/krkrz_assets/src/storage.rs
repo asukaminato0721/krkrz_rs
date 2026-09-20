@@ -64,6 +64,7 @@ impl Storage {
     }
     fn normalize(&self, name: &str, directory: bool) -> Result<String> {
         let name = name.replace('\\', "/");
+        let name = krkrz_core::local_storage_path(&name);
         let prefix = format!("{}/", self.project.display());
         let name = if name
             .to_ascii_lowercase()
@@ -71,7 +72,7 @@ impl Storage {
         {
             &name[prefix.len()..]
         } else {
-            &name
+            name
         };
         if let Some((archive, member)) = name.split_once('>') {
             ensure!(

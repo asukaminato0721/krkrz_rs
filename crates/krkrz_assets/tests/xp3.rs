@@ -149,8 +149,12 @@ fn qualified_paths_select_the_named_archive_and_roundtrip_placed_paths() {
     let placed = storage.placed_path("data.xp3>scripts/start.tjs").unwrap();
     assert_eq!(storage.read(&placed).unwrap(), b"original");
     storage.verify(&placed).unwrap();
+    assert_eq!(
+        storage.read(&format!("file://.{placed}")).unwrap(),
+        b"original"
+    );
     storage
-        .add_search_path(&format!("{}/data.xp3>scripts/", d.path().display()))
+        .add_search_path(&format!("file://.{}/data.xp3>scripts/", d.path().display()))
         .unwrap();
     assert_eq!(storage.read("start.tjs").unwrap(), b"original");
     storage.add_search_path("patch2.xp3>scripts").unwrap();

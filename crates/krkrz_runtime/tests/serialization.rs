@@ -45,7 +45,10 @@ fn save_reload_in_fresh_session_and_overlay_precedence() {
     std::fs::write(project.path().join("branch.tjs"), installed).unwrap();
     let write = r#"
 var state=%["scene"=>"next", "choice"=>0, "flags"=>[1,2], "volume"=>0.1];
-(Dictionary.saveStruct incontextof state)(System.dataPath+"slot/one.tjs", "z");
+// KAG considers a path absolute when it contains a storage scheme colon.
+var path=System.dataPath;
+if(path.indexOf(":")==-1)path=System.exePath+path;
+(Dictionary.saveStruct incontextof state)(path+"slot/one.tjs", "z");
 [7].saveStruct(System.exePath+"branch.tjs", "c");
 return Scripts.evalStorage("branch.tjs")[0];
 "#;
@@ -57,6 +60,7 @@ return Scripts.evalStorage("branch.tjs")[0];
         std::fs::read(project.path().join("branch.tjs")).unwrap(),
         installed
     );
+    assert!(saves.path().join("slot/one.tjs").is_file());
     let read = r#"
 var state=Scripts.evalStorage(System.dataPath+"slot/one.tjs");
 return state.scene+","+state.choice+","+state.flags[1]+","+state.volume;
@@ -104,8 +108,10 @@ fn symlinks_cannot_redirect_save_writes() {
     )
     .unwrap();
     for target in ["escape/keep.txt", "escape/new.txt", "file.txt"] {
-        let source = format!("[1].saveStruct('{target}');");
-        assert!(run(project.path(), saves.path(), &source).is_err());
+        for prefix in ["'".to_owned(), "System.dataPath+'".to_owned()] {
+            let source = format!("[1].saveStruct({prefix}{target}');");
+            assert!(run(project.path(), saves.path(), &source).is_err());
+        }
     }
     assert_eq!(
         std::fs::read(outside.path().join("keep.txt")).unwrap(),

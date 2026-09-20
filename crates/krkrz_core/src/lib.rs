@@ -4,6 +4,14 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
+/// Resolve the POSIX local-storage prefix used by Kirikiri's SDL ports.
+/// This is a storage name, not a percent-encoded web URL.
+pub fn local_storage_path(name: &str) -> &str {
+    name.strip_prefix("file://.")
+        .filter(|path| path.starts_with('/'))
+        .unwrap_or(name)
+}
+
 /// Archive names use ASCII case folding, not Unicode case folding.
 pub fn storage_name(name: &str) -> Result<String> {
     ensure!(!name.contains('\0'), "NUL in storage name");

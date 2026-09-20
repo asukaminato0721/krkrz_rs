@@ -996,7 +996,10 @@ impl Vm {
                         let context = context
                             .as_ref()
                             .filter(|_| !static_call)
-                            .map(|r| registers[*r].clone())
+                            .and_then(|r| match &registers[*r] {
+                                Value::Object(reference) => reference.context.map(Value::object),
+                                value => Some(value.clone()),
+                            })
                             .unwrap_or(Value::object(frame.context));
                         let args = self.expand_args(args, &registers, &frame.arguments)?;
                         registers[*out] = self.invoke_result(

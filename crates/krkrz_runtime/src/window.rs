@@ -15,6 +15,8 @@ pub struct WindowState {
     pub left: i32,
     pub top: i32,
     pub primary_layer: Value,
+    pub(crate) registered_objects: Vec<Value>,
+    pub(crate) invalidating: bool,
     pub(crate) resize_pending: bool,
 }
 impl Default for WindowState {
@@ -30,13 +32,24 @@ impl Default for WindowState {
             left: 0,
             top: 0,
             primary_layer: Value::NULL,
+            registered_objects: Vec::new(),
+            invalidating: false,
             resize_pending: false,
         }
     }
 }
 pub(crate) fn register(vm: &mut Vm) -> Result<()> {
     let class = vm.register_native_class("Window")?;
-    for name in ["Window", "setInnerSize", "setPos", "onResize"] {
+    vm.register_native_property(&class, "mainWindow", Some("Window.get:mainWindow"), None)?;
+    for name in [
+        "Window",
+        "finalize",
+        "add",
+        "remove",
+        "setInnerSize",
+        "setPos",
+        "onResize",
+    ] {
         vm.register_native(&format!("Window.{name}"))?;
     }
     for name in [
@@ -93,6 +106,25 @@ impl WindowState {
             });
         }
         match name {
+            "finalize" => {}
+            "add" | "remove" => {
+                let object = arg(0)?;
+                ensure!(
+                    matches!(object, Value::Object(_)),
+                    "Window.{name} requires an Object"
+                );
+                if !self.invalidating {
+                    if name == "remove" {
+                        self.registered_objects.retain(|value| value != object);
+                    } else if !self.registered_objects.contains(object) {
+                        ensure!(
+                            self.registered_objects.len() < 100_000,
+                            "Window object limit exceeded"
+                        );
+                        self.registered_objects.push(object.clone());
+                    }
+                }
+            }
             "set:visible" => self.visible = arg(0)?.truth()?,
             "set:caption" => self.caption = arg(0)?.text(),
             "set:innerWidth" => self.set_size(dimension(arg(0)?)?, self.inner_height),
