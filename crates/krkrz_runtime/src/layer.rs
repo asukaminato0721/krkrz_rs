@@ -1002,6 +1002,7 @@ mod blit;
 mod draw;
 mod focus;
 mod images;
+pub(crate) mod input;
 mod save;
 mod shrink;
 mod text;

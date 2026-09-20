@@ -67,13 +67,13 @@ impl Services {
         Ok(Value::Void)
     }
 
-    fn suggest_graphic(&self, name: &str) -> Option<String> {
+    pub(super) fn suggest_graphic(&self, name: &str) -> Option<String> {
         EXTENSIONS
             .iter()
             .find_map(|ext| self.storage.resolve(&format!("{name}{ext}")).ok())
     }
 
-    fn read_graphic(
+    pub(super) fn read_graphic(
         &mut self,
         name: &str,
         budget: &mut u64,

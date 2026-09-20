@@ -88,5 +88,10 @@
     "name": "SamplePlugin",
     "url": "https://github.com/krkrz/SamplePlugin",
     "revision": "d94e312065f7298a970b58bfe73de48e52aef9ee"
+  },
+  {
+    "name": "shrinkCopy",
+    "url": "https://github.com/wtnbgo/shrinkCopy",
+    "revision": "007fbba3b3531b476d6b97e7ee80553868f31b2d"
   }
 ]

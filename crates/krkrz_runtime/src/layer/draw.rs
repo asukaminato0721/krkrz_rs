@@ -102,7 +102,15 @@ impl Services {
                 depth + 1,
                 bytes,
             )?;
-            super::transition::crossfade(&mut result, &source, layer.kind, t.phase);
+            t.blend(
+                &mut result,
+                &source,
+                layer.kind,
+                [
+                    rect.x - layer.image_left as i64,
+                    rect.y - layer.image_top as i64,
+                ],
+            );
         }
         self.layer_draw_children(
             id,
@@ -122,7 +130,7 @@ impl Services {
             } else {
                 self.layer_complete(t.source, rect, budget, depth + 1, bytes)?
             };
-            super::transition::crossfade(&mut result, &source, layer.kind, t.phase);
+            t.blend(&mut result, &source, layer.kind, [rect.x, rect.y]);
         }
         Ok(result)
     }

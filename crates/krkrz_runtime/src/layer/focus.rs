@@ -5,7 +5,7 @@ fn value(id: Option<usize>) -> Value {
     id.map_or(Value::NULL, bound)
 }
 impl Services {
-    fn layer_node_enabled(&self, id: usize, visible: bool) -> bool {
+    pub(super) fn layer_node_enabled(&self, id: usize, visible: bool) -> bool {
         let mut current = Some(id);
         while let Some(id) = current {
             let Some(layer) = self.layers.get(&id) else {
@@ -142,7 +142,7 @@ impl Services {
         )?;
         Ok(self.layers.get(&id).and_then(|l| l.focus_work))
     }
-    fn layer_set_focus(
+    pub(super) fn layer_set_focus(
         &mut self,
         vm: &mut Vm,
         root: usize,
@@ -201,7 +201,7 @@ impl Services {
         }
         result
     }
-    fn layer_step_focus(
+    pub(super) fn layer_step_focus(
         &mut self,
         vm: &mut Vm,
         root: usize,
@@ -239,7 +239,7 @@ impl Services {
         }
         Ok(())
     }
-    fn layer_pointer_offset(&self, id: usize) -> [i32; 2] {
+    pub(super) fn layer_pointer_offset(&self, id: usize) -> [i32; 2] {
         let mut point = [0i32; 2];
         let mut id = id;
         while let Some(layer) = self.layers.get(&id) {
@@ -424,7 +424,27 @@ impl Services {
                 result?;
                 Value::Void
             }
-            "onBeforeFocus"
+            "releaseCapture" => {
+                let window = self.layers[&id].window;
+                if let Some(window) = self.windows.get_mut(&window) {
+                    window.input.capture = None;
+                    window.input.release_capture = true;
+                }
+                Value::Void
+            }
+            "onHitTest"
+            | "onClick"
+            | "onDoubleClick"
+            | "onMouseDown"
+            | "onMouseUp"
+            | "onMouseMove"
+            | "onMouseEnter"
+            | "onMouseLeave"
+            | "onMouseWheel"
+            | "onKeyDown"
+            | "onKeyUp"
+            | "onKeyPress"
+            | "onBeforeFocus"
             | "onPaint"
             | "onTransitionCompleted"
             | "onSearchNextFocusable"
@@ -434,6 +454,13 @@ impl Services {
             | "onNodeEnabled"
             | "onNodeDisabled" => {
                 let keys: &[&str] = match op {
+                    "onClick" | "onDoubleClick" => &["x", "y"],
+                    "onHitTest" => &["x", "y", "hit"],
+                    "onMouseDown" | "onMouseUp" => &["x", "y", "button", "shift"],
+                    "onMouseMove" => &["x", "y", "shift"],
+                    "onMouseWheel" => &["shift", "delta", "x", "y"],
+                    "onKeyDown" | "onKeyUp" => &["key", "shift", "process"],
+                    "onKeyPress" => &["key", "process"],
                     "onTransitionCompleted" => &["dest", "src"],
                     "onBeforeFocus" => &["layer", "blurred", "direction"],
                     "onFocus" => &["blurred", "direction"],
@@ -443,7 +470,7 @@ impl Services {
                 };
                 let owner = self.layers[&id].action_owner.clone();
                 let mut result = Value::Void;
-                if owner != Value::NULL {
+                if owner != Value::NULL && op != "onHitTest" {
                     ensure!(
                         args.len() >= keys.len(),
                         "Layer.{op}: missing event arguments"
@@ -475,6 +502,7 @@ impl Services {
                         layer.focus_work = target;
                     }
                 }
+                self.layer_input_default(vm, id, op, args, budget)?;
                 result
             }
             _ => return Ok(None),

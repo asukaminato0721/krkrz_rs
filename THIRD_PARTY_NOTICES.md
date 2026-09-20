@@ -76,6 +76,13 @@ The getSample replacement follows Kirikiroid2
 `src/plugins/getSample.cpp`, revision `d1c2b1259423542c893e0b65eaeb46c848848f2b`,
 under the Kirikiri notice below. Visualization downmix follows Kirikiri Z
 `sound/WaveIntf.cpp`. No original plugin binary is bundled or executed by Rust.
+Date parsing and calendar behavior follow Kirikiri Z `tjs2/tjsDate.cpp`,
+`tjsDateParser.cpp`, `syntax/tjsdate.y` and `syntax/dp_wordtable.txt`.
+The chrono crate supplies calendar and platform timezone conversion.
+Layer shrinkCopy follows miahmie's shrinkCopy plugin, revision
+`007fbba3b3531b476d6b97e7ee80553868f31b2d` from wtnbgo/shrinkCopy.
+Its readme specifies the Kirikiri license reproduced below. BMP serialization
+and palette dithering follow `visual/GraphicsLoaderIntf.cpp` and `visual/tvpgl.c`.
 Original TLG copyright: Copyright (C) 2000-2005 W.Dee and contributors.
 C# TLG port by morkt. The applicable Kirikiri notice follows.
 

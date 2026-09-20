@@ -5,12 +5,24 @@ pub(super) struct Transition {
     pub source: usize,
     pub with_children: bool,
     pub phase: i32,
+    rule: Option<Rule>,
     duration: u64,
     tick: u64,
     identity: std::rc::Rc<()>,
     start: Option<u64>,
     callback: Option<Value>,
     self_update: bool,
+}
+struct Rule {
+    width: usize,
+    height: usize,
+    pixels: Vec<u8>,
+    vague: i32,
+}
+impl Transition {
+    fn phase_max(&self) -> i32 {
+        255 + self.rule.as_ref().map_or(0, |r| r.vague)
+    }
 }
 impl Services {
     pub(super) fn layer_transition_call(
@@ -31,7 +43,7 @@ impl Services {
             "Layer is already in a transition"
         );
         let name = args[0].text();
-        if name != "crossfade" {
+        if !matches!(name.as_str(), "crossfade" | "universal") {
             return Err(unsupported(format!("transition provider {name}")));
         }
         let with_children = args
@@ -74,6 +86,62 @@ impl Services {
             "transition requires a time option"
         );
         let duration = time.integer()?.max(2) as u64;
+        let rule = if name == "universal" {
+            let vague =
+                vm.get_property(options, &Value::string("vague"), true, false, self, budget)?;
+            let vague = if matches!(vague, Value::Void) {
+                64
+            } else {
+                vague.integer()? as i32
+            };
+            ensure!(
+                (0..=i32::MAX - 255).contains(&vague),
+                "invalid universal transition vague"
+            );
+            let rule =
+                vm.get_property(options, &Value::string("rule"), true, false, self, budget)?;
+            ensure!(
+                !matches!(rule, Value::Void),
+                "universal transition requires a rule image"
+            );
+            let name = rule.text();
+            let resolved = self
+                .storage
+                .resolve(&name)
+                .ok()
+                .or_else(|| self.suggest_graphic(&name))
+                .with_context(|| format!("cannot load transition rule {name}"))?;
+            let bytes = self.read_storage(&resolved)?;
+            let palette = bytes.starts_with(b"BM")
+                || (bytes.starts_with(b"\x89PNG") && bytes.get(25) == Some(&3));
+            let (image, _) = self.read_graphic(&resolved, budget)?;
+            if !palette && !bytes.starts_with(b"\x89PNG") {
+                return Err(unsupported(format!(
+                    "grayscale transition rule format: {resolved}"
+                )));
+            }
+            let pixels = image
+                .rgba
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|p| {
+                    if palette {
+                        ((p[0] as u32 * 77 + p[1] as u32 * 150 + p[2] as u32 * 29) >> 8) as u8
+                    } else {
+                        p[2]
+                    }
+                })
+                .collect();
+            Some(Rule {
+                width: image.width as usize,
+                height: image.height as usize,
+                pixels,
+                vague,
+            })
+        } else {
+            None
+        };
         let callback = vm.get_property(
             options,
             &Value::string("callback"),
@@ -113,6 +181,7 @@ impl Services {
             source,
             with_children,
             phase: 0,
+            rule,
             duration,
             tick: if callback.is_some() { 0 } else { self.time_ms },
             identity: std::rc::Rc::new(()),
@@ -316,8 +385,9 @@ impl Services {
             if let Some(layer) = self.layers.get_mut(&id) {
                 if let Some(t) = &mut layer.transition {
                     let start = *t.start.get_or_insert(t.tick);
-                    t.phase = ((t.tick.wrapping_sub(start) as u128 * 255 / t.duration as u128)
-                        .min(255)) as i32;
+                    t.phase = ((t.tick.wrapping_sub(start) as u128 * t.phase_max() as u128
+                        / t.duration as u128)
+                        .min(t.phase_max() as u128)) as i32;
                 }
                 pending.extend(layer.children.iter().rev());
             }
@@ -337,11 +407,11 @@ impl Services {
             if !visited.insert(id) {
                 continue;
             }
-            if self
-                .layers
-                .get(&id)
-                .is_some_and(|l| l.transition.as_ref().is_some_and(|t| t.phase == 255))
-            {
+            if self.layers.get(&id).is_some_and(|l| {
+                l.transition
+                    .as_ref()
+                    .is_some_and(|t| t.phase == t.phase_max())
+            }) {
                 self.layer_stop_transition(vm, id, true, budget)?;
             }
             if let Some(layer) = self.layers.get(&id) {
@@ -422,6 +492,71 @@ pub(super) fn crossfade(destination: &mut Image, source: &Image, kind: i32, phas
         } else {
             for c in 0..4 {
                 d[c] = (d[c] as i32 + (((s[c] as i32 - d[c] as i32) * phase) >> 8)) as u8;
+            }
+        }
+    }
+}
+
+impl Transition {
+    pub(super) fn blend(
+        &self,
+        destination: &mut Image,
+        source: &Image,
+        kind: i32,
+        origin: [i64; 2],
+    ) {
+        let Some(rule) = &self.rule else {
+            crossfade(destination, source, kind, self.phase);
+            return;
+        };
+        for (i, (d, s)) in destination
+            .rgba
+            .as_chunks_mut::<4>()
+            .0
+            .iter_mut()
+            .zip(source.rgba.as_chunks::<4>().0.iter())
+            .enumerate()
+        {
+            let x = (origin[0] + (i % destination.width as usize) as i64)
+                .rem_euclid(rule.width as i64) as usize;
+            let y = (origin[1] + (i / destination.width as usize) as i64)
+                .rem_euclid(rule.height as i64) as usize;
+            let level = rule.pixels[y * rule.width + x] as i32;
+            if rule.vague < 512 {
+                if level >= self.phase {
+                    continue;
+                }
+                if level < self.phase - rule.vague {
+                    *d = *s;
+                    continue;
+                }
+            }
+            let weight = if level < self.phase - rule.vague {
+                255
+            } else if level >= self.phase {
+                0
+            } else {
+                255 - ((level as i64 - (self.phase - rule.vague) as i64) * 255 / rule.vague as i64)
+                    as i32
+            };
+            if matches!(kind, 2 | 13) {
+                let a1 = d[3] as i32;
+                let a2 = s[3] as i32;
+                let color = straight_alpha_weight(
+                    ((a1 * (256 - weight)) >> 8) as u8,
+                    ((a2 * weight) >> 8) as u8,
+                );
+                for c in 0..3 {
+                    d[c] = (d[c] as i32 + (((s[c] as i32 - d[c] as i32) * color) >> 8)) as u8;
+                }
+                d[3] = (a1 + (((a2 - a1) * weight) >> 8)) as u8;
+            } else {
+                for c in 0..4 {
+                    d[c] = (d[c] as i32 + (((s[c] as i32 - d[c] as i32) * weight) >> 8)) as u8;
+                }
+                if kind != 12 {
+                    d[3] = 0;
+                }
             }
         }
     }

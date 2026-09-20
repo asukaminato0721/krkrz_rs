@@ -163,3 +163,60 @@ fn crossfade_capture_and_budget_share_native_tree() {
     session.budget = 0;
     assert!(session.capture_window(&window).is_err());
 }
+
+#[test]
+fn original_shrink_copy_corpus() {
+    let cases: Vec<Case> =
+        serde_json::from_str(include_str!("fixtures/layer_shrink.json")).unwrap();
+    for case in cases {
+        let (_project, _saves, mut session) = session("", 1_000_000);
+        let value = session
+            .vm
+            .execute(
+                &krkrz_tjs::compile(&case.name, &case.source).unwrap(),
+                &mut session.services,
+                &mut session.budget,
+            )
+            .unwrap_or_else(|e| panic!("{}: {e:#}", case.name));
+        assert_eq!(value, case.expected, "{}", case.name);
+    }
+}
+
+#[test]
+fn original_bmp_thumbnail_bytes_and_storage_isolation() {
+    let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/layer_save.json")).unwrap();
+    let (project, saves, mut session) = session(&cases[0].source, 1_000_000);
+    for (name, golden) in [
+        (
+            "bmp8.bmp",
+            include_bytes!("fixtures/bmp8-native.bmp").as_slice(),
+        ),
+        (
+            "bmp24.bmp",
+            include_bytes!("fixtures/bmp24-native.bmp").as_slice(),
+        ),
+        (
+            "bmp32.bmp",
+            include_bytes!("fixtures/bmp32-native.bmp").as_slice(),
+        ),
+    ] {
+        assert_eq!(
+            std::fs::read(saves.path().join(name)).unwrap(),
+            golden,
+            "{name}"
+        );
+        assert!(!project.path().join(name).exists());
+    }
+    // The original save script appends serialized TJS after the BMP thumbnail.
+    session
+        .evaluate("(Dictionary.saveStruct incontextof %['branch'=>1])(global.System.exePath+'bmp8.bmp','o1118')")
+        .unwrap();
+    let bytes = std::fs::read(saves.path().join("bmp8.bmp")).unwrap();
+    assert_eq!(&bytes[..1118], include_bytes!("fixtures/bmp8-native.bmp"));
+    assert!(bytes.len() > 1118);
+    assert!(
+        session
+            .evaluate("s.saveLayerImage('../escape.bmp')")
+            .is_err()
+    );
+}

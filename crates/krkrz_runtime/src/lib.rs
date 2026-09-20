@@ -34,6 +34,7 @@ use anyhow::{Context, Result, ensure};
 use krkrz_assets::{cx::CxEncryption, storage::Storage, text};
 use krkrz_core::{Limits, save_directory};
 use krkrz_tjs::{Host, Instruction, ObjectRef, Value, Vm, compile_with_preprocessor, unsupported};
+pub use layer::input::InputEvent;
 pub use menu::{MenuAppearance, MenuBitmap};
 use serde::Serialize;
 use std::{
@@ -335,14 +336,25 @@ impl Host for Services {
                 self.set_draw_device(vm, id, device, budget)?;
                 return Ok(Value::Void);
             }
-            if operation == "onResize" {
+            if operation == "close" {
+                let callback = vm.get_member(context, &Value::string("onCloseQuery"), false)?;
+                vm.call_function(&callback, context, &[Value::Integer(1)], self, budget)?;
+                return Ok(Value::Void);
+            }
+            if operation == "onCloseQuery" {
+                if args.first().is_some_and(|v| v.truth().unwrap_or(false)) {
+                    vm.invalidate(context, self, budget)?;
+                }
+                return Ok(Value::Void);
+            }
+            if let Some(keys) = layer::input::window_event_keys(operation) {
                 ensure!(window.constructed, "Window constructor has not run");
                 // WindowIntf's default event methods forward an event Dictionary
                 // to `action`. An absent action is ignored by the native engine.
                 let action = vm.get_member(context, &Value::string("action"), true)?;
                 if !matches!(action, Value::Void) {
                     let event = vm.new_dictionary()?;
-                    vm.set_member(&event, &Value::string("type"), Value::string("onResize"))?;
+                    vm.set_member(&event, &Value::string("type"), Value::string(operation))?;
                     vm.set_member(
                         &event,
                         &Value::string("target"),
@@ -351,6 +363,9 @@ impl Host for Services {
                             context: Some(id),
                         }),
                     )?;
+                    for (key, value) in keys.iter().zip(args) {
+                        vm.set_member(&event, &Value::string(key), value.clone())?;
+                    }
                     return vm.call_function(&action, context, &[event], self, budget);
                 }
                 return Ok(Value::Void);
@@ -559,6 +574,23 @@ impl Host for Services {
             }
             "Plugins.getList" => {
                 vm.new_native_array(self.plugin_names.iter().map(|s| Value::string(s)).collect())
+            }
+            "System.getKeyState" => {
+                let key = args
+                    .first()
+                    .context("getKeyState requires a key")?
+                    .integer()? as u32;
+                let current = args.get(1).map(Value::truth).transpose()?.unwrap_or(true);
+                let mut pressed = false;
+                for window in self.windows.values_mut() {
+                    let recent = window.input.pressed.remove(&key);
+                    pressed |= if current {
+                        window.input.keys.contains(&key)
+                    } else {
+                        recent
+                    };
+                }
+                Ok(Value::Integer(pressed.into()))
             }
             "System.getTickCount" => Ok(Value::Integer(self.time_ms as i64)),
             "System.addContinuousHandler" | "System.removeContinuousHandler" => {
@@ -831,6 +863,7 @@ impl Session {
             "Debug.message",
             "Debug.notice",
             "System.getTickCount",
+            "System.getKeyState",
             "System.addContinuousHandler",
             "System.removeContinuousHandler",
             "System.readRegValue",
