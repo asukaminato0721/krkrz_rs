@@ -790,7 +790,11 @@ impl Vm {
         if frame.context != 0 {
             self.object_id(&Value::object(frame.context))?;
             let key: Vec<u16> = name.encode_utf16().collect();
-            if self.objects[frame.context].members.contains_key(&key) {
+            // Dictionary PropGet succeeds with void for absent keys, so a
+            // dictionary-bound function also shadows global names with void.
+            if self.objects[frame.context].members.contains_key(&key)
+                || matches!(self.objects[frame.context].kind, ObjectKind::Dictionary)
+            {
                 return self.get_property(
                     &Value::object(frame.context),
                     &Value::string(name),

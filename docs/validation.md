@@ -4,9 +4,22 @@
 
 The optimized runtime completed the unmodified warning and pretitle sequences,
 rendered the title menu at 1280×720, and accepted native-order mouse events on
-New Game (110,650). At 28–32 seconds the original scenario was `start.ks`, label
-`*envplay`. This is a navigation checkpoint, not a completed story playthrough.
-The subsequent 33.728-second run reached `Math.RandomGenerator` in `Action.tjs`.
+New Game (110,650). At 38–45 seconds the original scene
+`ky01_1.txt*start` is waiting on text ID 1, with `kag.inStable` and
+`kag.canStore()` both true. Four clicks at (640,500) advanced text IDs 2–5;
+each reached a stable, saveable wait. Captured frames include the character,
+nameplate, Japanese dialogue and original command bar. This establishes opening
+dialogue interaction, not a completed story playthrough.
+
+`Math.RandomGenerator` implements the original MT19937 API, including serialized
+state and signed 32/63/64-bit draws; eight original-engine differential cases pass.
+The title's stray closing bracket was caused by empty-expression evaluation:
+empty, whitespace and comment-only expressions now return void like the original.
+`Layer.clipAlphaRect` matches all 65,536 alpha pairs and five geometry/overlap
+cases against the original DLL. `Layer.nodeVisible` follows ancestor visibility.
+`Layer.doBoxBlur` matches ten original pixel cases, including clipping and alpha;
+oversized vertical kernels use deterministic neighborhoods rather than copying
+the original's uninitialized ring-buffer behavior.
 
 The former lifetime allocation ceiling is replaced by a live-object arena and
 explicit safe-point garbage collection. Monotonic object IDs prevent reclaimed
@@ -14,6 +27,26 @@ handles from aliasing new objects. Script graph, native references, external hos
 roots and finalizers are covered by focused VM/runtime tests. Native and replay
 hosts collect between ticks; Session embedders explicitly provide retained Values.
 Finalizer timing is deferred, rather than immediate reference counting.
+
+The original Load Game button also opens `load.ks:*wait` and renders all five
+copied Windows slots, including thumbnails. Eight original save files round-trip
+22,412 typed values; bitmap prefixes remain byte-identical. A staged slot restore
+enters the scene player and passes background blur. Restored choice construction
+is the next integration checkpoint. This does not yet
+establish a successful restored choice or a game-UI save/restart/load cycle.
+Unavailable font names from the old Windows settings fall back to a registered
+Japanese font consistently for layout and rasterization.
+
+AlphaMovie now decodes every one of the installation's 160 rectangle packets.
+Synthetic DC and DEFLATE-alpha pixels match the original DLL exactly; the measured
+32×32 AC case differs by at most two RGB levels and one alpha level. Playback,
+positive frame seeks and loop sentinel handling are implemented; asynchronous
+preload timing and the unused next-movie queue remain incomplete.
+
+VideoOverlay uses bounded ffmpeg/ffprobe decoding for layer and overlay modes,
+with session-clock PCM, pause, seek, loop and EOF callbacks. The real `ed_a.mpg`
+asset passed the isolated start/midpoint/end test. This is component evidence;
+in-game opening/ending movie sequences still need acceptance runs.
 
 The older sections below are historical component records. Their original startup
 failure locations and missing-feature lists do not supersede this update.

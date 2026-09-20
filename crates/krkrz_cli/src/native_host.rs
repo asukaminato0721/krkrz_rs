@@ -208,7 +208,7 @@ impl Host<'_> {
             WindowEvent::Resized(size) => {
                 native.suspended = size.width == 0 || size.height == 0;
                 if !native.suspended {
-                    native.presenter.resize(size.width, size.height);
+                    native.presenter.resize(size.width, size.height)?;
                     self.session
                         .resize_window(&target, size.width, size.height)?;
                     native.state.inner_width = size.width as i32;

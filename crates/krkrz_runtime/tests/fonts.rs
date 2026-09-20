@@ -36,11 +36,43 @@ fn malformed_fonts_and_glyph_limits() {
         assert_eq!(book.add(data).unwrap(), 0);
     }
     assert_eq!(book.face_count(), 0);
+    assert!(book.rasterize("missing font", 'A', 20.0).is_err());
     book.add(FONT.to_vec()).unwrap();
     for size in [0.0, -1.0, f32::NAN, f32::INFINITY, 5000.0] {
         assert!(book.rasterize("Kirikiri Synthetic", 'A', size).is_err());
     }
-    assert!(book.rasterize("missing font", 'A', 20.0).is_err());
+    assert_eq!(
+        book.rasterize("missing Windows font", 'A', 20.0).unwrap(),
+        book.rasterize("Kirikiri Synthetic", 'A', 20.0).unwrap()
+    );
+}
+
+#[test]
+fn unavailable_saved_face_uses_one_fallback_for_layout_and_drawing() {
+    let project = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("synthetic.ttf"), FONT).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let source = r#"
+Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);
+var w=new Window(),l=new Layer(w,null),f=l.font;
+l.setSize(32,28);l.face=dfAlpha;f.height=20;f.face='Kirikiri Synthetic';
+var width=f.getTextWidth('Aあ');
+l.fillRect(0,0,32,28,0);l.drawText(2,1,'Aあ',0x80c040);
+var pixels=[];for(var y=0;y<28;y++)for(var x=0;x<32;x++){pixels.add(l.getMainPixel(x,y));pixels.add(l.getMaskPixel(x,y));}
+f.face='尮僲妏僑僔僢僋B';
+l.fillRect(0,0,32,28,0);l.drawText(2,1,'Aあ',0x80c040);
+var i=0;for(var y=0;y<28;y++)for(var x=0;x<32;x++){if(pixels[i++]!=l.getMainPixel(x,y) || pixels[i++]!=l.getMaskPixel(x,y))return false;}
+return width==f.getTextWidth('Aあ');
+"#;
+    let program = krkrz_tjs::compile("fallback", source).unwrap();
+    assert_eq!(
+        session
+            .vm
+            .execute(&program, &mut session.services, &mut session.budget)
+            .unwrap(),
+        Value::Integer(1)
+    );
 }
 #[test]
 fn original_add_font_api_registers_private_font_data() {

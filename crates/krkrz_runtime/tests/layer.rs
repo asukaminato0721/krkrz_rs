@@ -59,6 +59,41 @@ fn hierarchy_rejects_cycles_and_cross_tree_parents_without_mutation() {
     session.evaluate("b.setPos(3,4)").unwrap();
     assert_eq!(session.evaluate("b.left+b.top").unwrap(), Value::Integer(7));
 }
+
+#[test]
+fn node_visibility_tracks_ancestors_and_ignores_opacity_and_enabled_state() {
+    let (_, _, mut session) = session(
+        "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,a);b.visible=true;",
+        100_000,
+    );
+    assert_eq!(
+        session.evaluate("b.nodeVisible").unwrap(),
+        Value::Integer(0)
+    );
+    session.evaluate("a.visible=true").unwrap();
+    assert_eq!(
+        session.evaluate("b.nodeVisible").unwrap(),
+        Value::Integer(1)
+    );
+    session
+        .evaluate("(a.opacity=0,a.enabled=false,w.visible=false)")
+        .unwrap();
+    assert_eq!(
+        session.evaluate("b.nodeVisible").unwrap(),
+        Value::Integer(1)
+    );
+    session.evaluate("a.visible=false").unwrap();
+    assert_eq!(
+        session.evaluate("b.nodeVisible").unwrap(),
+        Value::Integer(0)
+    );
+    session.evaluate("invalidate a").unwrap();
+    assert_eq!(
+        session.evaluate("b.nodeVisible").unwrap(),
+        Value::Integer(1)
+    );
+    assert!(session.evaluate("b.nodeVisible=false").is_err());
+}
 #[test]
 fn surface_resize_preserves_pixels_and_enforces_allocation_limits() {
     let (_project, _saves, mut session) = session(

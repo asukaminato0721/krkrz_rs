@@ -9,13 +9,35 @@ use std::{path::Path, sync::Arc};
 fn original_title_accepts_new_game_input() -> Result<()> {
     use krkrz_runtime::{InputEvent, Session};
     use krkrz_tjs::Value;
+    fn click(session: &mut Session, window: &Value, x: i32, y: i32) -> Result<()> {
+        // Match the native host's move/down/click/up event sequence.
+        for event in [
+            InputEvent::PointerMove { x, y, shift: 0 },
+            InputEvent::PointerDown {
+                x,
+                y,
+                button: 0,
+                shift: 8,
+            },
+            InputEvent::Click { x, y },
+            InputEvent::PointerUp {
+                x,
+                y,
+                button: 0,
+                shift: 0,
+            },
+        ] {
+            session.input(window, event)?;
+        }
+        Ok(())
+    }
     let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
     let saves = tempfile::tempdir()?;
     let mut session = Session::open(
         Path::new(&project),
         Some(saves.path()),
         true,
-        50_000_000_000,
+        100_000_000_000,
     )?;
     session.services.epoch_ms = 0;
     session.startup()?;
@@ -43,29 +65,8 @@ fn original_title_accepts_new_game_input() -> Result<()> {
     assert_eq!((title.width, title.height), (1280, 720));
     // Use the same event order as the native host, targeting the original
     // title menu's New Game button. No script jump or replacement scenario.
-    for event in [
-        InputEvent::PointerMove {
-            x: 110,
-            y: 650,
-            shift: 0,
-        },
-        InputEvent::PointerDown {
-            x: 110,
-            y: 650,
-            button: 0,
-            shift: 8,
-        },
-        InputEvent::Click { x: 110, y: 650 },
-        InputEvent::PointerUp {
-            x: 110,
-            y: 650,
-            button: 0,
-            shift: 0,
-        },
-    ] {
-        session.input(&window, event)?;
-    }
-    for time in (26016..=32000).step_by(16) {
+    click(&mut session, &window, 110, 650)?;
+    for time in (26016..=41000).step_by(16) {
         if session.vm.should_collect_garbage() {
             collected += session.collect_garbage(roots)?;
         }
@@ -73,7 +74,7 @@ fn original_title_accepts_new_game_input() -> Result<()> {
             .tick(time)
             .with_context(|| format!("new game tick {time}"))?;
     }
-    session.tick(32000)?;
+    session.tick(41000)?;
     assert_eq!(
         session.evaluate("kag.currentStorage")?,
         Value::string("start.ks")
@@ -82,6 +83,50 @@ fn original_title_accepts_new_game_input() -> Result<()> {
         session.evaluate("kag.currentLabel")?,
         Value::string("*envplay")
     );
+    assert_eq!(
+        session.evaluate("world_object.player.curSceneName")?,
+        Value::string("ky01_1.txt*start")
+    );
+    assert_eq!(
+        session.evaluate("world_object.player.curTextId")?,
+        Value::Integer(1)
+    );
+    assert_eq!(
+        session.evaluate("kag.inStable && kag.canStore()")?,
+        Value::Integer(1)
+    );
+    let first_text = session.evaluate("world_object.player.curText.text")?;
+    assert!(!first_text.text().is_empty());
+    let dialogue = session.capture_window(&window)?;
+    assert_eq!((dialogue.width, dialogue.height), (1280, 720));
+    assert_ne!(dialogue.rgba, title.rgba);
+
+    // Advance the rendered dialogue through input rather than editing player state.
+    click(&mut session, &window, 640, 500)?;
+    for time in (41016..=44000).step_by(16) {
+        if session.vm.should_collect_garbage() {
+            collected += session.collect_garbage(roots)?;
+        }
+        session
+            .tick(time)
+            .with_context(|| format!("dialogue advance tick {time}"))?;
+    }
+    session.tick(44000)?;
+    assert_eq!(
+        session.evaluate("world_object.player.curSceneName")?,
+        Value::string("ky01_1.txt*start")
+    );
+    assert_eq!(
+        session.evaluate("world_object.player.curTextId")?,
+        Value::Integer(2)
+    );
+    assert_eq!(
+        session.evaluate("kag.inStable && kag.canStore()")?,
+        Value::Integer(1)
+    );
+    let next_text = session.evaluate("world_object.player.curText.text")?;
+    assert!(!next_text.text().is_empty());
+    assert_ne!(next_text, first_text);
     assert!(
         collected > 10_000,
         "test must exercise transient object collection"
@@ -163,6 +208,8 @@ fn embedded_true_type_and_cff_fonts_rasterize_japanese() -> Result<()> {
         "モトヤLマルベリ3等幅",
         "源ノ角ゴシック JP Regular",
         "源ノ角ゴシック JP Heavy",
+        // Existing Windows settings contain this unavailable face name.
+        "尮僲妏僑僔僢僋B",
     ] {
         let glyph = book.rasterize(face, 'あ', 32.0)?;
         assert!(glyph.coverage.iter().any(|v| *v != 0), "{face}");

@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
 use krkrz_assets::media::Image;
-use std::sync::Arc;
+use std::{
+    panic::{AssertUnwindSafe, catch_unwind},
+    sync::Arc,
+};
 use winit::window::Window;
 
 pub struct Presenter {
@@ -20,11 +23,20 @@ impl Presenter {
         let requested = wgpu::util::backend_bits_from_env();
         let result =
             Self::create_backend(window.clone(), requested.unwrap_or(wgpu::Backends::all())).await;
-        if result.is_err() && requested.is_none() {
-            // Try EGL if the primary adapter or device cannot initialize.
-            return Self::create_backend(window, wgpu::Backends::GL).await;
+        match result {
+            Err(primary) if requested.is_none() => {
+                // An adapter may be available even when its window system cannot
+                // present (for example Vulkan on Xvfb without DRI3).
+                Self::create_backend(window, wgpu::Backends::GL)
+                    .await
+                    .with_context(|| {
+                        format!(
+                            "GPU initialization failed ({primary:#}); OpenGL fallback also failed"
+                        )
+                    })
+            }
+            result => result,
         }
-        result
     }
     async fn create_backend(window: Arc<Window>, backends: wgpu::Backends) -> Result<Self> {
         let size = window.inner_size();
@@ -66,11 +78,7 @@ impl Presenter {
             config.format = format;
         }
         config.present_mode = wgpu::PresentMode::Fifo;
-        device.push_error_scope(wgpu::ErrorFilter::Validation);
-        surface.configure(&device, &config);
-        if let Some(error) = device.pop_error_scope().await {
-            anyhow::bail!("GPU cannot configure the native window surface: {error}");
-        }
+        configure_surface(&surface, &device, &config)?;
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: None,
             entries: &[wgpu::BindGroupLayoutEntry {
@@ -127,13 +135,13 @@ impl Presenter {
             texture: None,
         })
     }
-    pub fn resize(&mut self, width: u32, height: u32) {
+    pub fn resize(&mut self, width: u32, height: u32) -> Result<()> {
         if width == 0 || height == 0 {
-            return;
+            return Ok(());
         }
         self.config.width = width;
         self.config.height = height;
-        self.surface.configure(&self.device, &self.config);
+        configure_surface(&self.surface, &self.device, &self.config)
     }
     pub fn present(&mut self, image: &Image, rect: [i32; 4]) -> Result<()> {
         if self
@@ -184,8 +192,7 @@ impl Presenter {
         let frame = match self.surface.get_current_texture() {
             Ok(frame) => frame,
             Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
-                self.surface.configure(&self.device, &self.config);
-                return Ok(());
+                return configure_surface(&self.surface, &self.device, &self.config);
             }
             Err(wgpu::SurfaceError::Timeout) => return Ok(()),
             Err(error) => return Err(error.into()),
@@ -225,4 +232,22 @@ impl Presenter {
         frame.present();
         Ok(())
     }
+}
+
+/// wgpu 0.20 routes surface configuration errors through its fatal panic
+/// handler, not device error scopes. Keep this boundary narrow: initialization
+/// can then try another backend, and resize/surface loss report a host error.
+fn configure_surface(
+    surface: &wgpu::Surface<'_>,
+    device: &wgpu::Device,
+    config: &wgpu::SurfaceConfiguration,
+) -> Result<()> {
+    catch_unwind(AssertUnwindSafe(|| surface.configure(device, config))).map_err(|payload| {
+        let reason = payload
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| payload.downcast_ref::<&str>().copied())
+            .unwrap_or("unknown surface configuration failure");
+        anyhow::anyhow!("GPU cannot configure the native window surface: {reason}")
+    })
 }

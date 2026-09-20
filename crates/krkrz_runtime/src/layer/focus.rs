@@ -5,7 +5,143 @@ fn value(id: Option<usize>) -> Value {
     id.map_or(Value::NULL, bound)
 }
 impl Services {
+    fn layer_enabled_snapshot(&self, root: usize) -> Vec<(usize, bool)> {
+        self.layer_nodes(root)
+            .into_iter()
+            .map(|id| (id, self.layer_node_enabled(id, false)))
+            .collect()
+    }
+    fn layer_notify_enabled(
+        &mut self,
+        vm: &mut Vm,
+        before: Vec<(usize, bool)>,
+        budget: &mut u64,
+    ) -> Result<()> {
+        for (id, old) in before {
+            if self.layers.contains_key(&id) {
+                let new = self.layer_node_enabled(id, false);
+                if new != old {
+                    self.layer_event(
+                        vm,
+                        id,
+                        if new {
+                            "onNodeEnabled"
+                        } else {
+                            "onNodeDisabled"
+                        },
+                        &[],
+                        budget,
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+    fn layer_set_mode(&mut self, vm: &mut Vm, id: usize, budget: &mut u64) -> Result<()> {
+        let layer = &self.layers[&id];
+        if !layer.constructed {
+            return Ok(());
+        }
+        let root = layer.root;
+        let before = self.layer_enabled_snapshot(root);
+        let result = (|| -> Result<()> {
+            if let Some(&current) = self.layers.get(&root).and_then(|l| l.modal_layers.last()) {
+                ensure!(
+                    !self.layer_descendant(id, current),
+                    "cannot set mode to a descendant of the current modal Layer"
+                );
+            }
+            self.layers.get_mut(&id).unwrap().visible = true;
+            let mut parent = self.layers[&id].parent;
+            while let Some(p) = parent {
+                let l = self
+                    .layers
+                    .get(&p)
+                    .context("modal Layer parent was invalidated")?;
+                ensure!(l.visible, "cannot set mode under an invisible Layer");
+                parent = l.parent;
+            }
+            ensure!(
+                self.layers[&id].enabled,
+                "cannot set mode to a disabled Layer"
+            );
+            let first = self.layer_nodes(id).into_iter().find(|&node| {
+                self.layers[&node].join_focus_chain && self.layer_node_focusable(node)
+            });
+            self.layer_set_focus(vm, root, first, true, budget)?;
+            // Focus callbacks can invalidate either the dialog or its primary.
+            if self
+                .layers
+                .get(&id)
+                .is_some_and(|l| l.constructed && l.root == root)
+                && let Some(manager) = self.layers.get_mut(&root)
+                && !manager.modal_layers.contains(&id)
+            {
+                manager.modal_layers.push(id);
+            }
+            Ok(())
+        })();
+        self.layer_notify_enabled(vm, before, budget)?;
+        result
+    }
+    pub(super) fn layer_remove_modes(
+        &mut self,
+        vm: &mut Vm,
+        id: usize,
+        tree: bool,
+        budget: &mut u64,
+    ) -> Result<()> {
+        let Some(layer) = self.layers.get(&id) else {
+            return Ok(());
+        };
+        let root = layer.root;
+        let modes: Vec<_> = self
+            .layers
+            .get(&root)
+            .into_iter()
+            .flat_map(|l| l.modal_layers.iter().copied().filter(|id| !l.modal_removing.contains(id)))
+            .filter(|&mode| mode == id || tree && self.layer_descendant(mode, id))
+            .collect();
+        if modes.is_empty() {
+            return Ok(());
+        }
+        let before = self.layer_enabled_snapshot(root);
+        let result = (|| -> Result<()> {
+            for mode in modes {
+                if let Some(manager) = self.layers.get_mut(&root) {
+                    manager.modal_removing.push(mode);
+                }
+                let focus = (|| -> Result<()> {
+                  if self.layers.contains_key(&id) {
+                    let next = self.layer_search_focus(vm, id, true, budget)?;
+                    self.layer_set_focus(vm, root, next, true, budget)?;
+                  }
+                  Ok(())
+                })();
+                let removed = !self.layers.contains_key(&mode);
+                if let Some(manager) = self.layers.get_mut(&root) {
+                    manager.modal_removing.retain(|&entry| entry != mode);
+                    if focus.is_ok() || removed {
+                        manager.modal_layers.retain(|&entry| entry != mode);
+                    }
+                }
+                focus?;
+            }
+            Ok(())
+        })();
+        self.layer_notify_enabled(vm, before, budget)?;
+        result
+    }
     pub(super) fn layer_node_enabled(&self, id: usize, visible: bool) -> bool {
+        if let Some(modal) = self
+            .layers
+            .get(&id)
+            .and_then(|l| self.layers.get(&l.root))
+            .and_then(|l| l.modal_layers.last())
+            && !self.layer_descendant(id, *modal)
+        {
+            return false;
+        }
         let mut current = Some(id);
         while let Some(id) = current {
             let Some(layer) = self.layers.get(&id) else {
@@ -230,6 +366,7 @@ impl Services {
         id: usize,
         budget: &mut u64,
     ) -> Result<()> {
+        self.layer_remove_modes(vm, id, true, budget)?;
         let root = self
             .layers
             .get(&id)
@@ -296,6 +433,14 @@ impl Services {
                 .with_context(|| format!("Layer.{op}: missing argument {i}"))
         };
         let result = match op {
+            "setMode" => {
+                self.layer_set_mode(vm, id, budget)?;
+                Value::Void
+            }
+            "removeMode" => {
+                self.layer_remove_modes(vm, id, false, budget)?;
+                Value::Void
+            }
             "get:cursorX" | "get:cursorY" => {
                 let layer = &self.layers[&id];
                 let axis = usize::from(op == "get:cursorY");
@@ -391,6 +536,9 @@ impl Services {
                     _ => layer.enabled = enabled,
                 };
                 let result = (|| -> Result<()> {
+                    if !enabled && matches!(op, "set:visible" | "set:enabled") {
+                        self.layer_remove_modes(vm, id, true, budget)?;
+                    }
                     if !enabled && let Some(focused) = self.layer_focused(root) {
                         let blur = if op == "set:focusable" {
                             previously_focusable && focused == id

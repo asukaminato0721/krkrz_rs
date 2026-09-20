@@ -218,7 +218,7 @@ impl Services {
         };
         if capture
             && let Some(id) = w.input.capture
-            && self.layers.contains_key(&id)
+            && self.layer_node_enabled(id, false)
         {
             return Ok(Some(id));
         }
@@ -500,7 +500,7 @@ impl crate::Session {
                     if !matches!(event, InputEvent::Wheel { .. }) {
                         args.push(Value::Integer(1));
                     }
-                    if let Some(id) = focused {
+                    if let Some(id) = focused.filter(|&id| s.layer_node_enabled(id, false)) {
                         s.layer_event(&mut self.vm, id, name, &args, &mut self.budget)?;
                     } else if !matches!(event, InputEvent::Wheel { .. }) {
                         s.layer_input_default(&mut self.vm, root, name, &args, &mut self.budget)?;

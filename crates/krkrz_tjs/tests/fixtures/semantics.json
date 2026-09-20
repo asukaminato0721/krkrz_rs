@@ -1532,5 +1532,48 @@
     "expected": {
       "Integer": 7
     }
+  },
+  {
+    "name": "dict_missing",
+    "source": "function f(){return vertical;} return (f incontextof %[])();",
+    "expected": "Void"
+  },
+  {
+    "name": "dict_global",
+    "source": "global.vertical=12;function f(){return vertical;}return (f incontextof %[])();",
+    "expected": "Void"
+  },
+  {
+    "name": "dict_present",
+    "source": "global.vertical=12;function f(){return vertical;}return (f incontextof %[vertical:3])();",
+    "expected": {
+      "Integer": 3
+    }
+  },
+  {
+    "name": "dict_with",
+    "source": "function f(ch){with(ch){return vertical;}}return (f incontextof %[])(%[vertical:3]);",
+    "expected": "Void"
+  },
+  {
+    "name": "dict_local",
+    "source": "function f(){var vertical=7;return vertical;}return (f incontextof %[])();",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "dict_plain_missing",
+    "source": "class C{} var c=new C();function f(){return vertical;}try{(f incontextof c)();}catch(e){return 1;}return 0;",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "dict_plain_global",
+    "source": "global.vertical=12;class C{} var c=new C();function f(){return vertical;}return (f incontextof c)();",
+    "expected": {
+      "Integer": 12
+    }
   }
 ]

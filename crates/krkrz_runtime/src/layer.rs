@@ -18,6 +18,8 @@ pub(crate) struct Layer {
     join_focus_chain: bool,
     focus_work: Option<usize>,
     focused_layer: Option<usize>,
+    modal_layers: Vec<usize>,
+    modal_removing: Vec<usize>,
     focus_lock: bool,
     action_owner: Value,
     primary: bool,
@@ -66,6 +68,8 @@ impl Default for Layer {
             join_focus_chain: true,
             focus_work: None,
             focused_layer: None,
+            modal_layers: Vec::new(),
+            modal_removing: Vec::new(),
             focus_lock: false,
             action_owner: Value::NULL,
             primary: false,
@@ -801,6 +805,7 @@ impl Services {
         }
         if op == "@invalidate" {
             self.layer_invalidate_transition(vm, id, budget)?;
+            self.layer_remove_modes(vm, id, true, budget)?;
             self.layer_forget_focus(id);
             if let Some(layer) = self.layers.remove(&id) {
                 if let Some(parent) = layer.parent.and_then(|p| self.layers.get_mut(&p)) {
@@ -827,6 +832,22 @@ impl Services {
             return Err(unsupported(format!(
                 "Layer.{op}: context has no Layer native instance"
             )));
+        }
+        if op == "get:nodeVisible" {
+            // Visibility follows the layer ancestors, independently of opacity,
+            // enabled state, clipping, or the native window's visibility.
+            let mut current = Some(id);
+            while let Some(id) = current {
+                *budget = budget
+                    .checked_sub(1)
+                    .ok_or_else(|| unsupported("Layer visibility execution budget exceeded"))?;
+                let layer = &self.layers[&id];
+                if !layer.visible {
+                    return Ok(Value::Integer(0));
+                }
+                current = layer.parent;
+            }
+            return Ok(Value::Integer(1));
         }
         let arg = |i: usize| {
             args.get(i)
@@ -964,6 +985,9 @@ impl Services {
         if op == "shrinkCopy" {
             return self.layer_shrink_copy(id, args, budget);
         }
+        if op == "doBoxBlur" {
+            return self.layer_box_blur(id, args, budget);
+        }
         if op == "affineCopy" {
             return self.layer_affine_copy(id, args, budget);
         }
@@ -981,6 +1005,9 @@ impl Services {
         }
         if op == "drawText" {
             return self.layer_draw_text(id, args, budget);
+        }
+        if op == "clipAlphaRect" {
+            return self.layer_clip_alpha(id, args, budget);
         }
         if matches!(op, "copyRect" | "operateRect") {
             return self.layer_blit(id, op, args, budget);
@@ -1006,6 +1033,8 @@ impl Services {
 
 mod affine;
 mod blit;
+mod blur;
+mod clip_alpha;
 mod draw;
 mod focus;
 mod images;
@@ -1072,6 +1101,7 @@ impl Layer {
                 .map(Value::object),
         );
         out.extend(self.children.iter().copied().map(Value::object));
+        out.extend(self.modal_layers.iter().copied().map(Value::object));
         out.extend(self.children_array.iter().cloned());
         out.extend(self.font.iter().cloned());
         if let Some(transition) = &self.transition {

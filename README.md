@@ -1,15 +1,16 @@
 # Rust Kirikiri Z compatibility engine
 
-This repository contains an initial implementation toward the Otome Domain
-playable slice. **The game is not playable yet.** The original `startup.tjs`
-now completes framework initialization, including game menus, embedded fonts,
-message layers and audio objects. Deterministic ticks deliver timer, asynchronous,
-continuous and paint callbacks. Native winit/wgpu presentation, mouse/keyboard
-input and CPAL output now share the headless session. Startup renders the warning
-screens, writes the title autosave, and enters the animated pretitle sequence.
-The original title animation and menu render, and mouse input on New Game enters
-the opening scenario. Story playback, choices, required movies within the game,
-and original save/load acceptance remain incomplete.
+This repository contains an experimental native Linux port of Otome Domain.
+The unchanged game archives now reach the title menu and playable opening
+dialogue: native-order mouse clicks advance the first five text entries. The
+original Load menu displays copied Windows saves and thumbnails. **Full-game
+compatibility is not established yet:** choices, complete scene traversal,
+in-game movies, and save/restart/load acceptance are still being verified.
+
+The Rust TJS interpreter and Kirikiri services run the original scripts. Native
+winit/wgpu presentation, mouse/keyboard input and CPAL audio share the same
+session as deterministic headless replay. The game installation remains read-only;
+saves use a separate directory.
 
 ## Build and verify
 
@@ -109,13 +110,13 @@ An unfiltered `verify` deliberately returns failure for the installation's
 malformed protection-notice entry. It verifies all other resolved resources
 before reporting the failure. The entry is not hidden or treated as valid.
 
-## Startup executor
+## Native Linux host
 
 ```sh
-cargo run -p krkrz_cli --bin krkrz_engine -- \
+cargo run --release -p krkrz_cli --bin krkrz_engine -- \
   --project-dir /path/to/otome_domain \
   --save-dir /path/outside/the/game/saves \
-  --budget 100000000 --trace /path/outside/the/game/new-trace.json
+  --budget 100000000000
 ```
 
 `--project-dir` defaults to the current directory. The executor selects the
@@ -129,6 +130,9 @@ load/save, and the standalone saveStruct plugin now write through a separate
 overlay. Game-relative writes are redirected there; reads prefer that overlay.
 Directories are created when data is written. Existing Windows saves remain
 untouched. Original game save/load acceptance is still open.
+
+Use an optimized build for the original game; the debug interpreter is much slower.
+Optional `--trace /path/outside/the/game/new-trace.json` records execution for diagnosis.
 
 The engine currently returns an explicit error for unsupported source/native
 operations or compiled scripts. The
@@ -145,7 +149,7 @@ outside the installation.
 | `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, switch/do/while/for control flow, comma/swap and eager logical-assignment operators, global unary-dot lookup, ordered class initializers and deferred base resolution, explicit invalidation/finalization, interpolation, default parameters, argument forwarding/rest/spread, octet values, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting, exact reference-counted finalization timing, original bytecode loader |
 | `krkrz_kag` | UTF-16 KAGParserEx tokenization, ordered attributes, labels, escaped brackets and multiline tags; runtime bindings provide expressions, macros, conditions, jumps/calls and label-based state restoration | Complete game-framework integration and replay validation |
 | `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, TextRenderBase layout/timing, GdiPlus geometry, AlphaMovie playback/Layer delivery, MenuItem state/tree/click dispatch, WIN32Dialog templates/bounded buffers/closed state, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, private FreeType font rasterization and Layer.drawText, image loading/blits, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, remaining transitions/effects/callback integration, SLI label expressions, original saves and replay |
-| `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, static inventory, primitive evaluation, startup diagnostics | Deterministic interactive replay, input-driven checkpoints, frame/audio comparison, native play |
+| `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, deterministic input replay and assertions, frame capture, native winit/wgpu window and CPAL audio | Frame/audio comparison against the original engine, complete native playthrough |
 
 The native host presents CPU-composited frames through wgpu and forwards winit
 input into the shared session. Use `--no-audio` to disable device output and

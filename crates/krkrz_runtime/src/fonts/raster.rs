@@ -29,12 +29,7 @@ impl FontBook {
             (1..=4096).contains(&height),
             "font size is outside supported range"
         );
-        let index = style
-            .face
-            .split(',')
-            .find_map(|name| self.names.get(name.trim()))
-            .with_context(|| format!("private font face not found: {}", style.face))?;
-        let source = &self.faces[*index];
+        let source = self.resolve_face(&style.face)?;
         let metadata = ttf_parser::Face::parse(&source.data, source.index)?;
         let scale = height as f64 / metadata.units_per_em() as f64;
         let (ascender, descender) = metadata

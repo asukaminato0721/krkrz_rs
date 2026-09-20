@@ -31,6 +31,37 @@ pub struct GlyphBitmap {
     pub coverage: Vec<u8>,
 }
 impl FontBook {
+    /// FontSystem::GetBeingFont chooses the first available named candidate,
+    /// then the default font. Use a bundled Japanese face as the portable
+    /// default so Windows-only saved preferences remain readable on Linux.
+    fn resolve_face(&self, name: &str) -> Result<&Face> {
+        let named = name
+            .split(',')
+            .find_map(|candidate| self.names.get(candidate.trim()).copied());
+        let fallback = || {
+            [
+                "ＭＳ ゴシック",
+                "MS Gothic",
+                "源ノ角ゴシック JP Regular",
+                "Noto Sans CJK JP",
+                "Noto Sans JP",
+            ]
+            .iter()
+            .find_map(|candidate| self.names.get(*candidate).copied())
+            .or_else(|| {
+                self.faces.iter().position(|face| {
+                    ttf_parser::Face::parse(&face.data, face.index).is_ok_and(|font| {
+                        font.glyph_index('あ').is_some() && font.glyph_index('A').is_some()
+                    })
+                })
+            })
+            .or_else(|| (!self.faces.is_empty()).then_some(0))
+        };
+        named
+            .or_else(fallback)
+            .map(|index| &self.faces[index])
+            .with_context(|| format!("no registered font is available for: {name}"))
+    }
     pub fn face_count(&self) -> usize {
         self.faces.len()
     }
@@ -44,11 +75,7 @@ impl FontBook {
         if text.is_empty() || text[0] == 0 {
             return Ok(0);
         }
-        let index = name
-            .split(',')
-            .find_map(|name| self.names.get(name.trim()))
-            .with_context(|| format!("private font face not found: {name}"))?;
-        let face = &self.faces[*index];
+        let face = self.resolve_face(name)?;
         let font = ttf_parser::Face::parse(&face.data, face.index)
             .context("registered font is invalid")?;
         let scale = height as f64 / font.units_per_em() as f64;
@@ -122,11 +149,7 @@ impl FontBook {
             em_pixels.is_finite() && em_pixels > 0.0 && em_pixels <= 4096.0,
             "font size is outside supported range"
         );
-        let index = self
-            .names
-            .get(name)
-            .with_context(|| format!("private font face not found: {name}"))?;
-        let face = &self.faces[*index];
+        let face = self.resolve_face(name)?;
         let font = FontRef::try_from_slice_and_index(&face.data, face.index)
             .context("registered font is invalid")?;
         let units = font.units_per_em().context("font has no em size")?;

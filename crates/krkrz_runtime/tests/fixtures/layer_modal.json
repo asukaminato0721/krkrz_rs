@@ -1,0 +1,72 @@
+[
+  {
+    "name": "modal_basic",
+    "source": "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),c=new Layer(w,a);p.name='p';a.name='a';b.name='b';c.name='c';a.visible=b.visible=c.visible=true;a.focusable=b.focusable=c.focusable=true;var out=[];function state(){out.add([p.nodeEnabled,a.nodeEnabled,b.nodeEnabled,c.nodeEnabled,w.focusedLayer===null?'null':w.focusedLayer.name].join(':'));}b.focus();a.visible=false;a.setMode();state();out.add(a.visible);out.add(b.focus());a.removeMode();state();a.removeMode();state();return out.join(\"|\");",
+    "expected": {
+      "String": []
+    }
+  },
+  {
+    "name": "modal_sibling_stack",
+    "source": "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),c=new Layer(w,a);p.name='p';a.name='a';b.name='b';c.name='c';a.visible=b.visible=c.visible=true;a.focusable=b.focusable=c.focusable=true;var out=[];function state(){out.add([p.nodeEnabled,a.nodeEnabled,b.nodeEnabled,c.nodeEnabled,w.focusedLayer===null?'null':w.focusedLayer.name].join(':'));}a.setMode();state();b.setMode();state();b.removeMode();state();a.removeMode();state();return out.join(\"|\");",
+    "expected": {
+      "String": []
+    }
+  },
+  {
+    "name": "modal_remove_lower",
+    "source": "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),c=new Layer(w,a);p.name='p';a.name='a';b.name='b';c.name='c';a.visible=b.visible=c.visible=true;a.focusable=b.focusable=c.focusable=true;var out=[];function state(){out.add([p.nodeEnabled,a.nodeEnabled,b.nodeEnabled,c.nodeEnabled,w.focusedLayer===null?'null':w.focusedLayer.name].join(':'));}a.setMode();b.setMode();a.removeMode();state();b.removeMode();state();return out.join(\"|\");",
+    "expected": {
+      "String": []
+    }
+  },
+  {
+    "name": "modal_reject_descendant",
+    "source": "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),c=new Layer(w,a);p.name='p';a.name='a';b.name='b';c.name='c';a.visible=b.visible=c.visible=true;a.focusable=b.focusable=c.focusable=true;var out=[];function state(){out.add([p.nodeEnabled,a.nodeEnabled,b.nodeEnabled,c.nodeEnabled,w.focusedLayer===null?'null':w.focusedLayer.name].join(':'));}a.setMode();try{c.setMode();out.add('allowed');}catch(e){out.add('rejected');}state();try{a.setMode();out.add('allowed');}catch(e){out.add('rejected');}state();return out.join(\"|\");",
+    "expected": {
+      "String": []
+    }
+  },
+  {
+    "name": "modal_hide_disable",
+    "source": "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),c=new Layer(w,a);p.name='p';a.name='a';b.name='b';c.name='c';a.visible=b.visible=c.visible=true;a.focusable=b.focusable=c.focusable=true;var out=[];function state(){out.add([p.nodeEnabled,a.nodeEnabled,b.nodeEnabled,c.nodeEnabled,w.focusedLayer===null?'null':w.focusedLayer.name].join(':'));}a.setMode();a.visible=false;state();a.visible=true;a.setMode();a.enabled=false;state();return out.join(\"|\");",
+    "expected": {
+      "String": []
+    }
+  },
+  {
+    "name": "modal_invalidate",
+    "source": "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),c=new Layer(w,a);p.name='p';a.name='a';b.name='b';c.name='c';a.visible=b.visible=c.visible=true;a.focusable=b.focusable=c.focusable=true;var out=[];function state(){out.add([p.nodeEnabled,a.nodeEnabled,b.nodeEnabled,c.nodeEnabled,w.focusedLayer===null?'null':w.focusedLayer.name].join(':'));}a.setMode();invalidate a;out.add(p.nodeEnabled+':'+b.nodeEnabled);out.add(w.focusedLayer===null);return out.join(\"|\");",
+    "expected": {
+      "String": []
+    }
+  },
+  {
+    "name": "modal_detach",
+    "source": "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),c=new Layer(w,a);p.name='p';a.name='a';b.name='b';c.name='c';a.visible=b.visible=c.visible=true;a.focusable=b.focusable=c.focusable=true;var out=[];function state(){out.add([p.nodeEnabled,a.nodeEnabled,b.nodeEnabled,c.nodeEnabled,w.focusedLayer===null?'null':w.focusedLayer.name].join(':'));}a.setMode();a.parent=null;state();return out.join(\"|\");",
+    "expected": {
+      "String": []
+    }
+  },
+  {
+    "name": "modal_notifications",
+    "source": "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),c=new Layer(w,a);p.name='p';a.name='a';b.name='b';c.name='c';a.visible=b.visible=c.visible=true;a.focusable=b.focusable=c.focusable=true;var out=[];function state(){out.add([p.nodeEnabled,a.nodeEnabled,b.nodeEnabled,c.nodeEnabled,w.focusedLayer===null?'null':w.focusedLayer.name].join(':'));}p.onNodeDisabled=function(){out.add('p-');};p.onNodeEnabled=function(){out.add('p+');};a.onNodeDisabled=function(){out.add('a-');};a.onNodeEnabled=function(){out.add('a+');};b.onNodeDisabled=function(){out.add('b-');};b.onNodeEnabled=function(){out.add('b+');};c.onNodeDisabled=function(){out.add('c-');};c.onNodeEnabled=function(){out.add('c+');};a.setMode();b.setMode();b.removeMode();a.removeMode();state();return out.join(\"|\");",
+    "expected": {
+      "String": []
+    }
+  },
+  {
+    "name": "modal_failed_visibility",
+    "source": "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),c=new Layer(w,a);p.name='p';a.name='a';b.name='b';c.name='c';a.visible=b.visible=c.visible=true;a.focusable=b.focusable=c.focusable=true;var out=[];function state(){out.add([p.nodeEnabled,a.nodeEnabled,b.nodeEnabled,c.nodeEnabled,w.focusedLayer===null?'null':w.focusedLayer.name].join(':'));}a.visible=false;a.enabled=false;try{a.setMode();out.add('allowed');}catch(e){out.add('rejected');}out.add(a.visible);a.enabled=true;a.visible=false;c.visible=false;try{c.setMode();out.add('allowed');}catch(e){out.add('rejected');}out.add(c.visible);state();return out.join(\"|\");",
+    "expected": {
+      "String": []
+    }
+  },
+  {
+    "name": "modal_ancestor_mode",
+    "source": "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),c=new Layer(w,a);p.name='p';a.name='a';b.name='b';c.name='c';a.visible=b.visible=c.visible=true;a.focusable=b.focusable=c.focusable=true;var out=[];function state(){out.add([p.nodeEnabled,a.nodeEnabled,b.nodeEnabled,c.nodeEnabled,w.focusedLayer===null?'null':w.focusedLayer.name].join(':'));}a.setMode();p.setMode();state();p.removeMode();state();return out.join(\"|\");",
+    "expected": {
+      "String": []
+    }
+  }
+]
