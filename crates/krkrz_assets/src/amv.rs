@@ -4,6 +4,9 @@
 //! consists of rectangle packets, including empty packets and repeated sequence
 //! numbers. A packet is not necessarily a displayed frame. Entropy decoding and
 //! presentation remain separate from this index.
+mod decode;
+mod idct;
+mod tables;
 use crate::binary::Reader;
 use anyhow::{Context, Result, ensure};
 use serde::Serialize;

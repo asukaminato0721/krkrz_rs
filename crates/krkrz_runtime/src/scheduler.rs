@@ -147,3 +147,13 @@ mod tests {
         assert!(s.advance(1).is_err());
     }
 }
+
+impl EventQueue {
+    pub(crate) fn gc_roots(&self, out: &mut Vec<krkrz_tjs::Value>) {
+        out.extend(
+            self.pending
+                .iter()
+                .map(|event| krkrz_tjs::Value::object(event.target)),
+        );
+    }
+}

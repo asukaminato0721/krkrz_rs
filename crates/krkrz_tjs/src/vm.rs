@@ -311,6 +311,10 @@ impl Program {
     }
 }
 pub trait Host {
+    /// Strong roots held by the host between script calls.
+    fn gc_roots(&self) -> Vec<Value> { Vec::new() }
+    /// Native outgoing references owned by a particular dispatch object.
+    fn gc_trace(&self, _id: usize) -> Vec<Value> { Vec::new() }
     /// Unix wall time for Date. Replay hosts supply an epoch plus session time.
     fn unix_time_ms(&self) -> i64 {
         chrono::Utc::now().timestamp_millis()
@@ -353,12 +357,14 @@ pub struct Vm {
     pub preprocessor: crate::Preprocessor,
     pub globals: BTreeMap<String, Value>,
     pub executed: u64,
-    pub(crate) objects: Vec<Object>,
+    pub(crate) objects: crate::gc::ObjectArena,
+    pub(crate) allocations_since_gc: usize,
+    pub(crate) collecting: bool,
     pub(crate) hash_generation: u64,
-    literal_objects: BTreeMap<u64, Value>,
-    native_array_class: usize,
+    pub(crate) literal_objects: BTreeMap<u64, Value>,
+    pub(crate) native_array_class: usize,
     pub(crate) random_state: [u32; 4],
-    depth: usize,
+    pub(crate) depth: usize,
 }
 impl Default for Vm {
     fn default() -> Self {
@@ -366,7 +372,9 @@ impl Default for Vm {
             preprocessor: crate::Preprocessor::default(),
             globals: BTreeMap::new(),
             executed: 0,
-            objects: vec![Object::new(ObjectKind::Global)],
+            objects: crate::gc::ObjectArena::new(Object::new(ObjectKind::Global)),
+            allocations_since_gc: 0,
+            collecting: false,
             hash_generation: 0,
             literal_objects: BTreeMap::new(),
             native_array_class: 0,
@@ -412,7 +420,7 @@ impl Default for Vm {
             vm.objects[id].native_static = true;
         }
         let id = vm.object_id(&array).expect("Array class");
-        vm.native_array_class = vm.objects.len();
+        vm.native_array_class = vm.objects.next_id();
         vm.objects.push(vm.objects[id].clone());
         vm.register_math().expect("initial Math members");
         vm.register_date().expect("initial Date members");
@@ -460,7 +468,7 @@ impl Vm {
         if self.objects.len() >= 100_000 {
             return Err(unsupported("TJS object allocation limit exceeded"));
         }
-        let id = self.objects.len();
+        let id = self.objects.next_id();
         let bound = matches!(
             kind,
             ObjectKind::Array(_)
@@ -470,6 +478,7 @@ impl Vm {
                 | ObjectKind::RegExp { .. }
         );
         self.objects.push(Object::new(kind));
+        self.allocations_since_gc += 1;
         self.objects[id].hash_generation = self.hash_generation;
         let mut value = Value::object(id);
         if bound && let Value::Object(reference) = &mut value {
@@ -513,7 +522,7 @@ impl Vm {
         else {
             bail!("TJS value is not a non-null object");
         };
-        ensure!(*id < self.objects.len(), "invalid TJS object handle");
+        ensure!(self.objects.get(*id).is_some(), "invalid TJS object handle");
         Ok(*id)
     }
     pub fn register_namespace(&mut self, name: &str) -> Result<Value> {
@@ -1405,7 +1414,7 @@ impl Vm {
                 frame.owner = self.objects[id].owner;
                 frame.arguments = args.to_vec();
                 ensure!(
-                    frame.context < self.objects.len(),
+                    self.objects.get(frame.context).is_some(),
                     "invalid TJS bound context"
                 );
                 frame.scopes.push(BTreeMap::new());

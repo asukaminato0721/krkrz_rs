@@ -1028,3 +1028,17 @@ impl Services {
 }
 
 mod state;
+
+impl Parser {
+    pub(crate) fn gc_trace(&self, out: &mut Vec<Value>) {
+        out.extend([
+            self.macros.clone(),
+            self.param_macros.clone(),
+            self.args.dict.clone(),
+            self.args.list.clone(),
+        ]);
+        for args in &self.macro_args {
+            out.extend([args.dict.clone(), args.list.clone()]);
+        }
+    }
+}

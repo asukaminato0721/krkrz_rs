@@ -504,3 +504,9 @@ mod tests {
         assert!(session.services.layer_draw.objects.is_empty());
     }
 }
+
+impl State {
+    pub(crate) fn gc_roots(&self, out: &mut Vec<Value>) {
+        out.extend(self.classes.values().cloned());
+    }
+}

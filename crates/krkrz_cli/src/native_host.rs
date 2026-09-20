@@ -374,6 +374,17 @@ impl ApplicationHandler for Host<'_> {
             return;
         }
         if Instant::now() >= self.next_tick {
+            if self.session.vm.should_collect_garbage() {
+                let mut roots = Vec::new();
+                for (&id, native) in &self.windows {
+                    roots.push(Value::object(id));
+                    native.state.gc_trace(&mut roots);
+                }
+                if let Err(error) = self.session.collect_garbage(&roots) {
+                    self.fail(event_loop, error);
+                    return;
+                }
+            }
             let time = self.origin.elapsed().as_millis().min(u64::MAX as u128) as u64;
             let result = self.session.tick(time).and_then(|_| {
                 let samples = self.session.take_audio();

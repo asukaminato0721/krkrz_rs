@@ -490,3 +490,15 @@ mod tests {
         );
     }
 }
+
+impl State {
+    pub(crate) fn gc_trace(&self, id: usize, out: &mut Vec<Value>) {
+        for ((owner, _), value) in &self.objects {
+            if *owner == id
+                && let Object::Template(template) = value
+            {
+                out.extend(template.fields.values().cloned());
+            }
+        }
+    }
+}

@@ -1060,3 +1060,31 @@ impl crate::Session {
         Ok(())
     }
 }
+
+impl Layer {
+    pub(crate) fn gc_trace(&self, out: &mut Vec<Value>) {
+        out.extend([self.action_owner.clone(), self.hint.clone()]);
+        out.extend([self.window, self.root].into_iter().map(Value::object));
+        out.extend(
+            [self.parent, self.focus_work, self.focused_layer]
+                .into_iter()
+                .flatten()
+                .map(Value::object),
+        );
+        out.extend(self.children.iter().copied().map(Value::object));
+        out.extend(self.children_array.iter().cloned());
+        out.extend(self.font.iter().cloned());
+        if let Some(transition) = &self.transition {
+            transition.gc_trace(out);
+        }
+    }
+}
+
+impl Layer {
+    pub(crate) fn set_movie_image(&mut self, image: &Image) -> Result<()> {
+        self.image_size(image.width as i32, image.height as i32, 256usize << 20)?;
+        self.image = Some(image.clone());
+        self.image_modified = true;
+        Ok(())
+    }
+}

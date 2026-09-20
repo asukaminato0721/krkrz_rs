@@ -585,3 +585,10 @@ impl Transition {
         }
     }
 }
+
+impl Transition {
+    pub(super) fn gc_trace(&self, out: &mut Vec<Value>) {
+        out.push(Value::object(self.source));
+        out.extend(self.callback.iter().cloned());
+    }
+}

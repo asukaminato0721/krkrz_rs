@@ -173,3 +173,32 @@ backend in Kirikiroid2 was consulted. Array/Dictionary deep copying and Math
 semantics follow `tjs2/tjsArray.cpp`, `tjsDictionary.cpp` and `tjsMath.cpp`.
 Transition registration follows `krkrz/SamplePlugin/extrans/Main.cpp`, pinned
 in `docs/references.json`, under the Kirikiri notice above.
+
+## AlphaMovie integer IDCT
+
+`crates/krkrz_assets/src/amv/idct.rs` adapts the scalar 8x8 inverse transform
+from jpeg-decoder 0.3.2, based on stb_image. JPEG Annex K Huffman tables in
+`amv/tables.rs` are from image 0.25.10 (MIT).
+
+MIT License
+
+Copyright (c) 2016 The jpeg-decoder Developers
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+

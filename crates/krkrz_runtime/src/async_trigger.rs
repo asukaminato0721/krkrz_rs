@@ -187,3 +187,11 @@ impl Services {
         Ok(())
     }
 }
+
+impl State {
+    pub(crate) fn gc_trace(&self, id: usize, out: &mut Vec<Value>) {
+        if let Some(trigger) = self.triggers.get(&id) {
+            out.extend([trigger.owner.clone(), trigger.action.clone()]);
+        }
+    }
+}

@@ -194,3 +194,12 @@ impl Services {
         Ok(())
     }
 }
+
+impl Timer {
+    pub(crate) fn gc_active(&self) -> bool {
+        self.constructed && self.enabled
+    }
+    pub(crate) fn gc_trace(&self, out: &mut Vec<Value>) {
+        out.extend([self.owner.clone(), self.action.clone()]);
+    }
+}

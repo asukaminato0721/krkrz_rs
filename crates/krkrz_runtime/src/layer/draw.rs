@@ -349,15 +349,15 @@ impl crate::Session {
         self.capture_window_prepared(window)
     }
     pub(super) fn capture_window_prepared(&mut self, window: &Value) -> Result<Image> {
-        let window = object(window)?.context("capture requires a Window")?;
+        let window_id = object(window)?.context("capture requires a Window")?;
         let window = self
             .services
             .windows
-            .get(&window)
+            .get(&window_id)
             .context("capture requires a Window")?;
         let root = object(&window.primary_layer)?.context("window has no primary Layer")?;
         let layer = &self.services.layers[&root];
-        let image = self.services.layer_complete(
+        let mut image = self.services.layer_complete(
             root,
             Rect {
                 x: 0,
@@ -371,6 +371,32 @@ impl crate::Session {
         )?;
         self.services
             .layer_after_completion(&mut self.vm, root, &mut self.budget)?;
+        for video in self.services.videos.values() {
+            if let Some((frame, [x, y, width, height])) = video.overlay(window_id) {
+                if width <= 0 || height <= 0 {
+                    continue;
+                }
+                let left = i64::from(x).max(0);
+                let top = i64::from(y).max(0);
+                let right = (i64::from(x) + i64::from(width)).min(i64::from(image.width));
+                let bottom = (i64::from(y) + i64::from(height)).min(i64::from(image.height));
+                if left >= right || top >= bottom {
+                    continue;
+                }
+                charge(&mut self.budget, ((right - left) * (bottom - top)) as u64)?;
+                for dy in top..bottom {
+                    let sy = ((dy - i64::from(y)) * i64::from(frame.height) / i64::from(height))
+                        as usize;
+                    for dx in left..right {
+                        let sx = ((dx - i64::from(x)) * i64::from(frame.width) / i64::from(width))
+                            as usize;
+                        let src = (sy * frame.width as usize + sx) * 4;
+                        let dst = (dy as usize * image.width as usize + dx as usize) * 4;
+                        image.rgba[dst..dst + 4].copy_from_slice(&frame.rgba[src..src + 4]);
+                    }
+                }
+            }
+        }
         Ok(image)
     }
 }

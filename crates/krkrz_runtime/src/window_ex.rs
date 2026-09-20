@@ -727,3 +727,18 @@ impl Services {
         Err(unsupported(format!("windowEx operation: {operation}")))
     }
 }
+
+impl State {
+    pub(crate) fn gc_trace(&self, id: usize, out: &mut Vec<Value>) {
+        fn menu(items: &[SystemMenuItem], out: &mut Vec<Value>) {
+            for item in items {
+                out.push(item.source.clone());
+                menu(&item.children, out);
+            }
+        }
+        if let Some(window) = self.windows.get(&id) {
+            out.extend(window.system_menu_source.iter().cloned());
+            menu(&window.system_menu, out);
+        }
+    }
+}

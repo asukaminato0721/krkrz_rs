@@ -144,6 +144,60 @@ impl Services {
     }
 }
 impl Host for Services {
+    fn gc_roots(&self) -> Vec<Value> {
+        let mut roots = self
+            .windows
+            .iter()
+            .filter_map(|(&id, window)| window.constructed.then_some(Value::object(id)))
+            .collect::<Vec<_>>();
+        roots.extend(self.main_window.map(Value::object));
+        roots.extend(self.continuous_handlers.iter().flatten().cloned());
+        roots.extend(self.draw_devices.class.iter().cloned());
+        roots.push(self.wave_flags_class.clone());
+        self.events.gc_roots(&mut roots);
+        self.menus.gc_roots(&mut roots);
+        self.layer_draw.gc_roots(&mut roots);
+        for (&id, timer) in &self.timers {
+            if timer.gc_active() {
+                roots.push(Value::object(id));
+            }
+        }
+        roots
+    }
+
+    fn gc_trace(&self, id: usize) -> Vec<Value> {
+        let mut edges = Vec::new();
+        if let Some(window) = self.windows.get(&id) {
+            window.gc_trace(&mut edges);
+        }
+        if let Some(layer) = self.layers.get(&id) {
+            layer.gc_trace(&mut edges);
+        }
+        if let Some(timer) = self.timers.get(&id) {
+            timer.gc_trace(&mut edges);
+        }
+        if let Some(parser) = self.kag_parsers.get(&id) {
+            parser.borrow().gc_trace(&mut edges);
+        }
+        if let Some(sound) = self.sounds.get(&id) {
+            sound.gc_trace(&mut edges);
+        }
+        if let Some(video) = self.videos.get(&id) {
+            video.gc_trace(&mut edges);
+        }
+        if let Some(renderer) = self.text_renderers.get(&id) {
+            renderer.gc_trace(&mut edges);
+        }
+        if let Some(Some(sound)) = self.wave_flags.get(&id) {
+            edges.push(Value::object(*sound));
+        }
+        self.async_triggers.gc_trace(id, &mut edges);
+        self.menus.gc_trace(id, &mut edges);
+        self.dialogs.gc_trace(id, &mut edges);
+        self.window_ex.gc_trace(id, &mut edges);
+        edges
+    }
+
     fn unix_time_ms(&self) -> i64 {
         self.epoch_ms
             .saturating_add(self.time_ms.min(i64::MAX as u64) as i64)
@@ -795,6 +849,13 @@ pub struct Session {
     audio_output: Vec<f32>,
 }
 impl Session {
+    /// Collect at a host boundary, preserving every Value retained by the caller.
+    /// Native state and script globals are traced automatically.
+    pub fn collect_garbage(&mut self, roots: &[Value]) -> Result<usize> {
+        self.vm
+            .collect_garbage(&mut self.services, roots, &mut self.budget)
+    }
+
     pub fn open(
         project: &Path,
         save_dir: Option<&Path>,

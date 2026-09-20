@@ -163,22 +163,28 @@ impl Replay {
         Ok(())
     }
 
-    pub fn run(self, session: &mut Session, step_ms: u64) -> Result<()> {
+    pub fn run(
+        self,
+        session: &mut Session,
+        step_ms: u64,
+        roots: &[krkrz_tjs::Value],
+    ) -> Result<()> {
         let mut output = std::io::stderr().lock();
-        self.run_with_output(session, step_ms, &mut output)
+        self.run_with_output(session, step_ms, roots, &mut output)
     }
 
     fn run_with_output(
         self,
         session: &mut Session,
         step_ms: u64,
+        roots: &[krkrz_tjs::Value],
         output: &mut impl Write,
     ) -> Result<()> {
         ensure!(step_ms > 0, "replay step must be positive");
-        tick(session, session.services.time_ms)?;
+        tick(session, session.services.time_ms, roots)?;
         for (index, entry) in self.entries.into_iter().enumerate() {
             let description = format!("replay action {index} at {} ms", entry.at_ms);
-            advance(session, entry.at_ms, step_ms).with_context(|| description.clone())?;
+            advance(session, entry.at_ms, step_ms, roots).with_context(|| description.clone())?;
             apply(session, entry, output).with_context(|| description)?;
         }
         Ok(())
@@ -255,7 +261,10 @@ fn apply(session: &mut Session, entry: Entry, output: &mut impl Write) -> Result
     session.input(&window, event)
 }
 
-pub fn tick(session: &mut Session, at_ms: u64) -> Result<()> {
+pub fn tick(session: &mut Session, at_ms: u64, roots: &[krkrz_tjs::Value]) -> Result<()> {
+    if session.vm.should_collect_garbage() {
+        session.collect_garbage(roots)?;
+    }
     session.tick(at_ms).map_err(|error| {
         for message in session.services.messages.iter().rev().take(8).rev() {
             eprintln!("{message}");
@@ -267,7 +276,12 @@ pub fn tick(session: &mut Session, at_ms: u64) -> Result<()> {
     })
 }
 
-pub fn advance(session: &mut Session, end: u64, step_ms: u64) -> Result<()> {
+pub fn advance(
+    session: &mut Session,
+    end: u64,
+    step_ms: u64,
+    roots: &[krkrz_tjs::Value],
+) -> Result<()> {
     ensure!(step_ms > 0, "host tick step must be positive");
     ensure!(
         end >= session.services.time_ms,
@@ -277,6 +291,7 @@ pub fn advance(session: &mut Session, end: u64, step_ms: u64) -> Result<()> {
         tick(
             session,
             session.services.time_ms.saturating_add(step_ms).min(end),
+            roots,
         )?;
     }
     Ok(())
@@ -354,7 +369,7 @@ mod tests {
         replay.validate(&session, Some(23)).unwrap();
         let mut checkpoints = Vec::new();
         replay
-            .run_with_output(&mut session, 16, &mut checkpoints)
+            .run_with_output(&mut session, 16, &[], &mut checkpoints)
             .unwrap();
         assert_eq!(session.services.time_ms, 23);
         assert_eq!(
@@ -431,7 +446,7 @@ mod tests {
         .unwrap();
         let mut checkpoints = Vec::new();
         let error = replay
-            .run_with_output(&mut session, 16, &mut checkpoints)
+            .run_with_output(&mut session, 16, &[], &mut checkpoints)
             .unwrap_err();
         assert!(format!("{error:#}").contains("replay action 1 at 1 ms"));
         assert_eq!(session.evaluate("events.count").unwrap(), Value::Integer(0));

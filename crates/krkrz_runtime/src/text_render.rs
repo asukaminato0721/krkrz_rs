@@ -1228,3 +1228,19 @@ fn terminated(units: &[u16], i: &mut usize, end: u16) -> Result<Vec<u16>> {
     *i += 1;
     Ok(result)
 }
+
+impl Renderer {
+    pub(crate) fn gc_trace(&self, out: &mut Vec<Value>) {
+        out.extend(self.defaults.values().chain(self.current.values()).cloned());
+        out.extend(self.options.values().cloned());
+        for character in self
+            .lines
+            .iter()
+            .flat_map(|line| &line.characters)
+            .chain(&self.pending)
+            .chain(&self.published)
+        {
+            out.extend(character.format.values().cloned());
+        }
+    }
+}

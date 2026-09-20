@@ -547,3 +547,14 @@ impl crate::Session {
         Ok(())
     }
 }
+
+impl State {
+    pub(crate) fn gc_trace(&self, out: &mut Vec<Value>) {
+        out.extend(
+            [self.capture, self.hover]
+                .into_iter()
+                .flatten()
+                .map(Value::object),
+        );
+    }
+}

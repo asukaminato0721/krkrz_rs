@@ -475,3 +475,12 @@ impl Services {
         }
     }
 }
+
+impl Sound {
+    pub(crate) fn gc_trace(&self, out: &mut Vec<Value>) {
+        out.extend([self.owner.clone(), self.filters.clone()]);
+        out.extend(self.flags_object.iter().cloned());
+        out.extend(self.labels_object.iter().cloned());
+        out.extend(self.events.iter().map(|(_, _, value)| value.clone()));
+    }
+}

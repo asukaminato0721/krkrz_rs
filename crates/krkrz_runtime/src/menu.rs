@@ -802,3 +802,38 @@ impl crate::Session {
         })
     }
 }
+
+impl State {
+    pub(crate) fn gc_roots(&self, out: &mut Vec<Value>) {
+        out.extend(self.root_class.iter().cloned());
+        out.extend(self.text_to_key.iter().cloned());
+        out.extend(self.key_to_text.iter().cloned());
+        out.extend(self.pending.iter().copied().map(Value::object));
+    }
+    pub(crate) fn gc_trace(&self, id: usize, out: &mut Vec<Value>) {
+        if let Some(root) = self.roots.get(&id) {
+            out.push(root.clone());
+        }
+        if let Some(item) = self.items.get(&id) {
+            out.extend([
+                item.action_owner.clone(),
+                item.window.clone(),
+                item.caption.clone(),
+            ]);
+            out.extend(
+                [item.parent, item.display_parent]
+                    .into_iter()
+                    .flatten()
+                    .map(Value::object),
+            );
+            out.extend(
+                item.children
+                    .iter()
+                    .chain(&item.display_children)
+                    .copied()
+                    .map(Value::object),
+            );
+            out.extend(item.array.iter().cloned());
+        }
+    }
+}

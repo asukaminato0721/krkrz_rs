@@ -115,7 +115,7 @@ fn alpha_movie_containers() -> Result<()> {
             movie.packets.len()
         );
         for i in 0..movie.packets.len() {
-            movie.entropy(i)?;
+            movie.decode_packet(i).with_context(||format!("{name} packet {i}"))?;
         }
     }
     Ok(())

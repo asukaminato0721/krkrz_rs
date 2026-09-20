@@ -214,13 +214,13 @@ fn run() -> Result<()> {
                 let has_replay = replay.is_some();
                 let value = session.execute_storage(&name)?;
                 if let Some(replay) = replay {
-                    replay.run(&mut session, step_ms)?;
+                    replay.run(&mut session, step_ms, std::slice::from_ref(&value))?;
                 }
                 if let Some(end) = advance_ms {
                     if !has_replay {
-                        replay::tick(&mut session, 0)?;
+                        replay::tick(&mut session, 0, std::slice::from_ref(&value))?;
                     }
-                    replay::advance(&mut session, end, step_ms)?;
+                    replay::advance(&mut session, end, step_ms, std::slice::from_ref(&value))?;
                 }
                 if let Some(output) = frame {
                     replay::capture(&mut session, &frame_window, &output)?;

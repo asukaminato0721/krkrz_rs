@@ -7,6 +7,7 @@ mod date;
 mod dispatch;
 pub mod lexer;
 mod lifetime;
+mod gc;
 mod literal;
 mod math;
 mod member_layout;

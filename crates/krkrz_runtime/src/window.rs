@@ -439,3 +439,11 @@ impl crate::Services {
         Ok(())
     }
 }
+
+impl WindowState {
+    pub fn gc_trace(&self, out: &mut Vec<Value>) {
+        out.extend([self.primary_layer.clone(), self.draw_device.clone()]);
+        out.extend(self.registered_objects.iter().cloned());
+        self.input.gc_trace(out);
+    }
+}
