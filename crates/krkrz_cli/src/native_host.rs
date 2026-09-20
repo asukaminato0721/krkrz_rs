@@ -46,6 +46,130 @@ pub fn load_icon(path: &std::path::Path) -> Result<Icon> {
     let image = krkrz_assets::media::Image::decode(&bytes).context("decode window icon")?;
     Ok(RgbaIcon::new(image.rgba, image.width, image.height)?.into())
 }
+
+/// Explicit image options take priority. Otherwise reuse the application's own
+/// PE resource icon; an optional, malformed icon must not prevent game startup.
+pub fn project_icon(
+    project: &std::path::Path,
+    explicit: Option<&std::path::Path>,
+) -> Result<Option<Icon>> {
+    if let Some(path) = explicit {
+        return load_icon(path).map(Some);
+    }
+    let load = || -> Result<Option<Icon>> {
+        use std::io::Read;
+        let Some(path) = icon_executable(project)? else {
+            return Ok(None);
+        };
+        let mut bytes = Vec::new();
+        std::fs::File::open(&path)?
+            .take(krkrz_assets::pe_icon::MAX_EXECUTABLE_BYTES as u64 + 1)
+            .read_to_end(&mut bytes)?;
+        let Some(image) = krkrz_assets::pe_icon::decode(&bytes)
+            .with_context(|| format!("extract icon from {}", path.display()))?
+        else {
+            return Ok(None);
+        };
+        Ok(Some(
+            RgbaIcon::new(image.rgba, image.width, image.height)?.into(),
+        ))
+    };
+    match load() {
+        Ok(icon) => Ok(icon),
+        Err(error) => {
+            eprintln!("Could not load the game's window icon: {error:#}");
+            Ok(None)
+        }
+    }
+}
+
+fn icon_executable(project: &std::path::Path) -> Result<Option<std::path::PathBuf>> {
+    let project = project.canonicalize()?;
+    let mut executables = std::fs::read_dir(&project)?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| {
+            path.is_file()
+                && path
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
+        })
+        .collect::<Vec<_>>();
+    executables.sort();
+    let preferred = executables
+        .iter()
+        .find(|path| {
+            path.file_name()
+                .is_some_and(|name| name.eq_ignore_ascii_case("otomedomain.exe"))
+        })
+        .or_else(|| {
+            executables.iter().find(|path| {
+                path.file_stem()
+                    .zip(project.file_name())
+                    .is_some_and(|(stem, directory)| stem.eq_ignore_ascii_case(directory))
+            })
+        });
+    Ok(preferred
+        .cloned()
+        .or_else(|| (executables.len() == 1).then(|| executables.remove(0))))
+}
+
+#[cfg(test)]
+mod icon_tests {
+    use super::*;
+
+    #[test]
+    fn application_executable_is_preferred_to_updaters() {
+        let project = tempfile::tempdir().unwrap();
+        for name in ["updater.exe", "OtomeDomain.EXE", "readme.txt"] {
+            std::fs::write(project.path().join(name), b"").unwrap();
+        }
+        assert_eq!(
+            icon_executable(project.path())
+                .unwrap()
+                .unwrap()
+                .file_name()
+                .unwrap(),
+            "OtomeDomain.EXE"
+        );
+        let generic = tempfile::tempdir().unwrap();
+        assert!(icon_executable(generic.path()).unwrap().is_none());
+        std::fs::write(generic.path().join("game.exe"), b"").unwrap();
+        assert_eq!(
+            icon_executable(generic.path())
+                .unwrap()
+                .unwrap()
+                .file_name()
+                .unwrap(),
+            "game.exe"
+        );
+        std::fs::write(generic.path().join("updater.exe"), b"").unwrap();
+        assert!(icon_executable(generic.path()).unwrap().is_none());
+        let matching = generic
+            .path()
+            .join(generic.path().file_name().unwrap())
+            .with_extension("exe");
+        std::fs::write(&matching, b"").unwrap();
+        assert_eq!(icon_executable(generic.path()).unwrap(), Some(matching));
+    }
+
+    #[test]
+    fn explicit_image_overrides_auto_detection_and_reports_invalid_input() {
+        let project = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join("otomedomain.exe"), b"malformed PE").unwrap();
+        assert!(project_icon(project.path(), None).unwrap().is_none());
+        let icon = project.path().join("icon.png");
+        krkrz_assets::media::Image {
+            width: 2,
+            height: 2,
+            rgba: [1, 2, 3, 255].repeat(4),
+        }
+        .write_png(&icon)
+        .unwrap();
+        assert!(project_icon(project.path(), Some(&icon)).unwrap().is_some());
+        assert!(project_icon(project.path(), Some(&project.path().join("missing.ico"))).is_err());
+    }
+}
+
 pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Result<()> {
     let mut event_loop = EventLoop::new()?;
     let mut host = Host {

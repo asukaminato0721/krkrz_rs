@@ -63,7 +63,7 @@ impl Services {
             if bytes >= limit || (timeout != 0 && start.elapsed().as_millis() >= timeout as u128) {
                 break;
             }
-            let result = (|| -> Result<(String, Image)> {
+            let result = (|| -> Result<(String, Arc<Image>)> {
                 let name = if extension(&name).is_empty() {
                     self.suggest_graphic(&name)
                         .context("cannot suggest graphic extension")?
@@ -164,7 +164,7 @@ impl Services {
         &mut self,
         name: &str,
         budget: &mut u64,
-    ) -> Result<(Image, BTreeMap<String, String>)> {
+    ) -> Result<(Arc<Image>, BTreeMap<String, String>)> {
         let bytes = self.read_storage(name)?;
         let tags = Image::metadata(&bytes)?;
         let key = self.graphic_cache_key(name)?;
@@ -182,7 +182,7 @@ impl Services {
         *budget = budget
             .checked_sub(image.width as u64 * image.height as u64)
             .ok_or_else(|| unsupported("image loading execution budget exceeded"))?;
-        Ok(((*image).clone(), tags))
+        Ok((image, tags))
     }
 
     pub(super) fn layer_load_images(
@@ -217,7 +217,7 @@ impl Services {
                 || (bytes.starts_with(b"\x89PNG") && bytes.get(25) == Some(&3))
             {
                 let indices = IndexedImage::decode(&bytes)?;
-                for (p, index) in image
+                for (p, index) in Arc::make_mut(&mut image)
                     .rgba
                     .as_chunks_mut::<4>()
                     .0
@@ -246,7 +246,7 @@ impl Services {
                 image.width == mask.width && image.height == mask.height,
                 "mask image size mismatch"
             );
-            for (p, m) in image
+            for (p, m) in Arc::make_mut(&mut image)
                 .rgba
                 .as_chunks_mut::<4>()
                 .0
@@ -264,7 +264,12 @@ impl Services {
         }
         if key & 0xff000000 == 0x04000000 {
             let mat = [(key >> 16) as u8, (key >> 8) as u8, key as u8];
-            for p in image.rgba.as_chunks_mut::<4>().0.iter_mut() {
+            for p in Arc::make_mut(&mut image)
+                .rgba
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+            {
                 for c in 0..3 {
                     p[c] = (mat[c] as i32 + (((p[c] as i32 - mat[c] as i32) * p[3] as i32) >> 8))
                         as u8;
@@ -277,8 +282,16 @@ impl Services {
             .map(|name| self.read_province(&name, image.width, image.height, budget))
             .transpose()?;
         let used = image_bytes(&self.layers, Some(id));
+        let already_live = self.layers.iter().any(|(other, layer)| {
+            *other != id
+                && layer
+                    .image
+                    .as_ref()
+                    .is_some_and(|other| Arc::ptr_eq(other, &image))
+        });
+        let image_bytes = if already_live { 0 } else { image.rgba.len() };
         ensure!(
-            used + image.rgba.len() + province.as_ref().map_or(0, |p| p.pixels.len())
+            used + image_bytes + province.as_ref().map_or(0, |p| p.pixels.len())
                 <= MAX_LAYER_IMAGE_BYTES,
             "session layer image memory limit exceeded"
         );
@@ -294,7 +307,7 @@ impl Services {
         }
         layer.image_left = layer.image_left.max(layer.width - w);
         layer.image_top = layer.image_top.max(layer.height - h);
-        layer.image = Some(Arc::new(image));
+        layer.image = Some(image);
         layer.province = province;
         layer.image_modified = true;
         layer.reset_clip()?;
@@ -374,7 +387,7 @@ impl Services {
     }
 }
 
-fn apply_key(image: &mut Image, key: u32) -> Result<()> {
+fn apply_key(image: &mut Arc<Image>, key: u32) -> Result<()> {
     let transparent = if key == 0x01ffffff {
         // Preserve the original adaptive algorithm, including its unusual
         // accumulated run count when a run does not beat the current maximum.
@@ -406,7 +419,7 @@ fn apply_key(image: &mut Image, key: u32) -> Result<()> {
         None
     };
     if let Some(key) = transparent {
-        for p in image.rgba.as_chunks_mut::<4>().0.iter_mut() {
+        for p in Arc::make_mut(image).rgba.as_chunks_mut::<4>().0.iter_mut() {
             p[3] = if color(p) == key { 0 } else { 255 };
         }
     }
