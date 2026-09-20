@@ -166,4 +166,41 @@ mod tests {
         assert_eq!(vm.globals["done"], Value::Integer(1));
         Ok(())
     }
+
+    #[test]
+    fn traces_bound_contexts_and_readonly_scalar_objects() -> Result<()> {
+        use std::sync::atomic::AtomicBool;
+        let mut vm = Vm::default();
+        let bound = eval(&mut vm, "(function(){return this.answer;}) incontextof %[answer:42]");
+        let leaf = eval(&mut vm, "[99]");
+        let tree = vm.new_readonly_data(
+            Arc::new(ReadOnlyData::Array(vec![Arc::new(ReadOnlyData::Scalar(leaf))])),
+            Arc::new(AtomicBool::new(true)),
+        )?;
+        vm.collect_garbage(&mut (), &[bound.clone(), tree.clone()], &mut 1_000_000)?;
+        assert_eq!(vm.invoke(&bound, &Value::NULL, &[], &mut (), &mut 1000)?, Value::Integer(42));
+        let leaf = vm.get_member(&tree, &Value::Integer(0), false)?;
+        assert_eq!(vm.get_member(&leaf, &Value::Integer(0), false)?, Value::Integer(99));
+        Ok(())
+    }
+
+    #[test]
+    fn retained_finalized_handles_survive_and_finalizers_cannot_reenter_collection() -> Result<()> {
+        struct Reenter;
+        impl Host for Reenter {
+            fn call(&mut self, vm: &mut Vm, _: &str, _: &[Value], budget: &mut u64) -> Result<Value> {
+                assert!(vm.collect_garbage(self, &[], budget).is_err());
+                Ok(Value::Void)
+            }
+        }
+        let mut vm = Vm::default();
+        vm.register_native("reenter")?;
+        vm.execute(&compile("gc", "var retained=null;class C{function finalize(){reenter();global.retained=this;}} function f(){new C();}f();")?, &mut Reenter, &mut 1_000_000)?;
+        vm.collect_garbage(&mut Reenter, &[], &mut 1_000_000)?;
+        let retained = vm.globals["retained"].clone();
+        assert_eq!(vm.is_valid(&retained)?, Value::Integer(0));
+        vm.collect_garbage(&mut Reenter, &[], &mut 1_000_000)?;
+        assert_eq!(vm.is_valid(&retained)?, Value::Integer(0));
+        Ok(())
+    }
 }
