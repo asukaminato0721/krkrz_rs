@@ -1,18 +1,13 @@
 //! Shared host-clock audio: stereo 48 kHz PCM and deferred native label events.
 //! Source-rate pulls remain available for decoder tools; interactive and replay
 //! hosts use tick() followed by take_audio(). No audio device owns VM state.
-use crate::{Session, audio::AudioLabel};
+use crate::Session;
 use anyhow::{Result, ensure};
 use krkrz_tjs::{Value, unsupported};
 
 const RATE: u64 = 48_000;
-#[derive(Default)]
-pub(crate) struct Source {
-    phase: u64,
-    samples: Vec<[f32; 2]>,
-    labels: Vec<AudioLabel>,
-    eof: bool,
-}
+mod resampler;
+pub(crate) use resampler::Source;
 impl Session {
     /// Drain stereo PCM at 48,000 frames per second from the latest tick. A
     /// headless host may discard it; source clocks and callbacks still advance.
@@ -80,61 +75,30 @@ impl Session {
                     "native audio mixing of more than two source channels",
                 ));
             }
-            let mixer = &mut loaded.mixer;
-            if mixer.samples.len() < needed && !mixer.eof {
-                let requested = needed - mixer.samples.len();
-                let block = loaded.pipeline.render(&mut loaded.stream, requested)?;
-                let channels = loaded.audio.channels as usize;
-                mixer.eof = block.samples.len() / channels < requested;
-                let base = mixer.samples.len();
-                for frame in block.samples.chunks_exact(channels) {
-                    let left = frame[0] as f32 / 32768.0;
-                    let right = frame[channels - 1] as f32 / 32768.0;
-                    mixer.samples.push([left, right]);
-                }
-                mixer
-                    .labels
-                    .extend(block.labels.into_iter().map(|mut label| {
-                        label.offset += base;
-                        label
-                    }));
-            }
             let volume =
                 sound.volume as f32 / 100_000.0 * sound.volume2 as f32 / 100_000.0 * global_volume;
             let gain = [
                 volume * (1.0 - sound.pan.max(0) as f32 / 100_000.0),
                 volume * (1.0 + sound.pan.min(0) as f32 / 100_000.0),
             ];
-            for output in self.audio_output.as_chunks_mut::<2>().0 {
-                let at = (mixer.phase / RATE) as usize;
-                let fraction = (mixer.phase % RATE) as f32 / RATE as f32;
-                let a = mixer.samples.get(at).copied().unwrap_or([0.0; 2]);
-                let b = mixer.samples.get(at + 1).copied().unwrap_or([0.0; 2]);
-                for channel in 0..2 {
-                    output[channel] +=
-                        (a[channel] + (b[channel] - a[channel]) * fraction) * gain[channel];
-                }
-                mixer.phase += frequency;
+            let (labels, ended) = loaded.mixer.mix(
+                &mut loaded.pipeline,
+                &mut loaded.stream,
+                loaded.audio.channels as usize,
+                frequency as u32,
+                &mut self.audio_output,
+                gain,
+            )?;
+            ensure!(
+                sound.events.len() + labels.len() < 65_536,
+                "sound event queue limit exceeded"
+            );
+            for label in labels {
+                sound
+                    .events
+                    .push((sound.generation, "onLabel", Value::string(&label.name)));
             }
-            mixer.phase %= RATE;
-            let old_labels = std::mem::take(&mut mixer.labels);
-            for mut label in old_labels {
-                if label.offset < consumed {
-                    ensure!(
-                        sound.events.len() < 65_536,
-                        "sound event queue limit exceeded"
-                    );
-                    sound
-                        .events
-                        .push((sound.generation, "onLabel", Value::string(&label.name)));
-                } else {
-                    label.offset -= consumed;
-                    mixer.labels.push(label);
-                }
-            }
-            let drained = consumed.min(mixer.samples.len());
-            mixer.samples.drain(..drained);
-            if mixer.eof && mixer.samples.is_empty() {
+            if ended {
                 loaded.ended = true;
                 sound
                     .events

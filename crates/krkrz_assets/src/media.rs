@@ -221,12 +221,17 @@ pub struct Audio {
 impl Audio {
     /// Decode integer PCM WAVE data into the mixer's signed 16-bit format.
     pub fn decode_wave(bytes: &[u8], max_frames: usize) -> Result<Self> {
-        let mut header = Reader::new(bytes);
-        ensure!(header.take(4)? == b"RIFF", "not a RIFF wave");
-        let length = header.u32()? as usize;
-        ensure!(length >= 4, "invalid RIFF size");
-        let mut chunks = Reader::new(header.take(length)?);
-        ensure!(chunks.take(4)? == b"WAVE", "not a WAVE container");
+        use std::io::Read;
+
+        let length = hound::read_wave_header(&mut Cursor::new(bytes))?;
+        ensure!(
+            length >= 12 && length <= bytes.len() as u64,
+            "invalid RIFF size"
+        );
+        // Hound expects fmt before data and stops at the first data chunk.
+        // Keep our bounded chunk-order/duplicate/padding validation, then expose
+        // a canonical header plus the original data slice without copying PCM.
+        let mut chunks = Reader::new(&bytes[12..length as usize]);
         let mut format = None;
         let mut data = None;
         while !chunks.done() {
@@ -236,26 +241,9 @@ impl Audio {
             match tag {
                 b"fmt " => {
                     ensure!(format.is_none(), "duplicate wave format chunk");
-                    let mut f = Reader::new(body);
-                    let codec = f.u16()?;
-                    let channels = f.u16()?;
-                    let rate = f.u32()?;
-                    let byte_rate = f.u32()?;
-                    let align = f.u16()?;
-                    let bits = f.u16()?;
-                    ensure!(
-                        codec == 1 && [8, 16, 24, 32].contains(&bits),
-                        "unsupported wave PCM format"
-                    );
-                    ensure!(
-                        (1..=8).contains(&channels) && (1..=768_000).contains(&rate),
-                        "invalid wave channel count or rate"
-                    );
-                    ensure!(
-                        align == channels * (bits / 8) && byte_rate == rate * align as u32,
-                        "invalid wave block alignment"
-                    );
-                    format = Some((channels as u8, rate, align as usize, bits));
+                    ensure!(body.len() >= 16, "invalid wave format chunk");
+                    ensure!(body[..2] == [1, 0], "unsupported wave PCM format");
+                    format = Some(&body[..16]);
                 }
                 b"data" => {
                     ensure!(data.is_none(), "duplicate wave data chunk");
@@ -267,29 +255,52 @@ impl Audio {
                 chunks.take(1)?;
             }
         }
-        let (channels, sample_rate, align, bits) =
-            format.ok_or_else(|| anyhow::anyhow!("wave format chunk missing"))?;
+        let format = format.ok_or_else(|| anyhow::anyhow!("wave format chunk missing"))?;
         let data = data.ok_or_else(|| anyhow::anyhow!("wave data chunk missing"))?;
+        let mut header = [0u8; 44];
+        header[..4].copy_from_slice(b"RIFF");
+        header[4..8].copy_from_slice(&(36 + data.len() as u32).to_le_bytes());
+        header[8..20].copy_from_slice(b"WAVEfmt \x10\0\0\0");
+        header[20..36].copy_from_slice(format);
+        header[36..40].copy_from_slice(b"data");
+        header[40..44].copy_from_slice(&(data.len() as u32).to_le_bytes());
+        let mut reader = hound::WavReader::new(Cursor::new(header).chain(Cursor::new(data)))?;
+        let spec = reader.spec();
         ensure!(
-            data.len().is_multiple_of(align) && data.len() / align <= max_frames,
-            "wave frame count is invalid or exceeds limit"
+            [8, 16, 24, 32].contains(&spec.bits_per_sample),
+            "unsupported wave PCM format"
         );
-        let samples = data
-            .chunks_exact((bits / 8) as usize)
-            .map(|s| match bits {
-                8 => (s[0] as i16 - 128) << 8,
-                16 => i16::from_le_bytes([s[0], s[1]]),
-                24 => i16::from_le_bytes([s[1], s[2]]),
-                32 => i16::from_le_bytes([s[2], s[3]]),
-                _ => unreachable!(),
+        ensure!(
+            (1..=8).contains(&spec.channels) && (1..=768_000).contains(&spec.sample_rate),
+            "invalid wave channel count or rate"
+        );
+        ensure!(
+            u16::from_le_bytes([format[12], format[13]])
+                == spec.channels * (spec.bits_per_sample / 8),
+            "invalid wave block alignment"
+        );
+        ensure!(
+            reader.duration() as usize <= max_frames,
+            "decoded audio exceeds frame limit"
+        );
+        let samples = reader
+            .samples::<i32>()
+            .map(|sample| {
+                let sample = sample?;
+                Ok(if spec.bits_per_sample == 8 {
+                    (sample << 8) as i16
+                } else {
+                    (sample >> (spec.bits_per_sample - 16)) as i16
+                })
             })
-            .collect();
+            .collect::<Result<Vec<_>, hound::Error>>()?;
         Ok(Self {
-            channels,
-            sample_rate,
+            channels: spec.channels as u8,
+            sample_rate: spec.sample_rate,
             samples,
         })
     }
+
     pub fn decode_vorbis(bytes: &[u8], max_frames: usize) -> Result<Self> {
         let mut stream = lewton::inside_ogg::OggStreamReader::new(Cursor::new(bytes))?;
         let channels = stream.ident_hdr.audio_channels;
@@ -398,6 +409,57 @@ mod tests {
         no_data[4..8].copy_from_slice(&28u32.to_le_bytes());
         assert!(Audio::decode_wave(&no_data, 3).is_err());
     }
+    #[test]
+    fn wave_stereo_scaling_extended_fmt_and_format_rejection() {
+        for bits in [8u16, 16, 24, 32] {
+            let values = [i16::MIN, 0, i16::MAX - 255, -256];
+            let mut data = Vec::new();
+            for value in values {
+                if bits == 8 {
+                    data.push(((value as i32 >> 8) + 128) as u8);
+                } else {
+                    let sample = (value as i32) << (bits - 16);
+                    data.extend_from_slice(&sample.to_le_bytes()[..(bits / 8) as usize]);
+                }
+            }
+            let mut bytes = wave(bits, &data);
+            bytes[22..24].copy_from_slice(&2u16.to_le_bytes());
+            bytes[28..32].copy_from_slice(&(44100 * 2 * u32::from(bits / 8)).to_le_bytes());
+            bytes[32..34].copy_from_slice(&(2 * (bits / 8)).to_le_bytes());
+            // A PCM fmt extension is ignored by the compatibility adapter.
+            bytes.splice(36..36, [0u8; 6]);
+            bytes[16..20].copy_from_slice(&22u32.to_le_bytes());
+            let length = bytes.len() as u32 - 8;
+            bytes[4..8].copy_from_slice(&length.to_le_bytes());
+            let decoded = Audio::decode_wave(&bytes, 2).unwrap();
+            assert_eq!(decoded.channels, 2);
+            assert_eq!(decoded.samples, values);
+            assert!(Audio::decode_wave(&bytes, 1).is_err());
+
+            let mut duplicate = bytes.clone();
+            duplicate.extend_from_slice(&bytes[12..42]);
+            let length = duplicate.len() as u32 - 8;
+            duplicate[4..8].copy_from_slice(&length.to_le_bytes());
+            assert!(Audio::decode_wave(&duplicate, 2).is_err());
+        }
+        for channels in [0u16, 9, u16::MAX] {
+            let mut bytes = wave(16, &[]);
+            bytes[22..24].copy_from_slice(&channels.to_le_bytes());
+            assert!(Audio::decode_wave(&bytes, 0).is_err());
+        }
+        for rate in [0u32, 768_001] {
+            let mut bytes = wave(16, &[]);
+            bytes[24..28].copy_from_slice(&rate.to_le_bytes());
+            bytes[28..32].copy_from_slice(&(rate * 2).to_le_bytes());
+            assert!(Audio::decode_wave(&bytes, 0).is_err());
+        }
+        // Matching average byte rate does not excuse overpadded samples.
+        let mut bytes = wave(16, &[0; 4]);
+        bytes[32..34].copy_from_slice(&4u16.to_le_bytes());
+        bytes[28..32].copy_from_slice(&(44100u32 * 4).to_le_bytes());
+        assert!(Audio::decode_wave(&bytes, 2).is_err());
+    }
+
     #[test]
     fn tlg5_pixels_and_truncation() {
         let mut bytes = b"TLG5.0\0raw\x1a\x03".to_vec();

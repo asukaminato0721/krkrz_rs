@@ -24,3 +24,5 @@ tiny-skia = { version = "0.12.0", default-features = false, features = ["std", "
 lru = "0.18.4"
 image = { version = "0.25.10", default-features = false }
 imageproc = { version = "0.27.0", default-features = false }
+rubato = { version = "5.0.0", default-features = false }
+audioadapter-buffers = "5.2"
