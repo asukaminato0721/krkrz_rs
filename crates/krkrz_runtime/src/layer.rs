@@ -964,6 +964,9 @@ impl Services {
         if op == "shrinkCopy" {
             return self.layer_shrink_copy(id, args, budget);
         }
+        if op == "saveLayerImage" {
+            return self.layer_save_image(id, args, budget);
+        }
         if op == "loadImages" {
             return self.layer_load_images(vm, id, args, budget);
         }
@@ -999,6 +1002,7 @@ mod blit;
 mod draw;
 mod focus;
 mod images;
+mod save;
 mod shrink;
 mod text;
 mod transition;
