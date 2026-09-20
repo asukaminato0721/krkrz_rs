@@ -1347,6 +1347,7 @@ dependencies = [
  "krkrz_runtime",
  "krkrz_tjs",
  "pollster",
+ "serde",
  "serde_json",
  "tempfile",
  "wgpu",

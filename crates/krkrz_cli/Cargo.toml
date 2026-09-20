@@ -8,6 +8,7 @@ license.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 serde_json.workspace = true
+serde.workspace = true
 krkrz_core.workspace = true
 krkrz_assets.workspace = true
 krkrz_tjs.workspace = true

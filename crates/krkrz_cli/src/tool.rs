@@ -13,6 +13,7 @@ use std::{
     io::{self, Write},
     path::PathBuf,
 };
+mod replay;
 #[derive(Clone, Copy, ValueEnum)]
 enum Profile {
     None,
@@ -63,6 +64,9 @@ enum Command {
         /// Advance session time after execution, delivering events and paint callbacks.
         #[arg(long, requires = "runtime")]
         advance_ms: Option<u64>,
+        /// Replay ordered JSON input actions and checkpoints at absolute session times.
+        #[arg(long, requires = "runtime")]
+        replay: Option<PathBuf>,
         /// Duration of each deterministic host tick.
         #[arg(long, default_value_t = 16, value_parser = clap::value_parser!(u64).range(1..))]
         step_ms: u64,
@@ -187,6 +191,7 @@ fn run() -> Result<()> {
             save_dir,
             epoch_ms,
             advance_ms,
+            replay,
             step_ms,
             inspect,
             frame,
@@ -202,33 +207,25 @@ fn run() -> Result<()> {
                 if let Some(epoch) = epoch_ms {
                     session.services.epoch_ms = epoch;
                 }
+                let replay = replay
+                    .as_deref()
+                    .map(replay::Replay::read)
+                    .transpose()?;
+                if let Some(replay) = &replay {
+                    replay.validate(&session, advance_ms)?;
+                }
                 let value = session.execute_storage(&name)?;
+                if let Some(replay) = replay {
+                    replay.run(&mut session, step_ms)?;
+                }
                 if let Some(end) = advance_ms {
-                    session.tick(0)?;
-                    while session.services.time_ms < end {
-                        if let Err(error) =
-                            session.tick(session.services.time_ms.saturating_add(step_ms).min(end))
-                        {
-                            for message in session.services.messages.iter().rev().take(8).rev() {
-                                eprintln!("{message}");
-                            }
-                            return Err(error
-                                .context(format!("session at {} ms", session.services.time_ms)));
-                        }
+                    if session.services.time_ms == 0 {
+                        replay::tick(&mut session, 0)?;
                     }
+                    replay::advance(&mut session, end, step_ms)?;
                 }
                 if let Some(output) = frame {
-                    let parent = output
-                        .parent()
-                        .filter(|p| !p.as_os_str().is_empty())
-                        .unwrap_or(std::path::Path::new("."))
-                        .canonicalize()?;
-                    anyhow::ensure!(
-                        !parent.starts_with(&session.services.storage.project),
-                        "frame output must be outside the game installation"
-                    );
-                    let window = session.evaluate(&frame_window)?;
-                    session.capture_window(&window)?.write_png(&output)?;
+                    replay::capture(&mut session, &frame_window, &output)?;
                 }
                 if inspect.is_empty() {
                     serde_json::to_writer_pretty(&mut out, &value)?;
