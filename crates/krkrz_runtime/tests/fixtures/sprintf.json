@@ -53,5 +53,15 @@
     "name": "sprintf_errors",
     "source": "var r=[];try{var x='%d'.sprintf();}catch(e){r.add('missing');}try{var x='%901d'.sprintf(2);}catch(e){r.add('large');}try{var x='%'.sprintf();}catch(e){r.add('partial');}'%d'.sprintf();return r.join(',')+'|'+'%d'.sprintf(3,4)+'|'+'%05%'.sprintf();",
     "expected": "Void"
+  },
+  {
+    "name": "sprintf_nonfinite_precisions",
+    "source": "var r=[];for(var i=0;i<=8;i++){for(var c=0;c<3;c++){var f=\"%.\"+i+[\"f\",\"e\",\"g\"][c];r.add(f.sprintf(Infinity));r.add(f.sprintf(NaN));}}return r.join(\"|\");",
+    "expected": "Void"
+  },
+  {
+    "name": "sprintf_ties",
+    "source": "return '%.2f|%.1f|%.0f|%.0e|%.1g|%.2f'.sprintf(1.125,1.25,-2.5,25,25,1.005);",
+    "expected": "Void"
   }
 ]

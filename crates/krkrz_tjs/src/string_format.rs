@@ -152,13 +152,15 @@ fn append(out: &mut Vec<u16>, text: &[u16], budget: &mut u64) -> Result<()> {
 }
 
 fn integer(n: i64, kind: u16, flag: u16, precision: Option<i32>) -> (String, String) {
+    // The installed 1.2.0.3 formatter passes a 32-bit integer to the CRT.
+    let n = n as i32;
     let signed = matches!(kind, 100 | 105);
     let mut digits = match kind {
-        111 => format!("{:o}", n as u64),
-        120 => format!("{:x}", n as u64),
-        88 => format!("{:X}", n as u64),
+        111 => format!("{:o}", n as u32),
+        120 => format!("{:x}", n as u32),
+        88 => format!("{:X}", n as u32),
         _ if signed => n.unsigned_abs().to_string(),
-        _ => (n as u64).to_string(),
+        _ => (n as u32).to_string(),
     };
     if precision == Some(0) && n == 0 {
         digits.clear();
@@ -196,25 +198,51 @@ fn real(n: f64, kind: u16, flag: u16, precision: Option<i32>) -> (String, String
     let compact = matches!(kind, 103 | 71);
     let alt = flag == 35;
     let mut digits = if !n.is_finite() {
-        if n.is_nan() {
-            "1.#QNAN".into()
+        // The old Windows CRT treats the marker as decimal digits, including
+        // its truncation/rounding and zero padding at the requested precision.
+        let count = if compact {
+            precision.max(1) - 1
         } else {
-            "1.#INF".into()
+            precision
+        };
+        let marker = if n.is_nan() {
+            b"#QNAN".as_slice()
+        } else {
+            b"#INF".as_slice()
+        };
+        let mut tail = marker[..count.min(marker.len())].to_vec();
+        tail.resize(count, b'0');
+        if count > 0 && marker.get(count).is_some_and(|c| *c >= b'5') {
+            *tail.last_mut().unwrap() += 1;
         }
+        let mut text = "1".to_owned();
+        if count > 0 || alt {
+            text.push('.');
+        }
+        text.push_str(std::str::from_utf8(&tail).unwrap());
+        if compact && !alt {
+            text = trim_decimal(&text).into();
+        }
+        if matches!(kind, 101 | 69) {
+            text.push_str(if kind == 69 { "E+000" } else { "e+000" });
+        }
+        text
     } else if kind == 102 {
-        format!("{n:.precision$}")
+        format!("{:.precision$}", rounding_input(n, precision as i32))
     } else {
         let significant = if compact {
             precision.max(1) - 1
         } else {
             precision
         };
-        let scientific = format!("{n:.significant$e}");
+        let exponent: i32 = format!("{n:e}").split_once('e').unwrap().1.parse().unwrap();
+        let rounded = rounding_input(n, significant as i32 - exponent);
+        let scientific = format!("{rounded:.significant$e}");
         let (mantissa, exponent) = scientific.split_once('e').unwrap();
         let exponent: i32 = exponent.parse().unwrap();
         if compact && exponent >= -4 && exponent < precision.max(1) as i32 {
             let decimals = (precision.max(1) as i32 - 1 - exponent).max(0) as usize;
-            let fixed = format!("{n:.decimals$}");
+            let fixed = format!("{:.decimals$}", rounding_input(n, decimals as i32));
             if alt {
                 fixed
             } else {
@@ -244,5 +272,37 @@ fn trim_decimal(text: &str) -> &str {
         text.trim_end_matches('0').trim_end_matches('.')
     } else {
         text
+    }
+}
+
+// MSVCRT rounds exact decimal ties away from zero; Rust uses ties-to-even.
+// Detect ties from the binary representation without rounding a scaled float.
+fn rounding_input(n: f64, decimals: i32) -> f64 {
+    if n == 0.0 {
+        return n;
+    }
+    let bits = n.to_bits();
+    let encoded_exponent = ((bits >> 52) & 0x7ff) as i32;
+    let mut mantissa = bits & ((1 << 52) - 1);
+    let exponent = if encoded_exponent == 0 {
+        -1074
+    } else {
+        mantissa |= 1 << 52;
+        encoded_exponent - 1023 - 52
+    };
+    if decimals < 0 {
+        let Some(divisor) = 5u64.checked_pow(decimals.unsigned_abs()) else {
+            return n;
+        };
+        if !mantissa.is_multiple_of(divisor) {
+            return n;
+        }
+        mantissa /= divisor;
+    }
+    let binary_shift = exponent + decimals;
+    if binary_shift < 0 && mantissa.trailing_zeros() as i32 == -binary_shift - 1 {
+        n.next_up()
+    } else {
+        n
     }
 }

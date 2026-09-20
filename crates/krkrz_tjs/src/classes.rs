@@ -300,26 +300,25 @@ impl Vm {
         };
         let found = handled || !matches!(value, Value::Void) || self.has_member(receiver, key)?;
         // IGNOREPROP preserves the stored closure and its original context.
-        if !raw {
-            if let Value::Object(object) = &mut value
-                && let Some(id) = object.object
-                && self.objects.get(id).is_some_and(|o| {
-                    matches!(
-                        o.kind,
-                        ObjectKind::Property { .. } | ObjectKind::VariantProperty(_)
-                    )
-                })
-            {
-                if object.context.is_none() {
-                    object.context = Some(match receiver {
-                        Value::Object(reference) => {
-                            reference.context.unwrap_or(self.object_id(receiver)?)
-                        }
-                        _ => self.object_id(receiver)?,
-                    });
-                }
-                value = self.read_property(&value, receiver, host, budget)?;
+        if !raw
+            && let Value::Object(object) = &mut value
+            && let Some(id) = object.object
+            && self.objects.get(id).is_some_and(|o| {
+                matches!(
+                    o.kind,
+                    ObjectKind::Property { .. } | ObjectKind::VariantProperty(_)
+                )
+            })
+        {
+            if object.context.is_none() {
+                object.context = Some(match receiver {
+                    Value::Object(reference) => {
+                        reference.context.unwrap_or(self.object_id(receiver)?)
+                    }
+                    _ => self.object_id(receiver)?,
+                });
             }
+            value = self.read_property(&value, receiver, host, budget)?;
         }
         Ok((value, found))
     }
