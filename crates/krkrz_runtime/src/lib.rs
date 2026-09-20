@@ -814,6 +814,27 @@ impl Session {
         self.dispatch_events()?;
         Ok(())
     }
+    /// Advance one host tick, deliver queued callbacks, and prepare live window
+    /// surfaces. Native presentation and headless inspection use the same path.
+    pub fn tick(&mut self, time_ms: u64) -> Result<()> {
+        self.budget = self
+            .budget
+            .checked_sub(1)
+            .ok_or_else(|| unsupported("host tick execution budget exceeded"))?;
+        self.advance_clock(time_ms)?;
+        let windows: Vec<_> = self.services.windows.keys().copied().collect();
+        for id in windows {
+            if self
+                .services
+                .windows
+                .get(&id)
+                .is_some_and(|w| w.constructed && w.visible && !w.minimized)
+            {
+                self.prepare_window_paint(&Value::object(id))?;
+            }
+        }
+        Ok(())
+    }
     /// Deliver one pending batch. Events posted by callbacks wait for the next
     /// batch, preventing native recursion and preserving the shared VM budget.
     pub fn dispatch_events(&mut self) -> Result<()> {

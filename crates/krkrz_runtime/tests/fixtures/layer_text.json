@@ -1,0 +1,100 @@
+[
+  {
+    "name": "text_alpha",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.face=dfAlpha;l.fillRect(0,0,32,28,0x00203040);l.drawText(2,1,'A',0x80c040);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 3286178709
+    }
+  },
+  {
+    "name": "text_opaque",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.face=dfAlpha;l.fillRect(0,0,32,28,0x7f203040);l.face=dfOpaque;l.drawText(2,1,'A',0x80c040);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 2397063729
+    }
+  },
+  {
+    "name": "text_add",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.face=dfAlpha;l.fillRect(0,0,32,28,0x7f203040);l.face=dfAddAlpha;l.drawText(2,1,'A',0x80c040);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 67614633
+    }
+  },
+  {
+    "name": "text_mono",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.face=dfAlpha;l.fillRect(0,0,32,28,0x00203040);l.drawText(2,1,'A',0x80c040,255,false);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 2116128621
+    }
+  },
+  {
+    "name": "text_shadow",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.face=dfAlpha;l.fillRect(0,0,32,28,0x00203040);l.drawText(2,1,'A',0x80c040,192,true,128,0x123456,2,1,2);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 4038371499
+    }
+  },
+  {
+    "name": "text_bold",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.font.bold=true;l.face=dfAlpha;l.fillRect(0,0,32,28,0x40203040);l.drawText(2,1,'A A',0x80c040);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 424062652
+    }
+  },
+  {
+    "name": "text_italic",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.font.italic=true;l.face=dfAlpha;l.fillRect(0,0,32,28,0x40203040);l.drawText(2,1,'A',0x80c040);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 426147304
+    }
+  },
+  {
+    "name": "text_under",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.font.underline=true;l.face=dfAlpha;l.fillRect(0,0,32,28,0x40203040);l.drawText(2,1,'A ',0x80c040);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 1692754515
+    }
+  },
+  {
+    "name": "text_strike",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.font.strikeout=true;l.face=dfAlpha;l.fillRect(0,0,32,28,0x40203040);l.drawText(2,1,'A ',0x80c040);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 1692754515
+    }
+  },
+  {
+    "name": "text_rotate",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.font.angle=450;l.face=dfAlpha;l.fillRect(0,0,32,28,0x40203040);l.drawText(2,13,'AA',0x80c040);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 1713040293
+    }
+  },
+  {
+    "name": "text_clip",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.face=dfAlpha;l.fillRect(0,0,32,28,0x40203040);l.setClip(3,8,7,8);l.drawText(2,1,'AA',0x80c040,255,true,255,0x204080,0,-3,1);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 3612931394
+    }
+  },
+  {
+    "name": "text_remove",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.face=dfAlpha;l.fillRect(0,0,32,28,0x7f203040);l.drawText(2,1,'AA',0x80c040,-128);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 22698821
+    }
+  },
+  {
+    "name": "text_hold",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.face=dfAlpha;l.fillRect(0,0,32,28,0x7f203040);l.face=dfOpaque;l.holdAlpha=true;l.drawText(2,1,'AA',0x80c040,128);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 1251161029
+    }
+  },
+  {
+    "name": "text_add_partial",
+    "source": "Storages.addAutoPath(System.exePath);Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.face='Kirikiri Synthetic';l.font.height=20;l.face=dfAlpha;l.fillRect(0,0,32,28,0x7f203040);l.face=dfAddAlpha;l.drawText(2,1,'AA',0x80c040,128);var h=2166136261;for(var y=0;y<28;y++)for(var x=0;x<32;x++){h=((h^l.getMainPixel(x,y))*16777619)&0xffffffff;h=((h^l.getMaskPixel(x,y))*16777619)&0xffffffff;}return h;",
+    "expected": {
+      "Integer": 1935512901
+    }
+  }
+]

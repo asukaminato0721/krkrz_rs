@@ -15,6 +15,7 @@ fn original_missing_format_and_math_corpus() {
         include_str!("fixtures/missing.json"),
         include_str!("fixtures/sprintf.json"),
         include_str!("fixtures/math.json"),
+        include_str!("fixtures/assign_struct.json"),
     ] {
         for case in serde_json::from_str::<Vec<Case>>(fixture).unwrap() {
             let project = tempfile::tempdir().unwrap();

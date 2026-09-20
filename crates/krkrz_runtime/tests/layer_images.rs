@@ -29,6 +29,7 @@ fn session() -> (tempfile::TempDir, tempfile::TempDir, Session) {
 fn original_image_path_and_paint_corpus() {
     for fixture in [
         include_str!("fixtures/layer_images.json"),
+        include_str!("fixtures/assign_images.json"),
         include_str!("fixtures/layer_blit.json"),
         include_str!("fixtures/layer_paint.json"),
         include_str!("fixtures/storage_paths.json"),

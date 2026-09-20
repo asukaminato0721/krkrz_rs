@@ -75,8 +75,13 @@ fn original_font_measurement_corpus() {
         source: String,
         expected: Value,
     }
-    let cases: Vec<Case> =
-        serde_json::from_str(include_str!("fixtures/font_metrics.json")).unwrap();
+    let cases: Vec<Case> = [
+        include_str!("fixtures/font_metrics.json"),
+        include_str!("fixtures/layer_text.json"),
+    ]
+    .into_iter()
+    .flat_map(|fixture| serde_json::from_str::<Vec<Case>>(fixture).unwrap())
+    .collect();
     for case in cases {
         let project = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();

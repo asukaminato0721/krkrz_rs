@@ -1,0 +1,99 @@
+[
+  {
+    "name": "struct_dictionary",
+    "source": "var s=%[a:[1,%[n:2]],x:3],d=%[old:4];(Dictionary.assignStruct incontextof d)(s);d.a[1].n=9;return [s.a[1].n,d.a[1].n,typeof d.old,d.x,d.a===s.a].join('|');",
+    "expected": {
+      "String": [
+        50,
+        124,
+        57,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        124,
+        51,
+        124,
+        48
+      ]
+    }
+  },
+  {
+    "name": "struct_alias",
+    "source": "var v=%[n:1],s=[v,v],d=[];d.assignStruct(s);return [d[0]===d[1],d[0]===v,d[0].n,d[1].n].join('|');",
+    "expected": {
+      "String": [
+        48,
+        124,
+        48,
+        124,
+        49,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "struct_cycles",
+    "source": "var s=%[],a=[s];s.a=a;s.self=s;var d=%[];(Dictionary.assignStruct incontextof d)(s);return [d.self===null,d.a[0]===null,d.a===a].join('|');",
+    "expected": {
+      "String": [
+        49,
+        124,
+        49,
+        124,
+        48
+      ]
+    }
+  },
+  {
+    "name": "struct_self",
+    "source": "var a=[1,2],d=%[a:1];a.foo=9;a.assignStruct(a);(Dictionary.assignStruct incontextof d)(d);return [a.count,a.foo,typeof d.a].join('|');",
+    "expected": {
+      "String": [
+        48,
+        124,
+        57,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "struct_objects",
+    "source": "class C {var n=2;}var c=new C(),f=function(){return this.n;},s=[c,f incontextof c],d=[];d.assignStruct(s);return [d[0]===c,d[1](),d[1]===s[1]].join('|');",
+    "expected": {
+      "String": [
+        49,
+        124,
+        50,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "struct_errors",
+    "source": "var a=[7],d=%[x:8],r=[];try{a.assignStruct(d);}catch(e){r.add(a[0]);}try{(Dictionary.assignStruct incontextof d)(a);}catch(e){r.add(d.x);}return r.join('|');",
+    "expected": {
+      "String": [
+        124,
+        56
+      ]
+    }
+  }
+]

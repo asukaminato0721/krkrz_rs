@@ -57,6 +57,15 @@ enum Command {
         runtime: bool,
         #[arg(long, requires = "runtime")]
         save_dir: Option<PathBuf>,
+        /// Advance session time after execution, delivering events and paint callbacks.
+        #[arg(long, requires = "runtime")]
+        advance_ms: Option<u64>,
+        /// Duration of each deterministic host tick.
+        #[arg(long, default_value_t = 16, value_parser = clap::value_parser!(u64).range(1..))]
+        step_ms: u64,
+        /// Evaluate an expression in the resulting session (repeatable).
+        #[arg(long, requires = "runtime")]
+        inspect: Vec<String>,
         #[arg(long, default_value_t = 100000)]
         budget: u64,
     },
@@ -167,6 +176,9 @@ fn run() -> Result<()> {
             mut budget,
             runtime,
             save_dir,
+            advance_ms,
+            step_ms,
+            inspect,
         } => {
             if runtime {
                 let mut session = krkrz_runtime::Session::open(
@@ -176,7 +188,21 @@ fn run() -> Result<()> {
                     budget,
                 )?;
                 let value = session.execute_storage(&name)?;
-                serde_json::to_writer_pretty(&mut out, &value)?;
+                if let Some(end) = advance_ms {
+                    session.tick(0)?;
+                    while session.services.time_ms < end {
+                        session.tick(session.services.time_ms.saturating_add(step_ms).min(end))?;
+                    }
+                }
+                if inspect.is_empty() {
+                    serde_json::to_writer_pretty(&mut out, &value)?;
+                } else {
+                    let mut values = Vec::new();
+                    for source in inspect {
+                        values.push(serde_json::json!({"expression":source, "value":session.evaluate(&source)?}));
+                    }
+                    serde_json::to_writer_pretty(&mut out, &values)?;
+                }
                 return Ok(());
             }
             let mut vm = krkrz_tjs::Vm::default();

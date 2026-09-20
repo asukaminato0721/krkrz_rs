@@ -16,6 +16,140 @@ pub(crate) fn index(key: &Value) -> Option<i64> {
     }
 }
 impl Vm {
+    pub(crate) fn assign_structure(
+        &mut self,
+        receiver: &Value,
+        args: &[Value],
+        array: bool,
+        budget: &mut u64,
+    ) -> Result<Value> {
+        let target = self.object_id(receiver)?;
+        let compatible = |kind: &ObjectKind| {
+            if array {
+                matches!(kind, ObjectKind::Array(_))
+            } else {
+                matches!(kind, ObjectKind::Dictionary)
+            }
+        };
+        ensure!(
+            compatible(&self.objects[target].kind),
+            "assignStruct requires a matching native instance"
+        );
+        let source_arg = args.first().context("assignStruct: missing argument 0")?;
+        // Array's native wrapper clears before converting or validating the source.
+        if let ObjectKind::Array(items) = &mut self.objects[target].kind {
+            items.clear();
+        }
+        let Value::Object(reference) = source_arg else {
+            bail!("assignStruct requires an Object source");
+        };
+        let source = self.object_id(&Value::object(
+            reference
+                .context
+                .or(reference.object)
+                .context("null assignStruct source")?,
+        ))?;
+        ensure!(
+            compatible(&self.objects[source].kind),
+            "assignStruct requires a source of the same collection type"
+        );
+        self.copy_structure_into(target, source, &mut Vec::new(), budget)?;
+        Ok(Value::Void)
+    }
+
+    fn copy_structure_into(
+        &mut self,
+        target: usize,
+        source: usize,
+        stack: &mut Vec<usize>,
+        budget: &mut u64,
+    ) -> Result<()> {
+        if stack.len() >= 128 {
+            return Err(unsupported("assignStruct nesting limit exceeded"));
+        }
+        *budget = budget
+            .checked_sub(1)
+            .ok_or_else(|| unsupported("assignStruct execution budget exceeded"))?;
+        stack.push(source);
+        if let ObjectKind::Array(items) = &mut self.objects[target].kind {
+            items.clear();
+            let ObjectKind::Array(items) = self.objects[source].kind.clone() else {
+                unreachable!()
+            };
+            for value in items {
+                let value = self.copy_structure_value(value, stack, budget)?;
+                let ObjectKind::Array(items) = &mut self.objects[target].kind else {
+                    unreachable!()
+                };
+                items.push(value);
+            }
+        } else {
+            self.objects[target].members.clear();
+            self.objects[target].member_flags.clear();
+            self.objects[target].member_layout = Default::default();
+            let count = self.objects[source].members.len();
+            if self.objects[source].hash_generation != self.hash_generation {
+                self.objects[source].member_layout.rehash(count);
+                self.objects[source].hash_generation = self.hash_generation;
+            }
+            self.objects[target].member_layout.rehash(count);
+            for key in self.objects[source].member_layout.keys() {
+                if self.objects[source]
+                    .member_flags
+                    .get(&key)
+                    .copied()
+                    .unwrap_or(0)
+                    & crate::scripts_ex::HIDDEN
+                    != 0
+                {
+                    continue;
+                }
+                let value = self.objects[source].members[&key].clone();
+                let value = self.copy_structure_value(value, stack, budget)?;
+                self.set_member(&Value::object(target), &Value::String(key), value)?;
+            }
+        }
+        stack.pop();
+        Ok(())
+    }
+
+    fn copy_structure_value(
+        &mut self,
+        value: Value,
+        stack: &mut Vec<usize>,
+        budget: &mut u64,
+    ) -> Result<Value> {
+        *budget = budget
+            .checked_sub(1)
+            .ok_or_else(|| unsupported("assignStruct execution budget exceeded"))?;
+        if let Value::Object(reference) = &value
+            && let Some(id) = reference.object
+        {
+            let kind = &self
+                .objects
+                .get(id)
+                .context("invalid assignStruct object")?
+                .kind;
+            if matches!(kind, ObjectKind::Array(_) | ObjectKind::Dictionary) {
+                if stack.contains(&id) {
+                    return Ok(Value::NULL);
+                }
+                let copy = if matches!(kind, ObjectKind::Array(_)) {
+                    self.new_native_array(Vec::new())?
+                } else {
+                    self.new_dictionary()?
+                };
+                let target = self.object_id(&copy)?;
+                self.copy_structure_into(target, id, stack, budget)?;
+                return Ok(Value::Object(crate::ObjectRef {
+                    object: Some(target),
+                    context: Some(target),
+                }));
+            }
+        }
+        Ok(value)
+    }
+
     pub(crate) fn array_split(
         &mut self,
         receiver: &Value,

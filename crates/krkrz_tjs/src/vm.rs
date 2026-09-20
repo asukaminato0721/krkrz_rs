@@ -375,7 +375,7 @@ impl Default for Vm {
         vm.register_serialization(false)
             .expect("initial serialization members");
         let array = vm.globals["Array"].clone();
-        for method in ["assign", "split"] {
+        for method in ["assign", "assignStruct", "split"] {
             vm.register_native_method(&array, method, &format!("Array.{method}"))
                 .expect("initial Array member");
             let array_id = vm.object_id(&array).expect("Array class");
@@ -384,7 +384,7 @@ impl Default for Vm {
                 .insert(method.encode_utf16().collect(), crate::scripts_ex::HIDDEN);
         }
         let dictionary = vm.globals["Dictionary"].clone();
-        for method in ["assign", "clear"] {
+        for method in ["assign", "assignStruct", "clear"] {
             vm.register_native_static_method(&dictionary, method, &format!("Dictionary.{method}"))
                 .expect("initial Dictionary members");
             let function = vm
@@ -1238,6 +1238,13 @@ impl Vm {
         let kind = self.objects[id].kind.clone();
         match kind {
             ObjectKind::Native(name) => match name.as_str() {
+                "Array.assignStruct" | "Dictionary.assignStruct" => {
+                    let context = reference
+                        .context
+                        .map(Value::object)
+                        .unwrap_or_else(|| context.clone());
+                    self.assign_structure(&context, args, name.starts_with("Array."), budget)
+                }
                 "Array.assign" => {
                     let context = reference
                         .context

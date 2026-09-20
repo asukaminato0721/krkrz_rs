@@ -55,8 +55,8 @@ impl FontBook {
                 if underline {
                     y = y.min(cell_height - 1);
                 }
-                let thickness = (metrics.thickness as f64 * scale).round().max(1.0) as i32;
-                if y >= 0 {
+                let thickness = (metrics.thickness as f64 * scale).round() as i32;
+                if y >= 0 && thickness > 0 {
                     lines.push((y, thickness));
                 }
             }
@@ -104,7 +104,7 @@ impl TextRasterizer {
         let glyph = self.face.glyph().get_glyph()?;
         let angle = self.style.angle as f64 * std::f64::consts::PI / 1800.0;
         let (sin, cos) = angle.sin_cos();
-        let shear = if self.style.italic { 0.375 } else { 0.0 };
+        let shear = if self.style.italic { 0.25 } else { 0.0 };
         if self.style.angle != 0 || self.style.italic {
             glyph.transform(
                 Some(Matrix {
