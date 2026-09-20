@@ -1,0 +1,32 @@
+[
+  {
+    "name": "krkrz",
+    "url": "https://github.com/krkrz/krkrz",
+    "revision": "fd5c4baa6a2ef5978db1bd043634351f48667daf"
+  },
+  {
+    "name": "KAGParserEx",
+    "url": "https://github.com/wamsoft/KAGParserEx",
+    "revision": "61d5f1e65f500b5aef5a621333f86f3457939b31"
+  },
+  {
+    "name": "krkrsdl2",
+    "url": "https://github.com/krkrsdl2/krkrsdl2",
+    "revision": "dccbdf6a14829ffee778123350dfc954f919d835"
+  },
+  {
+    "name": "Kirikiroid2",
+    "url": "https://github.com/zeas2/Kirikiroid2",
+    "revision": "d1c2b1259423542c893e0b65eaeb46c848848f2b"
+  },
+  {
+    "name": "GARbro",
+    "url": "https://github.com/morkt/GARbro",
+    "revision": "b09ee4570ccb1daf6ac56710ee8934dc0b8baeb0"
+  },
+  {
+    "name": "krkrz-historical",
+    "url": "https://github.com/krkrz/krkrz",
+    "revision": "49c4d53506edecb824cd7b2cff8d32959b1f1b70"
+  }
+]

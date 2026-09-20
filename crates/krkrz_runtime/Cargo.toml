@@ -1,0 +1,17 @@
+[package]
+name = "krkrz_runtime"
+version.workspace = true
+edition.workspace = true
+license = "MIT AND BSD-3-Clause"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+krkrz_core.workspace = true
+krkrz_assets.workspace = true
+krkrz_tjs.workspace = true
+krkrz_kag.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

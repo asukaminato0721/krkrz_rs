@@ -1,0 +1,26 @@
+[package]
+name = "krkrz_cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
+krkrz_core.workspace = true
+krkrz_assets.workspace = true
+krkrz_tjs.workspace = true
+krkrz_kag.workspace = true
+krkrz_runtime.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[bin]]
+name = "krkrz_engine"
+path = "src/engine.rs"
+
+[[bin]]
+name = "krkrz_tool"
+path = "src/tool.rs"

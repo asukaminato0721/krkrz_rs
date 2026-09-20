@@ -1,0 +1,18 @@
+[package]
+name = "krkrz_assets"
+version.workspace = true
+edition.workspace = true
+license = "MIT AND BSD-3-Clause"
+
+[dependencies]
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+flate2.workspace = true
+encoding_rs.workspace = true
+krkrz_core.workspace = true
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+lewton = "0.10"
+
+[dev-dependencies]
+tempfile.workspace = true
