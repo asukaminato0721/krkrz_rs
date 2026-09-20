@@ -53,6 +53,8 @@ pub struct Services {
     pub storage: Storage,
     pub save_dir: PathBuf,
     pub time_ms: u64,
+    /// Unix wall-clock origin; replay hosts can set a recorded value before startup.
+    pub epoch_ms: i64,
     pub trace: Vec<TraceEvent>,
     pub messages: Vec<String>,
     pub trace_enabled: bool,
@@ -140,6 +142,10 @@ impl Services {
     }
 }
 impl Host for Services {
+    fn unix_time_ms(&self) -> i64 {
+        self.epoch_ms
+            .saturating_add(self.time_ms.min(i64::MAX as u64) as i64)
+    }
     fn call_with_result(
         &mut self,
         vm: &mut Vm,
@@ -857,6 +863,7 @@ impl Session {
                 storage,
                 save_dir,
                 time_ms: 0,
+                epoch_ms: <() as Host>::unix_time_ms(&()),
                 trace: vec![],
                 messages: vec![],
                 trace_enabled: false,

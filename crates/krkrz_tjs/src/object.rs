@@ -60,6 +60,7 @@ pub(crate) struct Object {
     pub kind: ObjectKind,
     pub members: BTreeMap<Vec<u16>, Value>,
     pub owner: Option<usize>,
+    pub date: Option<i64>,
     pub classes: Vec<String>,
     pub member_flags: BTreeMap<Vec<u16>, u32>,
     // Native static methods receive the script caller's this, not their namespace.
@@ -78,6 +79,7 @@ impl Object {
             kind,
             members: BTreeMap::new(),
             owner: None,
+            date: None,
             classes: vec![],
             member_flags: BTreeMap::new(),
             native_static: false,

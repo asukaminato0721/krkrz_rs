@@ -93,7 +93,11 @@ impl Vm {
             }
         }
         for finalizer in self.objects[id].native_finalizers.clone().iter().rev() {
-            host.call_with_context(self, finalizer, &Value::object(id), &[], budget)?;
+            // Date's native Invalidate is empty. Cached native closures can
+            // still read its timestamp after the script object is invalidated.
+            if finalizer != "Date.@invalidate" {
+                host.call_with_context(self, finalizer, &Value::object(id), &[], budget)?;
+            }
         }
         let object = &mut self.objects[id];
         object.native_finalizers.clear();

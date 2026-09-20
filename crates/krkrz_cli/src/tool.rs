@@ -57,6 +57,9 @@ enum Command {
         runtime: bool,
         #[arg(long, requires = "runtime")]
         save_dir: Option<PathBuf>,
+        /// Unix milliseconds at session time zero, for reproducible Date values.
+        #[arg(long, requires = "runtime", allow_hyphen_values = true)]
+        epoch_ms: Option<i64>,
         /// Advance session time after execution, delivering events and paint callbacks.
         #[arg(long, requires = "runtime")]
         advance_ms: Option<u64>,
@@ -182,6 +185,7 @@ fn run() -> Result<()> {
             mut budget,
             runtime,
             save_dir,
+            epoch_ms,
             advance_ms,
             step_ms,
             inspect,
@@ -195,6 +199,9 @@ fn run() -> Result<()> {
                     matches!(args.profile, Profile::OtomeDomain),
                     budget,
                 )?;
+                if let Some(epoch) = epoch_ms {
+                    session.services.epoch_ms = epoch;
+                }
                 let value = session.execute_storage(&name)?;
                 if let Some(end) = advance_ms {
                     session.tick(0)?;

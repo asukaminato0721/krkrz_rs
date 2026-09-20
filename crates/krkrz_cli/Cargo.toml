@@ -13,6 +13,9 @@ krkrz_assets.workspace = true
 krkrz_tjs.workspace = true
 krkrz_kag.workspace = true
 krkrz_runtime.workspace = true
+winit = "0.30.13"
+wgpu = "0.20.1"
+pollster = "0.3.0"
 
 [dev-dependencies]
 tempfile.workspace = true

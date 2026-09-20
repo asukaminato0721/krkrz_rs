@@ -961,6 +961,9 @@ impl Services {
         if op == "piledCopy" {
             return self.layer_piled_copy(vm, id, args, budget);
         }
+        if op == "shrinkCopy" {
+            return self.layer_shrink_copy(id, args, budget);
+        }
         if op == "loadImages" {
             return self.layer_load_images(vm, id, args, budget);
         }
@@ -996,6 +999,7 @@ mod blit;
 mod draw;
 mod focus;
 mod images;
+mod shrink;
 mod text;
 mod transition;
 

@@ -9,6 +9,7 @@ anyhow.workspace = true
 serde.workspace = true
 krkrz_core.workspace = true
 fancy-regex = "0.16.2"
+chrono = { version = "0.4.45", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -3,6 +3,7 @@
 mod array_sort;
 mod classes;
 mod compiler;
+mod date;
 mod dispatch;
 pub mod lexer;
 mod lifetime;

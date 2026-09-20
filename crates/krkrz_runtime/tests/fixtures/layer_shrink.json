@@ -1,0 +1,30 @@
+[
+  {
+    "name": "shrink_integer",
+    "source": "Plugins.link('PackinOne.dll');var w=new Window(),p=new Layer(w,null),s=new Layer(w,p),d=new Layer(w,p),r=[];s.setImageSize(7,5);d.setImageSize(5,4);for(var y=0;y<5;y++)for(var x=0;x<7;x++){s.setMainPixel(x,y,((x*31+y*17)<<16)|((x*19+y*23)<<8)|(x*11+y*29));s.setMaskPixel(x,y,(x*23+y*31)%256);}d.fillRect(0,0,5,4,0x40123456);d.shrinkCopy(1,1,3,2,s,0,0,6,4);for(var y=0;y<4;y++)for(var x=0;x<5;x++)r.add(d.getMainPixel(x,y)+':'+d.getMaskPixel(x,y));return r.join('|');",
+    "expected": {
+      "Integer": 0
+    }
+  },
+  {
+    "name": "shrink_fraction",
+    "source": "Plugins.link('PackinOne.dll');var w=new Window(),p=new Layer(w,null),s=new Layer(w,p),d=new Layer(w,p),r=[];s.setImageSize(7,5);d.setImageSize(5,4);for(var y=0;y<5;y++)for(var x=0;x<7;x++){s.setMainPixel(x,y,((x*31+y*17)<<16)|((x*19+y*23)<<8)|(x*11+y*29));s.setMaskPixel(x,y,(x*23+y*31)%256);}d.fillRect(0,0,5,4,0x40123456);d.shrinkCopy(0.3,0.7,3.2,2.4,s,0,0,7,5);for(var y=0;y<4;y++)for(var x=0;x<5;x++)r.add(d.getMainPixel(x,y)+':'+d.getMaskPixel(x,y));return r.join('|');",
+    "expected": {
+      "Integer": 0
+    }
+  },
+  {
+    "name": "shrink_clip",
+    "source": "Plugins.link('PackinOne.dll');var w=new Window(),p=new Layer(w,null),s=new Layer(w,p),d=new Layer(w,p),r=[];s.setImageSize(7,5);d.setImageSize(5,4);for(var y=0;y<5;y++)for(var x=0;x<7;x++){s.setMainPixel(x,y,((x*31+y*17)<<16)|((x*19+y*23)<<8)|(x*11+y*29));s.setMaskPixel(x,y,(x*23+y*31)%256);}d.fillRect(0,0,5,4,0x40123456);d.setClip(4,3,1,1);d.face=dfMask;d.holdAlpha=true;d.shrinkCopy(-0.7,-0.4,4.1,3.3,s,-1,-1,9,7);for(var y=0;y<4;y++)for(var x=0;x<5;x++)r.add(d.getMainPixel(x,y)+':'+d.getMaskPixel(x,y));return r.join('|');",
+    "expected": {
+      "Integer": 0
+    }
+  },
+  {
+    "name": "shrink_self",
+    "source": "Plugins.link('PackinOne.dll');var w=new Window(),p=new Layer(w,null),s=new Layer(w,p),d=new Layer(w,p),r=[];s.setImageSize(7,5);d.setImageSize(5,4);for(var y=0;y<5;y++)for(var x=0;x<7;x++){s.setMainPixel(x,y,((x*31+y*17)<<16)|((x*19+y*23)<<8)|(x*11+y*29));s.setMaskPixel(x,y,(x*23+y*31)%256);}d.fillRect(0,0,5,4,0x40123456);s.shrinkCopy(0,0,3,2,s,1,1,6,4);d.copyRect(0,0,s,0,0,3,2);for(var y=0;y<4;y++)for(var x=0;x<5;x++)r.add(d.getMainPixel(x,y)+':'+d.getMaskPixel(x,y));return r.join('|');",
+    "expected": {
+      "Integer": 0
+    }
+  }
+]

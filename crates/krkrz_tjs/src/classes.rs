@@ -223,7 +223,11 @@ impl Vm {
             self.initialize_instance(base, instance, host, budget, depth + 1)?;
         }
         if let Some(initializer) = native_initializer {
-            host.call_with_context(self, &initializer, instance, &[], budget)?;
+            if initializer == "Date.@initialize" {
+                self.objects[context].date = Some(0);
+            } else {
+                host.call_with_context(self, &initializer, instance, &[], budget)?;
+            }
             self.objects[context].native_finalizers.push(format!(
                 "{}.@invalidate",
                 initializer

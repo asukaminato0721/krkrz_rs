@@ -311,6 +311,10 @@ impl Program {
     }
 }
 pub trait Host {
+    /// Unix wall time for Date. Replay hosts supply an epoch plus session time.
+    fn unix_time_ms(&self) -> i64 {
+        chrono::Utc::now().timestamp_millis()
+    }
     fn call(&mut self, vm: &mut Vm, name: &str, args: &[Value], budget: &mut u64) -> Result<Value>;
     /// Called with the resolved receiver, including an explicitly bound context.
     fn call_with_context(
@@ -411,6 +415,7 @@ impl Default for Vm {
         vm.native_array_class = vm.objects.len();
         vm.objects.push(vm.objects[id].clone());
         vm.register_math().expect("initial Math members");
+        vm.register_date().expect("initial Date members");
         vm
     }
 }
@@ -1356,6 +1361,13 @@ impl Vm {
                     Ok(Value::Void)
                 }
                 "Exception.finalize" => Ok(Value::Void),
+                _ if name.starts_with("Date.") => {
+                    let context = reference
+                        .context
+                        .map(Value::object)
+                        .unwrap_or_else(|| context.clone());
+                    self.date_call(&name[5..], &context, args, host, result_needed)
+                }
                 _ if name.starts_with("Math.") => self.math_call(&name[5..], args, result_needed),
                 _ if name.starts_with("ScriptsEx.") => {
                     let context = reference
