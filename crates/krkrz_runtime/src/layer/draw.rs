@@ -104,7 +104,16 @@ impl Services {
             )?;
             super::transition::crossfade(&mut result, &source, layer.kind, t.phase);
         }
-        self.layer_draw_children(id, &mut result, rect, layer.kind, budget, depth, bytes)?;
+        self.layer_draw_children(
+            id,
+            &mut result,
+            rect,
+            layer.kind,
+            rect.x,
+            budget,
+            depth,
+            bytes,
+        )?;
         if let Some(t) = &layer.transition
             && t.with_children
         {
@@ -125,6 +134,7 @@ impl Services {
         target: &mut Image,
         rect: Rect,
         target_kind: i32,
+        origin_x: i64,
         budget: &mut u64,
         depth: usize,
         live_bytes: usize,
@@ -175,6 +185,7 @@ impl Services {
                     &mut piece,
                     local,
                     target_kind,
+                    origin_x + clipped.x - rect.x,
                     budget,
                     depth + 1,
                     live_bytes + piece_bytes(clipped),
@@ -208,7 +219,7 @@ impl Services {
                 super::blit::blend_row(
                     &mut target.rgba[start..start + len],
                     &source.rgba[row * len..(row + 1) * len],
-                    x,
+                    (origin_x + x as i64) as usize,
                     face,
                     layer.kind,
                     layer.opacity,

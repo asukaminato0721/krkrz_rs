@@ -83,5 +83,10 @@
     "name": "windowEx",
     "url": "https://github.com/wtnbgo/windowEx",
     "revision": "88c9be22ff8f9e6d42edbf4787092837f177a89a"
+  },
+  {
+    "name": "SamplePlugin",
+    "url": "https://github.com/krkrz/SamplePlugin",
+    "revision": "d94e312065f7298a970b58bfe73de48e52aef9ee"
   }
 ]

@@ -11,7 +11,7 @@ fn original_startup_completes_framework_initialization() -> Result<()> {
     use krkrz_tjs::Value;
     let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
     let saves = tempfile::tempdir()?;
-    let mut session = Session::open(Path::new(&project), Some(saves.path()), true, 100_000_000)?;
+    let mut session = Session::open(Path::new(&project), Some(saves.path()), true, 2_000_000_000)?;
     session.startup()?;
     assert!(session.budget > 0);
     assert_eq!(session.services.fonts.face_count(), 8);
@@ -23,13 +23,28 @@ fn original_startup_completes_framework_initialization() -> Result<()> {
         session.evaluate("kag.fore.base instanceof 'Layer'")?,
         Value::Integer(1)
     );
-    for time in (0..=1000).step_by(16) {
+    for time in (0..=10000).step_by(16) {
         session.tick(time)?;
     }
-    session.tick(1000)?;
+    session.tick(10000)?;
     assert_eq!(
         session.evaluate("kag.currentStorage")?,
         Value::string("custom.ks")
+    );
+    let window = session.evaluate("kag")?;
+    let frame = session.capture_window(&window)?;
+    assert_eq!((frame.width, frame.height), (1280, 720));
+    assert!(
+        frame
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|p| p[..3] != frame.rgba[..3])
+    );
+    assert_eq!(
+        session.evaluate("int(kag.inTransition)")?,
+        Value::Integer(0)
     );
     assert!(session.budget > 0);
     Ok(())
