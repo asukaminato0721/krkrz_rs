@@ -14,6 +14,92 @@ fn extension(name: &str) -> &str {
 }
 
 impl Services {
+    pub(crate) fn touch_images(
+        &mut self,
+        vm: &mut Vm,
+        args: &[Value],
+        budget: &mut u64,
+    ) -> Result<Value> {
+        let array = args
+            .first()
+            .context("System.touchImages requires an object")?;
+        object(array)?.context("System.touchImages requires an object")?;
+        let mut names = Vec::new();
+        loop {
+            *budget = budget
+                .checked_sub(1)
+                .ok_or_else(|| unsupported("touchImages execution budget exceeded"))?;
+            let value = vm.get_property(
+                array,
+                &Value::Integer(names.len() as i64),
+                true,
+                false,
+                self,
+                budget,
+            )?;
+            if matches!(value, Value::Void) {
+                break;
+            }
+            ensure!(
+                names.len() < 1_000_000,
+                "touchImages storage count limit exceeded"
+            );
+            names.push(value.text());
+        }
+        let maximum = self.image_cache.limit() as i64;
+        let limit = args.get(1).map(Value::integer).transpose()?.unwrap_or(0);
+        let limit = if limit < 0 {
+            maximum.saturating_add(limit).max(0)
+        } else if limit == 0 {
+            maximum
+        } else {
+            limit.min(maximum)
+        };
+        let timeout = args.get(2).map(Value::integer).transpose()?.unwrap_or(0) as u64;
+        let start = std::time::Instant::now();
+        let mut bytes = 0;
+        let mut touched = Vec::new();
+        for name in names {
+            if bytes >= limit || (timeout != 0 && start.elapsed().as_millis() >= timeout as u128) {
+                break;
+            }
+            let result = (|| -> Result<(String, Image)> {
+                let name = if extension(&name).is_empty() {
+                    self.suggest_graphic(&name)
+                        .context("cannot suggest graphic extension")?
+                } else {
+                    self.resolve_graphic(&name)?
+                };
+                let image = self.read_graphic(&name, budget)?.0;
+                let key = self.graphic_cache_key(&name)?;
+                Ok((key, image))
+            })();
+            match result {
+                Ok((key, image)) => {
+                    bytes += image.rgba.len() as i64;
+                    touched.push(key);
+                }
+                // Native prefetch ignores individual load failures. Resource
+                // and interpreter budgets still terminate the Rust session.
+                Err(error) if error.downcast_ref::<krkrz_tjs::VmAbort>().is_some() => {
+                    return Err(error);
+                }
+                Err(_) => {}
+            }
+        }
+        for key in touched.iter().rev() {
+            self.image_cache.get(key);
+        }
+        Ok(Value::Void)
+    }
+
+    fn graphic_cache_key(&self, name: &str) -> Result<String> {
+        match crate::save_storage::path(&self.storage.project, &self.save_dir, name) {
+            Ok(path) if path.is_file() => Ok(path.to_string_lossy().into_owned()),
+            _ => self.storage.placed_path(name),
+        }
+    }
+
     pub(super) fn layer_assign_images(
         &mut self,
         id: usize,
@@ -89,10 +175,7 @@ impl Services {
     ) -> Result<(Image, BTreeMap<String, String>)> {
         let bytes = self.read_storage(name)?;
         let tags = Image::metadata(&bytes)?;
-        let key = match crate::save_storage::path(&self.storage.project, &self.save_dir, name) {
-            Ok(path) if path.is_file() => path.to_string_lossy().into_owned(),
-            _ => self.storage.placed_path(name)?,
-        };
+        let key = self.graphic_cache_key(name)?;
         let image = match self.image_cache.get(&key) {
             Some(image) => image,
             None => {

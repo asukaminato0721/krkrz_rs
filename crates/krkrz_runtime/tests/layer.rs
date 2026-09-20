@@ -290,3 +290,103 @@ fn date_follows_session_wall_clock_origin() {
         Value::Integer(1_700_000_001_000)
     );
 }
+
+#[test]
+fn original_affine_copy_pixels() {
+    let cases: Vec<Case> =
+        serde_json::from_str(include_str!("fixtures/layer_affine.json")).unwrap();
+    for case in cases {
+        let (project, _saves, mut session) = session("", 1_000_000);
+        std::fs::write(project.path().join("test.tjs"), &case.source).unwrap();
+        assert_eq!(
+            session
+                .execute_storage("test.tjs")
+                .unwrap_or_else(|e| panic!("{}: {e:#}", case.name)),
+            case.expected,
+            "{}",
+            case.name
+        );
+    }
+}
+
+#[test]
+fn saved_thumbnail_reloads_after_restart_and_prefetch_respects_limits() {
+    let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/layer_save.json")).unwrap();
+    let (project, saves, mut original) = session(&cases[0].source, 1_000_000);
+    original.evaluate("(Dictionary.saveStruct incontextof %['branch'=>1])(global.System.exePath+'bmp8.bmp','o1118')").unwrap();
+    let expected = original.evaluate("s.getMainPixel(3,2)").unwrap();
+    original
+        .evaluate("s.loadImages(System.exePath+'bmp8.bmp')")
+        .unwrap();
+    assert_eq!(
+        original.evaluate("s.imageWidth*10+s.imageHeight").unwrap(),
+        Value::Integer(75)
+    );
+    drop(original);
+    let mut restarted =
+        Session::open(project.path(), Some(saves.path()), false, 1_000_000).unwrap();
+    let setup = "var w=new Window(),s=new Layer(w,null);System.graphicCacheLimit=280;System.touchImages(['missing.png','bmp32.bmp','bmp24.bmp'],140);s.loadImages('bmp32');";
+    restarted
+        .vm
+        .execute(
+            &krkrz_tjs::compile("reload.tjs", setup).unwrap(),
+            &mut restarted.services,
+            &mut restarted.budget,
+        )
+        .unwrap();
+    assert_eq!(restarted.evaluate("s.getMainPixel(3,2)").unwrap(), expected);
+    let key32 = saves
+        .path()
+        .join("bmp32.bmp")
+        .to_string_lossy()
+        .into_owned();
+    let key24 = saves
+        .path()
+        .join("bmp24.bmp")
+        .to_string_lossy()
+        .into_owned();
+    assert!(restarted.services.image_cache.get(&key32).is_some());
+    assert!(restarted.services.image_cache.get(&key24).is_none());
+    restarted.evaluate("System.clearGraphicCache()").unwrap();
+    assert!(restarted.services.image_cache.get(&key32).is_none());
+    restarted
+        .evaluate("System.touchImages(['bmp32.bmp'], -280)")
+        .unwrap();
+    assert!(restarted.services.image_cache.get(&key32).is_none());
+    restarted
+        .evaluate("System.touchImages(['bmp32.bmp',void,'bmp24.bmp'])")
+        .unwrap();
+    assert!(restarted.services.image_cache.get(&key32).is_some());
+    assert!(restarted.services.image_cache.get(&key24).is_none());
+}
+
+#[test]
+fn affine_invalid_geometry_and_budget_leave_destination_intact() {
+    let (_project, _saves, mut session) = session(
+        "var w=new Window(),d=new Layer(w,null),s=new Layer(w,d);d.setImageSize(8,8);s.setImageSize(4,4);d.fillRect(0,0,8,8,0x40123456);",
+        100_000,
+    );
+    for code in [
+        "d.affineCopy(s,-1,0,4,4,true,1,0,0,1,0,0)",
+        "d.affineCopy(s,0,0,5,4,true,1,0,0,1,0,0)",
+        "d.affineCopy(s,0,0,4,4,true,1,0,0,1,1e100,0)",
+        "d.affineCopy(s,0,0,4,4,false,0,0,0.0000152587890625,0,0,1)",
+    ] {
+        assert!(session.evaluate(code).is_err(), "{code}");
+        assert_eq!(
+            session.evaluate("d.getMainPixel(0,0)").unwrap(),
+            Value::Integer(0x123456)
+        );
+    }
+    session.budget = 60;
+    assert!(
+        session
+            .evaluate("d.affineCopy(s,0,0,4,4,true,1,0,0,1,0,0,0,true)")
+            .is_err()
+    );
+    session.budget = 1000;
+    assert_eq!(
+        session.evaluate("d.getMainPixel(0,0)").unwrap(),
+        Value::Integer(0x123456)
+    );
+}

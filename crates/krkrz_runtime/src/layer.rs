@@ -964,6 +964,9 @@ impl Services {
         if op == "shrinkCopy" {
             return self.layer_shrink_copy(id, args, budget);
         }
+        if op == "affineCopy" {
+            return self.layer_affine_copy(id, args, budget);
+        }
         if op == "saveLayerImage" {
             return self.layer_save_image(id, args, budget);
         }
@@ -998,6 +1001,7 @@ impl Services {
     }
 }
 
+mod affine;
 mod blit;
 mod draw;
 mod focus;

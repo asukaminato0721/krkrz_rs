@@ -4,11 +4,11 @@ This repository contains an initial implementation toward the Otome Domain
 playable slice. **The game is not playable yet.** The original `startup.tjs`
 now completes framework initialization, including game menus, embedded fonts,
 message layers and audio objects. Deterministic ticks deliver timer, asynchronous,
-continuous and paint callbacks. CPU layer composition and crossfade transitions now render the warning screens
-after ten seconds of deterministic ticks. Further execution enters `title.ks`
-and currently stops at the missing TJS `Date` class during autosave.
-Native presentation, required movies/effects, title interaction, New Game,
-first choice and original save/load acceptance remain incomplete.
+continuous and paint callbacks. Native winit/wgpu presentation, mouse/keyboard
+input and CPAL output now share the headless session. Startup renders the warning
+screens, writes the title autosave, and enters the animated pretitle sequence.
+The game is still under API integration; New Game, first choice, required movies,
+and original save/load acceptance remain incomplete.
 
 ## Build and verify
 
@@ -81,7 +81,7 @@ Directories are created when data is written. Existing Windows saves remain
 untouched. Original game save/load acceptance is still open.
 
 The engine currently returns an explicit error for unsupported source/native
-operations, compiled scripts, or the absent native presentation loop. The
+operations or compiled scripts. The
 instruction budget covers nested script calls and dynamic evaluation. Optional
 traces retain source location and operation; trace files must be new files
 outside the installation.
@@ -94,15 +94,14 @@ outside the installation.
 | `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5/TLG6, integer WAVE/Vorbis PCM, SLI loops and labels, checked AlphaMovie containers | MPEG/AlphaMovie pixel decoding |
 | `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, switch/do/while/for control flow, comma/swap and eager logical-assignment operators, global unary-dot lookup, ordered class initializers and deferred base resolution, explicit invalidation/finalization, interpolation, default parameters, argument forwarding/rest/spread, octet values, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting, automatic object finalization/collection, original bytecode loader |
 | `krkrz_kag` | UTF-16 KAGParserEx tokenization, ordered attributes, labels, escaped brackets and multiline tags; runtime bindings provide expressions, macros, conditions, jumps/calls and label-based state restoration | Complete game-framework integration and replay validation |
-| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, TextRenderBase layout/timing, GdiPlus geometry, AlphaMovie metadata/transport controls, MenuItem state/tree/click dispatch, WIN32Dialog templates/bounded buffers/closed state, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, private FreeType font rasterization and Layer.drawText, image loading/blits, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, transitions/effects/callback integration, SLI label expressions, original saves and replay |
+| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, TextRenderBase layout/timing, GdiPlus geometry, AlphaMovie metadata/transport controls, MenuItem state/tree/click dispatch, WIN32Dialog templates/bounded buffers/closed state, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, private FreeType font rasterization and Layer.drawText, image loading/blits, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, remaining transitions/effects/callback integration, SLI label expressions, original saves and replay |
 | `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, static inventory, primitive evaluation, startup diagnostics | Deterministic interactive replay, input-driven checkpoints, frame/audio comparison, native play |
 
-The compositor, scheduler, Window state and PCM mixer are tested components, not yet a game player. Window support currently covers construction, caption, visibility, client size, position, primary-layer lookup and resize/action callbacks in headless sessions. Explicit invalidation releases its native state and cancels pending callbacks. It does not create an OS window.
-WaveSoundBuffer opens integer PCM WAV and Ogg Vorbis storage, reads SLI metadata,
-and exposes decoded streams through `Session::render_sound_source`. Source pulls
-support pause, seek, looping, labels and deferred EOF callbacks. Volume/pan/fade
-controls exist, but device mixing, gain, resampling and audio-clock integration
-are still required. This source-rate API returns unscaled PCM, not device output.
+The native host presents CPU-composited frames through wgpu and forwards winit
+input into the shared session. Use `--no-audio` to disable device output and
+`--epoch-ms` to fix the script clock origin. CPAL plays the session's 48 kHz stereo
+mix, including gain, pan, resampling, SLI labels and EOF callbacks. The separate
+`Session::render_sound_source` API returns source-rate unscaled PCM for inspection.
 The getSample replacement adds lazy sample settings and peak-square/legacy
 measurements through scoped visualization buffers. Script-visible SLI flags and cached label dictionaries are connected to the
 source streams. Negative look-ahead, 3D controls and hardware playback remain open.

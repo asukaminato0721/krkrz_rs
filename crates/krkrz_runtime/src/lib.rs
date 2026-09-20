@@ -594,6 +594,11 @@ impl Host for Services {
                 Ok(Value::Integer(pressed.into()))
             }
             "System.getTickCount" => Ok(Value::Integer(self.time_ms as i64)),
+            "System.touchImages" => self.touch_images(vm, args, budget),
+            "System.clearGraphicCache" => {
+                self.image_cache.clear();
+                Ok(Value::Void)
+            }
             "System.addContinuousHandler" | "System.removeContinuousHandler" => {
                 let handler = arg(0)?;
                 ensure!(
@@ -865,6 +870,8 @@ impl Session {
             "Debug.message",
             "Debug.notice",
             "System.getTickCount",
+            "System.touchImages",
+            "System.clearGraphicCache",
             "System.getKeyState",
             "System.addContinuousHandler",
             "System.removeContinuousHandler",
