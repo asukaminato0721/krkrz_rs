@@ -1291,7 +1291,9 @@ mod memory_tests {
                 .bitmap()
                 .unwrap()
                 .rgba
-                .as_chunks::<4>().0.iter()
+                .as_chunks::<4>()
+                .0
+                .iter()
                 .map(|p| p[3])
                 .collect::<Vec<_>>()
         };

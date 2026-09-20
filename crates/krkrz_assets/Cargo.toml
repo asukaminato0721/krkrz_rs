@@ -15,6 +15,7 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 libtlg-rs = "0.2.4"
 png = "0.18"
 lewton = "0.10"
+pelite = { version = "0.10.0", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -247,6 +247,7 @@ pub(crate) struct Renderer {
     next_indent: f32,
     indent_stack: Vec<f32>,
     hanging_count: usize,
+    replay_extent: f32,
 }
 impl Default for Renderer {
     fn default() -> Self {
@@ -277,6 +278,7 @@ impl Default for Renderer {
             next_indent: 0.0,
             indent_stack: vec![],
             hanging_count: 0,
+            replay_extent: 0.0,
         }
     }
 }
@@ -290,6 +292,7 @@ impl Renderer {
         self.next_indent = 0.0;
         self.indent_stack.clear();
         self.hanging_count = 0;
+        self.replay_extent = 0.0;
         self.published.clear();
         self.render_text.clear();
         self.count = 0;
@@ -584,76 +587,79 @@ impl Services {
                 let result = if op == "render" {
                     self.render_text(vm, id, context, args, budget)
                 } else {
-                    self.finish_text_line(vm, id, context, budget).map(|_| {
-                        if op == "done" {
-                            let r = self.text_renderers.get_mut(&id).expect("checked renderer");
-                            r.published =
-                                r.lines.iter().flat_map(|l| l.characters.clone()).collect();
-                            r.left = if r.vertical { r.width } else { 0.0 };
-                            r.right = r.left;
-                            r.top = 0.0;
-                            r.bottom = 0.0;
-                            for ch in &r.published {
-                                if r.vertical {
-                                    r.left = r.left.min(ch.x - ch.size);
-                                    r.bottom = r.bottom.max(ch.y + ch.size);
-                                } else {
-                                    r.left = r.left.min(ch.x);
-                                    r.right = r.right.max(ch.x + ch.width);
-                                    r.bottom = r.bottom.max(ch.y + ch.size);
-                                }
-                                if let Some(ruby) = &ch.ruby {
-                                    r.left = r.left.min(ruby.x);
-                                    r.right = r.right.max(ruby.x + ruby.width);
-                                    r.top = r.top.min(ruby.y);
-                                }
-                            }
-                            if !r.published.is_empty() {
-                                let valign = number(&r.current, "Valign");
-                                let available = if r.vertical {
-                                    -(r.width - r.left)
-                                } else {
-                                    r.height - r.bottom
-                                };
-                                let offset = if valign == 0.0 {
-                                    (available / 2.0).trunc()
-                                } else if valign == 1.0 {
-                                    available
-                                } else {
-                                    0.0
-                                };
-                                for ch in &mut r.published {
+                    self.finish_text_line(vm, id, context, budget, false)
+                        .map(|_| {
+                            if op == "done" {
+                                let r = self.text_renderers.get_mut(&id).expect("checked renderer");
+                                r.published =
+                                    r.lines.iter().flat_map(|l| l.characters.clone()).collect();
+                                r.left = if r.vertical { r.width } else { 0.0 };
+                                r.right = r.left.max(r.replay_extent);
+                                r.top = 0.0;
+                                r.bottom = 0.0;
+                                for ch in &r.published {
                                     if r.vertical {
-                                        ch.x += offset;
+                                        r.left = r.left.min(ch.x - ch.size);
+                                        r.bottom = r.bottom.max(ch.y + ch.size);
                                     } else {
-                                        ch.y += offset;
+                                        r.left = r.left.min(ch.x);
+                                        r.right = r.right.max(ch.x + ch.width);
+                                        r.bottom = r.bottom.max(ch.y + ch.size);
                                     }
-                                    if let Some(ruby) = &mut ch.ruby {
+                                    if let Some(ruby) = &ch.ruby {
+                                        r.left = r.left.min(ruby.x);
+                                        r.right = r.right.max(ruby.x + ruby.width);
+                                        r.top = r.top.min(ruby.y);
+                                    }
+                                }
+                                if !r.published.is_empty() {
+                                    let valign = number(&r.current, "Valign");
+                                    let available = if r.vertical {
+                                        -(r.width - r.left)
+                                    } else {
+                                        r.height - r.bottom
+                                    };
+                                    let offset = if valign == 0.0 {
+                                        (available / 2.0).trunc()
+                                    } else if valign == 1.0 {
+                                        available
+                                    } else {
+                                        0.0
+                                    };
+                                    for ch in &mut r.published {
                                         if r.vertical {
-                                            ruby.x += offset;
+                                            ch.x += offset;
                                         } else {
-                                            ruby.y += offset;
+                                            ch.y += offset;
+                                        }
+                                        if let Some(ruby) = &mut ch.ruby {
+                                            if r.vertical {
+                                                ruby.x += offset;
+                                            } else {
+                                                ruby.y += offset;
+                                            }
                                         }
                                     }
+                                    if r.vertical {
+                                        r.left += offset;
+                                        r.right += offset;
+                                    } else {
+                                        r.top += offset;
+                                        r.bottom += offset;
+                                    }
+                                    // The DLL changes stored coordinates, including on repeated done().
+                                    let mut published = r.published.iter();
+                                    for ch in r.lines.iter_mut().flat_map(|l| &mut l.characters) {
+                                        *ch = published
+                                            .next()
+                                            .expect("published line character")
+                                            .clone();
+                                    }
                                 }
-                                if r.vertical {
-                                    r.left += offset;
-                                    r.right += offset;
-                                } else {
-                                    r.top += offset;
-                                    r.bottom += offset;
-                                }
-                                // The DLL changes stored coordinates, including on repeated done().
-                                let mut published = r.published.iter();
-                                for ch in r.lines.iter_mut().flat_map(|l| &mut l.characters) {
-                                    *ch =
-                                        published.next().expect("published line character").clone();
-                                }
+                                r.published.sort_by(|a, b| a.delay.total_cmp(&b.delay));
                             }
-                            r.published.sort_by(|a, b| a.delay.total_cmp(&b.delay));
-                        }
-                        Value::Void
-                    })
+                            Value::Void
+                        })
                 };
                 if let Some(r) = self.text_renderers.get_mut(&id) {
                     r.busy = false;
@@ -730,8 +736,9 @@ impl Services {
         id: usize,
         context: &Value,
         budget: &mut u64,
+        force_empty: bool,
     ) -> Result<()> {
-        if self.renderer(id)?.pending.is_empty() || self.renderer(id)?.over {
+        if (!force_empty && self.renderer(id)?.pending.is_empty()) || self.renderer(id)?.over {
             return Ok(());
         }
         let r = self.renderer(id)?;
@@ -875,7 +882,7 @@ impl Services {
                 i += 1;
                 match unit {
                     110 => {
-                        self.finish_text_line(vm, id, context, budget)?;
+                        self.finish_text_line(vm, id, context, budget, false)?;
                         continue;
                     }
                     107 => {
@@ -1078,7 +1085,7 @@ impl Services {
                 ));
             }
             if unit == 10 {
-                self.finish_text_line(vm, id, context, budget)?;
+                self.finish_text_line(vm, id, context, budget, false)?;
                 continue;
             }
             if unit == 13 {
@@ -1150,19 +1157,43 @@ impl Services {
                 || auto_indent != 0 && r.option_contains("end", unit);
             if following
                 && limit > 0.0
-                && r.line_indent + r.pending_width() + r.advance(&ch) > limit
+                && r.line_indent + r.pending_width() + r.advance(&ch) >= limit
             {
                 if r.hanging_count >= kinsoku_max && !r.pending.is_empty() {
-                    let normal = r.pending.iter().rposition(|c| {
-                        c.text.first().is_some_and(|u| {
-                            !r.option_contains("following", *u)
-                                && !(auto_indent != 0 && r.option_contains("end", *u))
-                        })
-                    });
+                    // Only the run beyond the margin and its preceding normal
+                    // character move. Earlier punctuation stays on this line.
+                    let normal =
+                        r.pending
+                            .len()
+                            .checked_sub(r.hanging_count + 1)
+                            .filter(|&index| {
+                                r.pending[index].text.first().is_some_and(|u| {
+                                    !r.option_contains("following", *u)
+                                        && !(auto_indent != 0 && r.option_contains("end", *u))
+                                })
+                            });
+                    if normal == Some(0) {
+                        return Err(unsupported(
+                            "TextRender kinsoku reflow of a complete narrow line is not implemented",
+                        ));
+                    }
                     let mut carry = normal
-                        .filter(|&index| index > 0)
                         .map(|index| r.pending.split_off(index))
                         .unwrap_or_default();
+                    // The DLL includes the temporary replay pen in renderRight,
+                    // even when these hanging glyphs stay on the previous line.
+                    if carry.is_empty() && !r.vertical {
+                        let hanging_width: f32 = r
+                            .pending
+                            .iter()
+                            .rev()
+                            .take(r.hanging_count)
+                            .map(|c| r.advance(c))
+                            .sum();
+                        r.replay_extent = r
+                            .replay_extent
+                            .max(r.line_indent + r.pending_width() + hanging_width);
+                    }
                     let replay_count = if carry.is_empty() {
                         r.hanging_count
                     } else {
@@ -1174,19 +1205,24 @@ impl Services {
                     }
                     delay += extra;
                     ch.delay = delay;
-                    self.finish_text_line(vm, id, context, budget)?;
+                    self.finish_text_line(vm, id, context, budget, true)?;
+                    if let Some(first) = carry.first() {
+                        let r = self.renderer(id)?;
+                        if r.line_indent + r.advance(first) >= limit {
+                            self.finish_text_line(vm, id, context, budget, true)?;
+                        }
+                    }
                     let r = self.renderer(id)?;
                     r.pending.extend(carry);
                 }
                 let r = self.renderer(id)?;
-                if r.line_indent + r.pending_width() + r.advance(&ch) > limit {
+                if r.line_indent + r.pending_width() + r.advance(&ch) >= limit {
                     r.hanging_count += 1;
                 }
             }
             let r = self.renderer(id)?;
-            if !r.pending.is_empty()
-                && limit > 0.0
-                && r.line_indent + r.pending_width() + r.advance(&ch) > limit
+            if limit > 0.0
+                && r.line_indent + r.pending_width() + r.advance(&ch) >= limit
                 && !following
             {
                 let mut carry = vec![];
@@ -1199,7 +1235,7 @@ impl Services {
                 {
                     carry.push(r.pending.pop().expect("nonempty line"));
                 }
-                self.finish_text_line(vm, id, context, budget)?;
+                self.finish_text_line(vm, id, context, budget, true)?;
                 let r = self.renderer(id)?;
                 for mut leading in carry.into_iter().rev() {
                     leading.delay += step;

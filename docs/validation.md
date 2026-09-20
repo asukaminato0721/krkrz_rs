@@ -63,7 +63,31 @@ preload timing and the unused next-movie queue remain incomplete.
 VideoOverlay uses bounded ffmpeg/ffprobe decoding for layer and overlay modes,
 with session-clock PCM, pause, seek, loop and EOF callbacks. The real `ed_a.mpg`
 asset passed the isolated start/midpoint/end test. This is component evidence;
-in-game opening/ending movie sequences still need acceptance runs.
+the original KAG ending sequence also passed a separate direct-scene acceptance
+run. `moviemode.ks*movie_ed_kaz` played advancing frames from `ed_a.mpg`,
+returned to the title after a click to skip, and returned after natural EOF in
+a second run. This used the original recollection entry without changing game
+scripts; it does not establish reaching an ending through the story.
+See [movie-validation.md](movie-validation.md) for timings and replay recipes.
+
+The original settings UI accepted message speed changes from 50 to 60 and back,
+BGM volume from 40 to 30, and mute off/on. Auto advanced dialogue from ID 2 to
+ID 6 and stopped on a click. `tools/replays/otome-settings-auto.json` reproduces
+this. Audio controls were checked through state and presentation, without a
+listening-quality assertion.
+
+`Layer.doGrayScale` matches four original pixel cases; `Layer.adjustGamma`
+matches eight, including additive alpha, clipping and channel-specific ranges.
+`Layer.fillAlpha` matches eleven original cases, preserving RGB and setting
+clipped alpha to 255. The runtime now generates RFC 4122 version 4 UUID strings
+for `System.createUUID`, as required by the original movie state handling.
+
+The font backend has migrated from FreeType to Fontations (`skrifa`) and Zeno.
+Original layout metrics remain exact; raster differences are recorded against
+the preserved original pixels rather than replacing their expected values.
+The real title, load confirmation, restored choice and subsequent Japanese
+dialogue were rendered and visually checked. See
+[dependency-upgrade.md](dependency-upgrade.md) for versions and pixel differences.
 
 The older sections below are historical component records. Their original startup
 failure locations and missing-feature lists do not supersede this update.
