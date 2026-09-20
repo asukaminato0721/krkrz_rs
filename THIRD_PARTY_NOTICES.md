@@ -35,7 +35,8 @@ TLG5 decoding derives from W.Dee’s TLG implementation through GARbro.
 Text stream decoding and TJS value, object, and interpreter semantics follow
 Kirikiri Z (`tjs2/tjsVariant.cpp`, `tjsInterCodeExec.cpp`, `tjsObject.cpp`).
 Preprocessor, regex binding and native-class/window event behavior also follow
-`tjsCompileControl.cpp`, `tjsLex.cpp`, `tjsRegExp.cpp`, `tjsNative.cpp`,
+`tjsCompileControl.cpp`, `tjsInterCodeGen.cpp`, `syntax/tjs.y`, `tjsLex.cpp`,
+`tjsRegExp.cpp`, `tjsNative.cpp`,
 `visual/WindowIntf.cpp` and `base/EventIntf.h`. Engine constants are adapted from
 `base/ScriptMgnIntf.cpp` (Copyright (C) 2000 W.Dee <dee@kikyou.info> and
 contributors). Cache-limit behavior follows `visual/GraphicsLoaderIntf.cpp`

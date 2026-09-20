@@ -49,3 +49,18 @@ fn adjacent_strings_require_whitespace_and_matching_delimiters() {
         assert!(compile("adjacent", source).is_err(), "{source}");
     }
 }
+
+#[test]
+fn invalid_builtin_constructor_is_rejected_without_crashing() {
+    // Constructing from an invalidated Array/RegExp class crashes the isolated
+    // target executable. This safety regression is not an oracle agreement case.
+    let source = "var a=new RegExp('x');invalidate RegExp;try{new RegExp('y');}catch(e){return isvalid a;}return 0;";
+    let value = Vm::default()
+        .execute(
+            &compile("invalid native class", source).unwrap(),
+            &mut (),
+            &mut 1000,
+        )
+        .unwrap();
+    assert_eq!(value, Value::Integer(1));
+}

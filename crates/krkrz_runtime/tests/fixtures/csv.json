@@ -333,5 +333,19 @@
         50
       ]
     }
+  },
+  {
+    "name": "csv_explicit_finalize",
+    "source": "Plugins.link(\"csvParser.dll\");var n=0;class C extends CSVParser{function C(){super.CSVParser();}function finalize(){n=this.getNextLine()[0];}}var p=new C();p.init(\"17\\n19\");return (invalidate p)+10*n+1000*(isvalid p);",
+    "expected": {
+      "Integer": 171
+    }
+  },
+  {
+    "name": "csv_invalidate_in_callback",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser(),n=0;p.doLine=function(a,line){n++;invalidate p;};p.parse(\"one\\ntwo\");return n+100*(isvalid p);",
+    "expected": {
+      "Integer": 1
+    }
   }
 ]

@@ -148,11 +148,10 @@ impl Vm {
             self.set_member(instance, &Value::String(key.clone()), value)?;
             self.objects[context].member_flags.insert(key, flags);
         }
-        for (name, initializer) in &definition.fields {
+        if let Some(initializer) = &definition.initializer {
             let mut frame = Frame::global();
             frame.context = context;
-            let value = self.run(initializer, host, budget, frame)?;
-            self.set_member(instance, &Value::string(name), value)?;
+            self.run(initializer, host, budget, frame)?;
         }
         Ok(())
     }

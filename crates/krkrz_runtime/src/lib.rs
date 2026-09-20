@@ -7,6 +7,7 @@ pub mod graphics;
 mod plugins;
 mod save_storage;
 pub mod scheduler;
+mod sound;
 pub mod window;
 use anyhow::{Context, Result, ensure};
 use krkrz_assets::{cx::CxEncryption, storage::Storage, text};
@@ -36,6 +37,8 @@ pub struct Services {
     pub image_cache: graphics::ImageCache,
     app_locks: app_lock::AppLocks,
     csv_parsers: BTreeMap<usize, csv::Parser>,
+    sounds: BTreeMap<usize, sound::Sound>,
+    sound_global_volume: i32,
     pub arguments: BTreeMap<String, String>,
     loaded_plugins: BTreeSet<String>,
     depth: usize,
@@ -95,6 +98,9 @@ impl Host for Services {
         args: &[Value],
         budget: &mut u64,
     ) -> Result<Value> {
+        if let Some(operation) = name.strip_prefix("WaveSoundBuffer.") {
+            return self.sound_call(vm, operation, context, args, budget);
+        }
         if let Some(operation) = name.strip_prefix("CSVParser.") {
             return self.csv_call(vm, operation, context, args, budget);
         }
@@ -220,6 +226,13 @@ impl Host for Services {
                             plugins::packinone(vm)?;
                             self.loaded_plugins.insert("packinone.dll".into());
                         }
+                        Ok(Value::Void)
+                    }
+                    // PackinOne already registers the image extension. The
+                    // original accepts this component alias without replacing
+                    // its Layer methods. Their invocation is still explicit
+                    // unsupported until the native Layer implementation exists.
+                    "layereximage.dll" if self.loaded_plugins.contains("packinone.dll") => {
                         Ok(Value::Void)
                     }
                     "kagparserex.dll" => {
@@ -396,6 +409,7 @@ impl Session {
         // budget. User scripts retain the full caller-supplied budget.
         vm.execute(&constants, &mut (), &mut 100_000)?;
         window::register(&mut vm)?;
+        sound::register(&mut vm)?;
         let system = vm.register_namespace("System")?;
         vm.register_native_property(
             &system,
@@ -447,6 +461,8 @@ impl Session {
                 image_cache: graphics::ImageCache::new(graphics::automatic_limit()),
                 app_locks: app_lock::AppLocks::default(),
                 csv_parsers: BTreeMap::new(),
+                sounds: BTreeMap::new(),
+                sound_global_volume: 100_000,
                 arguments: BTreeMap::from([("-debugwin".into(), "no".into())]),
                 loaded_plugins: BTreeSet::new(),
                 depth: 0,
@@ -476,6 +492,7 @@ impl Session {
             time_ms >= self.services.time_ms,
             "session clock cannot move backwards"
         );
+        self.services.sound_advance(time_ms);
         self.services.time_ms = time_ms;
         self.dispatch_events()?;
         Ok(())
@@ -483,6 +500,12 @@ impl Session {
     /// Deliver one pending batch. Events posted by callbacks wait for the next
     /// batch, preventing native recursion and preserving the shared VM budget.
     pub fn dispatch_events(&mut self) -> Result<()> {
+        let pending_sounds = self
+            .services
+            .sounds
+            .iter_mut()
+            .filter_map(|(id, sound)| std::mem::take(&mut sound.fade_pending).then_some(*id))
+            .collect::<Vec<_>>();
         let pending = self
             .services
             .windows
@@ -505,6 +528,17 @@ impl Session {
                 &mut self.services,
                 &mut self.budget,
             )?;
+        }
+        for id in pending_sounds {
+            if self.services.sounds.contains_key(&id) {
+                self.services.sound_event(
+                    &mut self.vm,
+                    &Value::object(id),
+                    "onFadeCompleted",
+                    &[],
+                    &mut self.budget,
+                )?;
+            }
         }
         Ok(())
     }

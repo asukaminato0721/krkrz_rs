@@ -220,7 +220,7 @@
   },
   {
     "name": "string_utf16_length",
-    "source": "return \"a😀\".length;",
+    "source": "return \"a\ud83d\ude00\".length;",
     "expected": {
       "Integer": 3
     }
@@ -1097,13 +1097,6 @@
     }
   },
   {
-    "name": "validity_builtin_class",
-    "source": "var a=new RegExp(\"x\");var n=invalidate RegExp;try{new RegExp(\"y\");}catch(e){n+=10;}return n+100*(isvalid a)+1000*(isvalid RegExp);",
-    "expected": {
-      "Integer": 111
-    }
-  },
-  {
     "name": "switch_coercion_fallthrough",
     "source": "var n=0;switch(\"2\"){case 1:n=99;break;case 2:n+=2;case 3:n+=3;break;default:n=88;}return n;",
     "expected": {
@@ -1205,6 +1198,158 @@
     "source": "property p{getter(){return this.x;}}var a=%[\"x\"=>7];var n=0;return *(&(n++,p) incontextof a)+100*n;",
     "expected": {
       "Integer": 107
+    }
+  },
+  {
+    "name": "swap_variables",
+    "source": "var a=1,b=7;a<->b;return a*10+b;",
+    "expected": {
+      "Integer": 71
+    }
+  },
+  {
+    "name": "swap_index_evaluation",
+    "source": "var a=[10,20,30],i=0,j=1;a[i++]<->a[j++];return a.join(\",\")+\":\"+i+\":\"+j;",
+    "expected": {
+      "String": [
+        49,
+        48,
+        44,
+        50,
+        48,
+        44,
+        49,
+        48,
+        58,
+        50,
+        58,
+        51
+      ]
+    }
+  },
+  {
+    "name": "swap_properties",
+    "source": "var trace=\"\",a=1,b=2;property x{getter(){trace+=\"x\";return a;}setter(v){trace+=\"X\";a=v;}}property y{getter(){trace+=\"y\";return b;}setter(v){trace+=\"Y\";b=v;}}x<->y;return trace+\":\"+a+\":\"+b;",
+    "expected": {
+      "String": [
+        120,
+        121,
+        88,
+        89,
+        58,
+        50,
+        58,
+        49
+      ]
+    }
+  },
+  {
+    "name": "swap_discarded_comma",
+    "source": "var a=1,b=2,c=3;a<->b,b<->c;return a*100+b*10+c;",
+    "expected": {
+      "Integer": 231
+    }
+  },
+  {
+    "name": "swap_postfix_if",
+    "source": "var a=1,b=2;a<->b if(0);a<->b if(1);return a*10+b;",
+    "expected": {
+      "Integer": 21
+    }
+  },
+  {
+    "name": "do_while_once",
+    "source": "var n=0;do n++;while(0);return n;",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "do_while_continue",
+    "source": "var i=0,n=0;do{n++;continue;n=99;}while(++i<3);return n*10+i;",
+    "expected": {
+      "Integer": 33
+    }
+  },
+  {
+    "name": "do_while_break",
+    "source": "var i=0;do{break;}while(++i);return i;",
+    "expected": {
+      "Integer": 0
+    }
+  },
+  {
+    "name": "do_while_scope",
+    "source": "var x=0,n=0;do{var x=99;n++;}while(++x<3);return n*10+x;",
+    "expected": {
+      "Integer": 33
+    }
+  },
+  {
+    "name": "do_while_switch_unwind",
+    "source": "var i=0,n=0;do{try{with(%[\"x\"=>i]){switch(.x){case 0:continue;case 1:throw 5;default:break;}n++;}}catch(e){n+=e;}}while(++i<3);return n;",
+    "expected": {
+      "Integer": 6
+    }
+  },
+  {
+    "name": "class_body_order",
+    "source": "var trace=\"\";class C{var x=1;x+=2;var y=x*10;trace+=x;function C(){y++;}}var a=new C(),b=new C();return a.x+\":\"+a.y+\":\"+b.y+\":\"+trace;",
+    "expected": {
+      "String": [
+        51,
+        58,
+        51,
+        49,
+        58,
+        51,
+        49,
+        58,
+        51,
+        51
+      ]
+    }
+  },
+  {
+    "name": "class_body_method_ready",
+    "source": "class C{var x=f();function f(){return 7;}}var c=new C();return c.x;",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "class_body_nested_scope",
+    "source": "var n=0;class C{var x=1;{var x=7;n=x;}x+=2;}var c=new C();return c.x*10+n;",
+    "expected": {
+      "Integer": 37
+    }
+  },
+  {
+    "name": "class_body_loop",
+    "source": "class C{var x=0;for(var i=0;i<4;i++){x+=i;}}var a=new C();return a.x;",
+    "expected": {
+      "Integer": 6
+    }
+  },
+  {
+    "name": "class_body_inherited",
+    "source": "class A{var x=2;x+=1;function f(){return x;}}class B extends A{x*=10;var y=f();}var b=new B();return b.x+b.y;",
+    "expected": {
+      "Integer": 60
+    }
+  },
+  {
+    "name": "class_body_throw",
+    "source": "class C{var x=1;throw 9;function C(){throw 1;}}function f(){try{new C();}catch(e){return e;}}return f();",
+    "expected": {
+      "Integer": 9
+    }
+  },
+  {
+    "name": "class_body_super_rejected",
+    "source": "function run(){try{'class A{function f(){return 1;}}class B extends A{var x=super.f();}'!;}catch(e){return 99;}return 0;}return run();",
+    "expected": {
+      "Integer": 99
     }
   }
 ]

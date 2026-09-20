@@ -259,7 +259,7 @@ impl Program {
                     for f in &definition.methods {
                         f.program.validate_depth(depth + 1)?;
                     }
-                    for (_, p) in &definition.fields {
+                    if let Some(p) = &definition.initializer {
                         p.validate_depth(depth + 1)?;
                     }
                     for p in &definition.properties {
@@ -489,7 +489,7 @@ impl Vm {
                 name: name.into(),
                 methods: vec![],
                 properties: vec![],
-                fields: vec![],
+                initializer: None,
             },
             &[],
         )?;
@@ -520,6 +520,21 @@ impl Vm {
         let setter = accessor(setter)?;
         let property = self.allocate(ObjectKind::Property { getter, setter })?;
         self.set_member(receiver, &Value::string(name), property)
+    }
+    /// Register a class property that is not copied into instances.
+    pub fn register_native_static_property(
+        &mut self,
+        receiver: &Value,
+        name: &str,
+        getter: Option<&str>,
+        setter: Option<&str>,
+    ) -> Result<()> {
+        self.register_native_property(receiver, name, getter, setter)?;
+        let id = self.object_id(receiver)?;
+        self.objects[id]
+            .member_flags
+            .insert(name.encode_utf16().collect(), crate::scripts_ex::STATIC);
+        Ok(())
     }
     /// Execute a top-level script in the supplied object context (Scripts.exec).
     pub fn execute_in_context(

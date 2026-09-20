@@ -174,6 +174,41 @@ fn window_state_and_deferred_resize_callbacks_share_the_session() {
 }
 
 #[test]
+fn invalidation_releases_native_windows_and_cancels_queued_callbacks() {
+    let dir = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("startup.tjs"),
+        r#"
+        var trace='', fail=true;
+        class W extends Window {
+            function W(){super.Window();}
+            function finalize(){trace+=this.caption; if(fail)throw 'retry';}
+        }
+        var a=new W(), b=new Window();
+        a.caption='a';a.setInnerSize(100,200);b.setInnerSize(100,200);
+        a.onResize=function(){invalidate b;trace+='r';};
+        b.onResize=function(){trace+='wrong';};
+        try{invalidate a;}catch(e){}
+        return isvalid a;
+        "#,
+    )
+    .unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), false, 10_000).unwrap();
+    assert_eq!(session.startup().unwrap(), Value::Integer(1));
+    assert_eq!(session.services.windows.len(), 2);
+    session.dispatch_events().unwrap();
+    assert_eq!(session.evaluate("trace").unwrap(), Value::string("ar"));
+    assert_eq!(session.services.windows.len(), 1);
+    session.evaluate("fail=false").unwrap();
+    assert_eq!(session.evaluate("invalidate a").unwrap(), Value::Integer(1));
+    assert!(session.services.windows.is_empty());
+    assert_eq!(session.evaluate("trace").unwrap(), Value::string("ara"));
+    session.dispatch_events().unwrap();
+    assert_eq!(session.evaluate("invalidate a").unwrap(), Value::Integer(0));
+}
+
+#[test]
 fn declared_plugin_exports_do_not_hide_unimplemented_operations() {
     let dir = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
@@ -184,6 +219,19 @@ fn declared_plugin_exports_do_not_hide_unimplemented_operations() {
         .evaluate("Scripts.exec('var parser=KAGParser; var csv=CSVParser;')")
         .unwrap();
     session.evaluate("Plugins.link('packinone.DLL')").unwrap();
+    let cases: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/plugins.json")).unwrap();
+    for case in cases.as_array().unwrap() {
+        std::fs::write(
+            dir.path().join("plugin-case.tjs"),
+            case["source"].as_str().unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            session.execute_storage("plugin-case.tjs").unwrap(),
+            serde_json::from_value::<Value>(case["expected"].clone()).unwrap()
+        );
+    }
     session.evaluate("Plugins.link('kagparserex.DLL')").unwrap();
     assert_eq!(
         session
@@ -194,6 +242,7 @@ fn declared_plugin_exports_do_not_hide_unimplemented_operations() {
     assert_eq!(session.evaluate("Scripts.exec('var p=new CSVParser();p.init(\"a,b\");return p.getNextLine().join(\"/\");')").unwrap(), Value::string("a/b"));
     for call in [
         "new Layer()",
+        "Layer.light(10,20)",
         "new KAGParser()",
         "new Process()",
         "Storages.getTime(\"x\")",

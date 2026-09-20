@@ -3,8 +3,9 @@
 This repository contains an initial implementation toward the Otome Domain
 playable slice. **The game is not playable yet.** Original startup now
 executes archive setup, plugin registration, `AppConfig.tjs`, `Config.tjs` and
-application locking. Execution currently stops while compiling `k2compat.tjs:240`
-at the unsupported `isvalid` operator. The title,
+application locking, compatibility scripts and framework definitions through
+`HistoryLayer.tjs`. Execution currently stops at `BGM.tjs:95` because the native
+`WaveSoundBuffer` binding is missing. The title,
 New Game, first choice, scene transition, and original save/load acceptance
 criteria have not been met. Execution failures never count as checkpoints.
 
@@ -87,12 +88,12 @@ outside the installation.
 |---|---|---|
 | `krkrz_core` | Storage-name normalization, resource limits, source/input types, separate save path selection | Full Kirikiri URI/media normalization |
 | `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5, Vorbis PCM, SLI loops and labels | TLG6, PSB plugin object bindings, font integration, MPEG/AlphaMovie |
-| `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, loops, interpolation, default parameters, argument forwarding/rest/spread, octet values, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting, object finalization/collection, original bytecode loader |
+| `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, switch/do/while/for control flow, comma/swap operators, ordered class initializers, explicit invalidation/finalization, interpolation, default parameters, argument forwarding/rest/spread, octet values, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting, automatic object finalization/collection, original bytecode loader |
 | `krkrz_kag` | Ordered tags/attributes, labels, text/escaped brackets, multiline tags, explicit jump/call/return and restorable cursor | Macros, conditionals, parameter expansion, script-driven parser bindings, complete KAGParserEx state |
 | `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
 | `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, static inventory, primitive evaluation, startup diagnostics | Deterministic interactive replay, input-driven checkpoints, frame/audio comparison, native play |
 
-The compositor, scheduler, Window state and PCM mixer are tested components, not yet a game player. Window support currently covers construction, caption, visibility, client size, position, primary-layer lookup and resize/action callbacks in headless sessions. It does not create an OS window.
+The compositor, scheduler, Window state and PCM mixer are tested components, not yet a game player. Window support currently covers construction, caption, visibility, client size, position, primary-layer lookup and resize/action callbacks in headless sessions. Explicit invalidation releases its native state and cancels pending callbacks. It does not create an OS window.
 The interpreter deliberately rejects unsupported constructs; it does
 not replace TJS with JavaScript. KAG cursor restoration is not a game save.
 
@@ -105,6 +106,8 @@ some object kinds in `foreach`. PackinOne registration now combines the three
 implemented components and declares observed exports for unfinished operations.
 Layer/Process/TemporaryFiles construction and unfinished methods fail explicitly.
 KAGParserEx exports are declared with the same rule; its native operations remain open.
+After PackinOne has loaded, `layerExImage.dll` resolves to its existing exports,
+as in the installed engine. The image-effect operations still need implementation.
 
 The `saveStruct.dll` component provides `save2`, `saveStruct2` and
 `toStructString`. Native saves use Kirikiri UTF-16, optional text cipher/zlib
@@ -119,7 +122,8 @@ The `csvParser.dll` component supplies CSVParser instances and subclasses,
 UTF-16 string input, UTF-8/CP932 storage input, custom separators, multiline
 fields, logical line numbers and `doLine` callbacks. It follows the older
 PackinOne API; the second storage argument is a boolean, not a text-stream
-mode. Invalid legacy encoding replacement rules and object finalization remain
+mode. Explicit invalidation releases parser state, including during row callbacks.
+Invalid legacy encoding replacement rules and automatic object collection remain
 open. Startup can now load these components together through PackinOne.
 
 System constants match the installed engine, including its older stretch-mode

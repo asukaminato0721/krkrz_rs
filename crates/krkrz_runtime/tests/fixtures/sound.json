@@ -1,0 +1,288 @@
+[
+  {
+    "name": "wave_defaults",
+    "source": "var w=new WaveSoundBuffer(null);return [w.status,w.volume,w.volume2,w.pan,w.paused,w.looping,w.position,w.samplePosition,w.bits,w.channels].join(\",\");",
+    "expected": {
+      "String": [
+        117,
+        110,
+        108,
+        111,
+        97,
+        100,
+        44,
+        49,
+        48,
+        48,
+        48,
+        48,
+        48,
+        44,
+        49,
+        48,
+        48,
+        48,
+        48,
+        48,
+        44,
+        48,
+        44,
+        48,
+        44,
+        48,
+        44,
+        48,
+        44,
+        48,
+        44,
+        48,
+        44,
+        48
+      ]
+    }
+  },
+  {
+    "name": "wave_owner_required",
+    "source": "function f(){try{new WaveSoundBuffer();}catch(e){return 1;}return 0;}return f();",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "wave_owner_number",
+    "source": "function f(){try{new WaveSoundBuffer(1);}catch(e){return 1;}return 0;}return f();",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "wave_volume_clamps",
+    "source": "var w=new WaveSoundBuffer(null);w.volume=-1;w.volume2=100001;w.pan=-100001;return [w.volume,w.volume2,w.pan].join(\",\");",
+    "expected": {
+      "String": [
+        48,
+        44,
+        49,
+        48,
+        48,
+        48,
+        48,
+        48,
+        44,
+        45,
+        49,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    }
+  },
+  {
+    "name": "wave_integer_wrap",
+    "source": "var w=new WaveSoundBuffer(null);w.volume=4295017296;w.volume2=2147483648;w.pan=100001;return [w.volume,w.volume2,w.pan].join(\",\");",
+    "expected": {
+      "String": [
+        53,
+        48,
+        48,
+        48,
+        48,
+        44,
+        48,
+        44,
+        49,
+        48,
+        48,
+        48,
+        48,
+        48
+      ]
+    }
+  },
+  {
+    "name": "wave_boolean_coercion",
+    "source": "var w=new WaveSoundBuffer(null);w.paused=2;w.looping=\"1\";return w.paused*10+w.looping;",
+    "expected": {
+      "Integer": 11
+    }
+  },
+  {
+    "name": "wave_unloaded_control",
+    "source": "var w=new WaveSoundBuffer(null);w.play();w.stop();w.totalTime=123;return w.status;",
+    "expected": {
+      "String": [
+        117,
+        110,
+        108,
+        111,
+        97,
+        100
+      ]
+    }
+  },
+  {
+    "name": "wave_global_volume_assignment_flags",
+    "source": "WaveSoundBuffer.globalVolume=76543;function f(){var a=new WaveSoundBuffer(null),n=0;try{var v=a.globalVolume;}catch(e){n=1;}return WaveSoundBuffer.globalVolume+n;}return f();",
+    "expected": {
+      "Integer": 76543
+    }
+  },
+  {
+    "name": "wave_global_volume_clamp",
+    "source": "WaveSoundBuffer.globalVolume=-1;var a=WaveSoundBuffer.globalVolume;WaveSoundBuffer.globalVolume=100001;return a+WaveSoundBuffer.globalVolume;",
+    "expected": {
+      "Integer": 100000
+    }
+  },
+  {
+    "name": "wave_subclass",
+    "source": "class C extends WaveSoundBuffer{function C(){WaveSoundBuffer(null);volume=456;}function f(){return volume;}}var c=new C();return c.f()+(c instanceof \"WaveSoundBuffer\");",
+    "expected": {
+      "Integer": 457
+    }
+  },
+  {
+    "name": "wave_finalize_is_empty",
+    "source": "var w=new WaveSoundBuffer(null);w.volume=123;w.finalize();return w.volume+(isvalid w);",
+    "expected": {
+      "Integer": 124
+    }
+  },
+  {
+    "name": "wave_invalidate",
+    "source": "var w=new WaveSoundBuffer(null);var r=invalidate w;return r*10+(isvalid w);",
+    "expected": {
+      "Integer": 10
+    }
+  },
+  {
+    "name": "wave_event_forwarding",
+    "source": "var log=\"\";class O{function action(e){log+=e.type+\":\"+e.status+\":\"+(e.target===w);return 7;}}var o=new O(),w=new WaveSoundBuffer(o);var r=w.onStatusChanged(\"custom\");return log+\":\"+r;",
+    "expected": {
+      "String": [
+        111,
+        110,
+        83,
+        116,
+        97,
+        116,
+        117,
+        115,
+        67,
+        104,
+        97,
+        110,
+        103,
+        101,
+        100,
+        58,
+        99,
+        117,
+        115,
+        116,
+        111,
+        109,
+        58,
+        49,
+        58,
+        55
+      ]
+    }
+  },
+  {
+    "name": "wave_label_forwarding",
+    "source": "var log=\"\";class O{function action(e){log=e.type+\":\"+e.name;}}var w=new WaveSoundBuffer(new O());w.onLabel(\"mark\");return log;",
+    "expected": {
+      "String": [
+        111,
+        110,
+        76,
+        97,
+        98,
+        101,
+        108,
+        58,
+        109,
+        97,
+        114,
+        107
+      ]
+    }
+  },
+  {
+    "name": "wave_null_event_owner",
+    "source": "var w=new WaveSoundBuffer(null);w.onStatusChanged();w.onLabel();return 1;",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "wave_fade_immediate",
+    "source": "var n=0;class C extends WaveSoundBuffer{function C(){WaveSoundBuffer(null);}function onFadeCompleted(){n++;}}var w=new C();w.fade(123,1);return w.volume*10+n;",
+    "expected": {
+      "Integer": 1231
+    }
+  },
+  {
+    "name": "wave_stop_fade",
+    "source": "var n=0;class C extends WaveSoundBuffer{function C(){WaveSoundBuffer(null);}function onFadeCompleted(){n++;}}var w=new C();w.fade(234,120);var before=w.volume;w.stopFade();w.stopFade();return before+\":\"+w.volume+\":\"+n;",
+    "expected": {
+      "String": [
+        49,
+        48,
+        48,
+        48,
+        48,
+        48,
+        58,
+        50,
+        51,
+        52,
+        58,
+        49
+      ]
+    }
+  },
+  {
+    "name": "wave_replace_fade",
+    "source": "var log=\"\";class C extends WaveSoundBuffer{function C(){WaveSoundBuffer(null);}function onFadeCompleted(){log+=volume+\",\";}}var w=new C();w.fade(234,120);w.fade(456,1);return log;",
+    "expected": {
+      "String": [
+        49,
+        48,
+        48,
+        48,
+        48,
+        48,
+        44,
+        52,
+        53,
+        54,
+        44
+      ]
+    }
+  },
+  {
+    "name": "wave_invalid_fade",
+    "source": "function f(){var w=new WaveSoundBuffer(null),n=0;try{w.fade(0,0);}catch(e){n++;}try{w.fade(0,120,-1);}catch(e){n++;}return n;}return f();",
+    "expected": {
+      "Integer": 2
+    }
+  },
+  {
+    "name": "wave_fade_survives_stop",
+    "source": "var w=new WaveSoundBuffer(null);w.fade(789,120);w.stop();w.stopFade();return w.volume;",
+    "expected": {
+      "Integer": 789
+    }
+  },
+  {
+    "name": "wave_global_volume_static",
+    "source": "var a=new WaveSoundBuffer(null);WaveSoundBuffer.globalVolume=76543;function f(){try{var v=a.globalVolume;}catch(e){return WaveSoundBuffer.globalVolume+1;}return 0;}return f();",
+    "expected": {
+      "Integer": 76544
+    }
+  }
+]

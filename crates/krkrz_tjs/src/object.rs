@@ -20,7 +20,7 @@ pub struct Class {
     pub name: String,
     pub methods: Vec<Function>,
     pub properties: Vec<Property>,
-    pub fields: Vec<(String, Program)>,
+    pub initializer: Option<Program>,
 }
 #[derive(Clone, Debug)]
 pub(crate) enum ObjectKind {

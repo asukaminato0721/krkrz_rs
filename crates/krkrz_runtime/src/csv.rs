@@ -292,8 +292,13 @@ impl crate::Services {
                 reference.context = None;
             }
             if !matches!(method, Value::Void) {
-                while let Some(fields) = self.csv_parsers.get_mut(&id).unwrap().next(budget)? {
-                    let line = Value::Integer(self.csv_parsers[&id].line_number);
+                // A callback can invalidate this parser and release its native
+                // input. No further row is delivered in that case.
+                while let Some(parser) = self.csv_parsers.get_mut(&id) {
+                    let Some(fields) = parser.next(budget)? else {
+                        break;
+                    };
+                    let line = Value::Integer(parser.line_number);
                     let fields = vm.new_array(fields)?;
                     vm.call_function(&method, &target, &[fields, line], self, budget)?;
                 }

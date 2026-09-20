@@ -6,7 +6,7 @@ use crate::{
 use anyhow::{Result, bail, ensure};
 use krkrz_core::SourceLocation;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum Expr {
     Constant(Box<Expr>),
     Sequence(Vec<Expr>),
@@ -447,8 +447,8 @@ impl Compiler {
                 _ => break,
             };
             let precedence = match op.as_str() {
-                "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "\\=" | "&=" | "|=" | "^=" | "<<="
-                | ">>=" | ">>>=" => 1,
+                "=" | "<->" | "+=" | "-=" | "*=" | "/=" | "%=" | "\\=" | "&=" | "|=" | "^="
+                | "<<=" | ">>=" | ">>>=" => 1,
                 "||" => 3,
                 "&&" => 4,
                 "|" => 5,
@@ -559,6 +559,26 @@ impl Compiler {
             .collect()
     }
     fn compile_discard(&mut self, e: Expr, at: &SourceLocation) -> Result<()> {
+        let e = match e {
+            Expr::Sequence(items) => {
+                for item in items {
+                    self.compile_discard(item, at)?;
+                }
+                return Ok(());
+            }
+            Expr::Assign(left, op, right) if op == "<->" => {
+                // Upstream evaluates both values first, then evaluates each
+                // assignment target again. Indexed side effects occur twice.
+                let old_left = self.compile_expr(*left.clone(), at)?;
+                let old_right = self.compile_expr(*right.clone(), at)?;
+                let left = self.target(*left, at)?;
+                self.write_target(left, old_right, at);
+                let right = self.target(*right, at)?;
+                self.write_target(right, old_left, at);
+                return Ok(());
+            }
+            e => e,
+        };
         if let Expr::Eval(e) = e {
             let input = self.compile_expr(*e, at)?;
             let out = self.reg();
@@ -640,6 +660,7 @@ impl Compiler {
                 self.emit(Op::Function { out, function }, at);
             }
             Expr::Assign(target, op, value) => {
+                ensure!(op != "<->", "cannot use the result of a swap expression");
                 let target = self.target(*target, at)?;
                 let old = if op != "=" {
                     Some(self.read_target(&target, at))
@@ -1078,52 +1099,63 @@ impl Compiler {
             }
         }
         self.expect("{")?;
+        let initializer = Program {
+            storage: self.program.storage.clone(),
+            registers: 0,
+            code: vec![],
+        };
+        let parent = std::mem::replace(&mut self.program, initializer);
+        let loops = std::mem::take(&mut self.loops);
+        let (scopes, handlers, withs, unnamed) = (
+            self.scopes,
+            self.handlers,
+            self.withs,
+            self.unnamed_arguments,
+        );
+        self.scopes = 0;
+        self.handlers = 0;
+        self.withs = 0;
+        self.unnamed_arguments = 0;
         let mut definition = Class {
             name: name.clone(),
             methods: vec![],
             properties: vec![],
-            fields: vec![],
+            initializer: None,
         };
-        while !self.eat("}") {
-            self.expr_nodes = 0;
-            if self.eat(";") {
-                continue;
-            }
-            if self.eat("function") {
-                let name = self.name()?;
-                definition.methods.push(self.function(name)?);
-            } else if self.eat("property") {
-                definition.properties.push(self.property()?);
-            } else if self.eat("var") || self.eat("const") {
-                loop {
-                    let field = self.name()?;
-                    let expr = if self.eat("=") {
-                        self.expression(0)?
-                    } else {
-                        Expr::Value(Value::Void)
-                    };
-                    let initializer = Program {
-                        storage: self.program.storage.clone(),
-                        registers: 0,
-                        code: vec![],
-                    };
-                    let parent = std::mem::replace(&mut self.program, initializer);
-                    let input = self.compile_expr(expr, at)?;
-                    self.emit(Op::Return { input }, at);
-                    let initializer = std::mem::replace(&mut self.program, parent);
-                    definition.fields.push((field, initializer));
-                    if !self.eat(",") {
-                        break;
-                    }
+        let result = (|| -> Result<()> {
+            while !self.eat("}") {
+                ensure!(!self.eof(), "unterminated class body");
+                self.expr_nodes = 0;
+                if self.eat("function") {
+                    let name = self.name()?;
+                    definition.methods.push(self.function(name)?);
+                } else if self.eat("property") {
+                    definition.properties.push(self.property()?);
+                } else {
+                    // Field declarations and executable class-body statements
+                    // run in source order for each new instance.
+                    self.statement()?;
                 }
-                self.end()?;
-            } else {
-                return Err(unsupported(format!(
-                    "unsupported class member {:?}",
-                    self.tokens[self.pos].kind
-                )));
             }
-        }
+            Ok(())
+        })();
+        self.scopes = scopes;
+        self.handlers = handlers;
+        self.withs = withs;
+        self.unnamed_arguments = unnamed;
+        self.loops = loops;
+        let initializer = std::mem::replace(&mut self.program, parent);
+        result?;
+        // TJS resolves `super` through the parent method/property context.
+        // A class initializer has no such context; upstream rejects this at
+        // compilation, even if the class is never instantiated.
+        ensure!(
+            !initializer.code.iter().any(|instruction| matches!(
+                &instruction.op, Op::Load { name, .. } if name == "super"
+            )),
+            "super is not available in a class initializer"
+        );
+        definition.initializer = Some(initializer);
         let out = self.reg();
         self.emit(
             Op::Class {
@@ -1294,6 +1326,22 @@ impl Compiler {
             self.finish_loop(continue_at);
             self.leave_scope(&at);
             return Ok(());
+        }
+        if self.eat("do") {
+            let top = self.program.code.len();
+            self.begin_loop(true);
+            self.statement()?;
+            self.expect("while")?;
+            self.expect("(")?;
+            let continue_at = self.program.code.len();
+            let expression = self.full_expression()?;
+            self.expect(")")?;
+            let input = self.compile_expr(expression, &at)?;
+            let end = self.emit(Op::JumpUnless { input, target: 0 }, &at);
+            self.emit(Op::Jump { target: top }, &at);
+            self.patch(end);
+            self.finish_loop(continue_at);
+            return self.end();
         }
         if self.eat("while") {
             let top = self.program.code.len();
@@ -1480,5 +1528,16 @@ mod tests {
                 .contains("loop.tjs:1:1")
         );
         assert!(compile("switch.tjs", "switch(x) {case 1: continue;}").is_err());
+        for source in [
+            "return a <-> b;",
+            "var x=(a <-> b);",
+            "do {}",
+            "switch(1){case 1:",
+            "class C {var x=1;",
+            "while(1){class C {break;}}",
+            "class A{} class B extends A{var x=super.f();}",
+        ] {
+            assert!(compile("invalid control", source).is_err(), "{source}");
+        }
     }
 }
