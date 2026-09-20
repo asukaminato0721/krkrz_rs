@@ -328,7 +328,10 @@ impl WindowState {
                 "zoomDenom" => Value::Integer(self.zoom_denom.into()),
                 "left" => Value::Integer(self.left.into()),
                 "top" => Value::Integer(self.top.into()),
-                "primaryLayer" => self.primary_layer.clone(),
+                "primaryLayer" => {
+                    ensure!(self.primary_layer != Value::NULL, "Window has no layer");
+                    self.primary_layer.clone()
+                }
                 "drawDevice" => self.draw_device.clone(),
                 _ => return Err(unsupported(format!("unsupported Window property: {key}"))),
             });
@@ -442,7 +445,8 @@ impl crate::Services {
 
 impl WindowState {
     pub fn gc_trace(&self, out: &mut Vec<Value>) {
-        out.extend([self.primary_layer.clone(), self.draw_device.clone()]);
+        // The layer manager stores Primary without AddRef.
+        out.push(self.draw_device.clone());
         out.extend(self.registered_objects.iter().cloned());
         self.input.gc_trace(out);
     }

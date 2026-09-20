@@ -1073,7 +1073,30 @@ impl Services {
         if op == "loadProvinceImage" {
             return self.layer_load_province(id, args, budget);
         }
-        let available = image_available(&self.layers, id);
+        // Getters and geometry-only setters do not allocate pixels. Avoid
+        // walking every shared buffer for each property read during rendering.
+        let available = if matches!(
+            op,
+            "colorRect"
+                | "fillRect"
+                | "setMainPixel"
+                | "setMaskPixel"
+                | "setProvincePixel"
+                | "set:hasImage"
+                | "set:type"
+                | "set:width"
+                | "set:height"
+                | "setSize"
+                | "setImageSize"
+                | "set:imageWidth"
+                | "set:imageHeight"
+                | "setSizeToImageSize"
+        ) || op == "setPos" && args.len() >= 4
+        {
+            image_available(&self.layers, id)
+        } else {
+            0
+        };
         self.layers.get_mut(&id).unwrap().call(op, args, available)
     }
 }
@@ -1143,19 +1166,33 @@ impl crate::Session {
 impl Layer {
     pub(crate) fn gc_trace(&self, out: &mut Vec<Value>) {
         out.extend([self.action_owner.clone(), self.hint.clone()]);
-        out.extend([self.window, self.root].into_iter().map(Value::object));
-        out.extend(
-            [self.parent, self.focus_work, self.focused_layer]
-                .into_iter()
-                .flatten()
-                .map(Value::object),
-        );
-        out.extend(self.children.iter().copied().map(Value::object));
-        out.extend(self.modal_layers.iter().copied().map(Value::object));
+        // LayerIntf keeps the tree and FocusWork as native pointers, without
+        // AddRef. Only reading children creates an owning script Array.
         out.extend(self.children_array.iter().cloned());
         out.extend(self.font.iter().cloned());
         if let Some(transition) = &self.transition {
             transition.gc_trace(out);
+        }
+    }
+
+    pub(crate) fn gc_trace_manager(&self, out: &mut Vec<Value>) {
+        out.extend(self.focused_layer.map(Value::object));
+        out.extend(self.modal_layers.iter().copied().map(Value::object));
+    }
+}
+
+impl Services {
+    pub(crate) fn layer_manager_gc_trace(&self, window: usize, out: &mut Vec<Value>) {
+        // Windows retain managers, whose focus/modal references own their
+        // targets. The manager's Primary pointer does not own the root Layer.
+        for layer in self.layers.values().filter(|l| l.primary && l.window == window) {
+            layer.gc_trace_manager(out);
+        }
+    }
+
+    pub(crate) fn layer_shared_manager_gc_trace(&self, id: usize, out: &mut Vec<Value>) {
+        if let Some(manager) = self.layers.get(&self.layers[&id].root) {
+            manager.gc_trace_manager(out);
         }
     }
 }

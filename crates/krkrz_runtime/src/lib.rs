@@ -161,9 +161,11 @@ impl Host for Services {
         let mut edges = Vec::new();
         if let Some(window) = self.windows.get(&id) {
             window.gc_trace(&mut edges);
+            self.layer_manager_gc_trace(id, &mut edges);
         }
         if let Some(layer) = self.layers.get(&id) {
             layer.gc_trace(&mut edges);
+            self.layer_shared_manager_gc_trace(id, &mut edges);
         }
         if let Some(timer) = self.timers.get(&id) {
             timer.gc_trace(&mut edges);

@@ -11,13 +11,14 @@ fn session(source: &str) -> (tempfile::TempDir, tempfile::TempDir, Session) {
 }
 
 #[test]
-fn native_edges_keep_layers_parsers_and_callback_owners_alive() {
+fn native_arrays_parsers_and_callback_owners_keep_references_alive() {
     let (_project, _saves, mut session) = session(
         r#"
         global.w = new Window(); w.visible = true;
         function build() {
-            var p = new Layer(w, null); p.setSize(20, 10); p.visible = true;
+            global.p = new Layer(w, null); p.setSize(20, 10); p.visible = true;
             var child = new Layer(w, p); child.name = 'kept'; child.visible = true;
+            var children = p.children;
         }
         build();
         Plugins.link('KAGParserEx.dll'); global.parser = new KAGParser();
