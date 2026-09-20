@@ -735,5 +735,40 @@
       ]
     },
     "files": []
+  },
+  {
+    "name": "plugin_octet",
+    "source": "Plugins.link(\"saveStruct.dll\");return [<% 00 af ff %>].toStructString();",
+    "expected": {
+      "String": [
+        91,
+        60,
+        37,
+        32,
+        48,
+        48,
+        32,
+        97,
+        102,
+        32,
+        102,
+        102,
+        32,
+        37,
+        62,
+        93
+      ]
+    },
+    "files": []
+  },
+  {
+    "name": "native_octet_roundtrip",
+    "source": "var a=[<% 00 af ff %>,<%%>];a.saveStruct(System.exePath+\"octet.tjs\",\"z\");var b=Scripts.evalStorage(System.exePath+\"octet.tjs\");return (b[0]===a[0]) && b[1].length==0;",
+    "expected": {
+      "Integer": 1
+    },
+    "files": [
+      "octet.tjs"
+    ]
   }
 ]

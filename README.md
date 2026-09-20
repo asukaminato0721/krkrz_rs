@@ -2,9 +2,9 @@
 
 This repository contains an initial implementation toward the Otome Domain
 playable slice. **The game is not playable yet.** Original startup now
-executes its framework, including preprocessing and archive setup. Execution
-currently stops at `system/Initialize.tjs:301` because `PackinOne.dll` has no
-registered Rust replacement yet. The title,
+executes archive setup, plugin registration, `AppConfig.tjs`, `Config.tjs` and
+application locking. Execution currently stops while compiling `k2compat.tjs:240`
+at the unsupported `isvalid` operator. The title,
 New Game, first choice, scene transition, and original save/load acceptance
 criteria have not been met. Execution failures never count as checkpoints.
 
@@ -87,9 +87,9 @@ outside the installation.
 |---|---|---|
 | `krkrz_core` | Storage-name normalization, resource limits, source/input types, separate save path selection | Full Kirikiri URI/media normalization |
 | `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5, Vorbis PCM, SLI loops and labels | TLG6, PSB plugin object bindings, font integration, MPEG/AlphaMovie |
-| `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, loops, interpolation, argument forwarding/rest/spread, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting/default arguments, object finalization/collection, original bytecode loader |
+| `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, loops, interpolation, default parameters, argument forwarding/rest/spread, octet values, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting, object finalization/collection, original bytecode loader |
 | `krkrz_kag` | Ordered tags/attributes, labels, text/escaped brackets, multiline tags, explicit jump/call/return and restorable cursor | Macros, conditionals, parameter expansion, script-driven parser bindings, complete KAGParserEx state |
-| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, Window state and deferred resize callbacks, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
+| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
 | `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, static inventory, primitive evaluation, startup diagnostics | Deterministic interactive replay, input-driven checkpoints, frame/audio comparison, native play |
 
 The compositor, scheduler, Window state and PCM mixer are tested components, not yet a game player. Window support currently covers construction, caption, visibility, client size, position, primary-layer lookup and resize/action callbacks in headless sessions. It does not create an OS window.
@@ -101,12 +101,14 @@ object-context inspection, flagged property access, structural comparison,
 recursive cloning, array/dictionary callbacks and deferred rehashing. It follows
 the community source and the installed PackinOne component's behavior. Array
 member reflection and octet MD5 remain explicit unsupported operations, as do
-some object kinds in `foreach`. This component is not yet a replacement for
-the complete PackinOne bundle, so original startup still stops at that plugin.
+some object kinds in `foreach`. PackinOne registration now combines the three
+implemented components and declares observed exports for unfinished operations.
+Layer/Process/TemporaryFiles construction and unfinished methods fail explicitly.
+KAGParserEx exports are declared with the same rule; its native operations remain open.
 
 The `saveStruct.dll` component provides `save2`, `saveStruct2` and
 `toStructString`. Native saves use Kirikiri UTF-16, optional text cipher/zlib
-modes and byte offsets. The plugin writes UTF-8 or Japanese CP932. Twenty-three
+modes and byte offsets. The plugin writes UTF-8 or Japanese CP932. Twenty-five
 synthetic serialization cases match the original engine and plugin, including
 saved bytes (decompressed content for zlib). This does not establish original
 game save compatibility. Unsupported CP932 fallback characters and plugin
@@ -118,8 +120,13 @@ UTF-16 string input, UTF-8/CP932 storage input, custom separators, multiline
 fields, logical line numbers and `doLine` callbacks. It follows the older
 PackinOne API; the second storage argument is a boolean, not a text-stream
 mode. Invalid legacy encoding replacement rules and object finalization remain
-open. Full PackinOne registration is still required before original startup
-can use these components together.
+open. Startup can now load these components together through PackinOne.
+
+System constants match the installed engine, including its older stretch-mode
+exports. Graphic-cache limits are bytes and affect a bounded LRU cache; Layer
+decoding/rendering integration remains open. Application locks use per-user
+files under `$XDG_CACHE_HOME/krkrz_rs/app-locks` (or `$HOME/.cache`) and release
+when the Session ends. These locks coordinate Rust processes, not Windows/Wine.
 
 ## Installed-game validation
 

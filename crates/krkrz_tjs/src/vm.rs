@@ -10,9 +10,15 @@ pub enum Argument {
     Value(usize),
     Spread(usize),
     Forward,
+    ForwardFrom(usize),
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Op {
+    Parameter {
+        name: String,
+        index: usize,
+        rest: bool,
+    },
     ConstantObject {
         out: usize,
         identity: u64,
@@ -181,6 +187,9 @@ impl Program {
         for i in &self.code {
             let mut regs = vec![];
             match &i.op {
+                Op::Parameter { index, .. } => {
+                    ensure!(*index <= 1024, "invalid TJS parameter index")
+                }
                 Op::Constant { out, value } => {
                     ensure!(
                         !matches!(value, Value::Object(o) if o.object.is_some() || o.context.is_some()),
@@ -425,6 +434,12 @@ impl Vm {
         Ok(value)
     }
     pub(crate) fn object_id(&self, value: &Value) -> Result<usize> {
+        let id = self.object_handle(value)?;
+        ensure!(self.objects[id].valid, "TJS object is invalid");
+        Ok(id)
+    }
+    // Validity checks themselves must accept handles to invalidated objects.
+    pub(crate) fn object_handle(&self, value: &Value) -> Result<usize> {
         let Value::Object(ObjectRef {
             object: Some(id), ..
         }) = value
@@ -586,6 +601,7 @@ impl Vm {
             }
         }
         if frame.context != 0 {
+            self.object_id(&Value::object(frame.context))?;
             let key: Vec<u16> = name.encode_utf16().collect();
             if self.objects[frame.context].members.contains_key(&key) {
                 return self.get_property(
@@ -691,6 +707,20 @@ impl Vm {
                             self.delete_member(&registers[*object], &registers[*key])?
                     }
                     Op::Constant { out, value } => registers[*out] = value.clone(),
+                    Op::Parameter { name, index, rest } => {
+                        ensure!(
+                            !frame.scopes.is_empty(),
+                            "parameter binding outside function"
+                        );
+                        let value = if *rest {
+                            self.new_array(
+                                frame.arguments.get(*index..).unwrap_or_default().to_vec(),
+                            )?
+                        } else {
+                            frame.arguments.get(*index).cloned().unwrap_or(Value::Void)
+                        };
+                        self.store_name(&mut frame, name, value, true)?;
+                    }
                     Op::Load {
                         out,
                         name,
@@ -708,6 +738,7 @@ impl Vm {
                         if local {
                             self.store_name(&mut frame, name, registers[*input].clone(), false)?;
                         } else {
+                            self.object_id(&Value::object(frame.context))?;
                             let context = if self.objects[frame.context]
                                 .members
                                 .contains_key(&name.encode_utf16().collect::<Vec<_>>())
@@ -728,7 +759,11 @@ impl Vm {
                     }
                     Op::Move { out, input } => registers[*out] = registers[*input].clone(),
                     Op::Unary { out, op, input } => {
-                        registers[*out] = registers[*input].unary(op)?
+                        registers[*out] = match op.as_str() {
+                            "isvalid" => self.is_valid(&registers[*input])?,
+                            "invalidate" => self.invalidate(&registers[*input], host, budget)?,
+                            _ => registers[*input].unary(op)?,
+                        }
                     }
                     Op::Binary {
                         out,
@@ -744,7 +779,7 @@ impl Vm {
                                 bail!("incontextof context must be an object");
                             };
                             if context.object.is_some() {
-                                self.object_id(&registers[*right])?;
+                                self.object_handle(&registers[*right])?;
                             }
                             object.context = context.object;
                             Value::Object(object)
@@ -1009,6 +1044,7 @@ impl Vm {
             let expanded: &[Value] = match arg {
                 Argument::Value(r) => std::slice::from_ref(&registers[*r]),
                 Argument::Forward => forwarded,
+                Argument::ForwardFrom(start) => forwarded.get(*start..).unwrap_or_default(),
                 Argument::Spread(r) => {
                     let id = self.object_id(&registers[*r])?;
                     let ObjectKind::Array(items) = &self.objects[id].kind else {
@@ -1089,28 +1125,14 @@ impl Vm {
             },
             ObjectKind::Function(function) => {
                 let mut frame = Frame::global();
-                frame.context = reference.context.unwrap_or(self.object_id(context)?);
+                frame.context = reference.context.unwrap_or(self.object_handle(context)?);
                 frame.owner = self.objects[id].owner;
                 frame.arguments = args.to_vec();
                 ensure!(
                     frame.context < self.objects.len(),
                     "invalid TJS bound context"
                 );
-                let mut locals = BTreeMap::new();
-                for (index, name) in function.parameters.iter().enumerate() {
-                    locals.insert(
-                        name.clone(),
-                        args.get(index).cloned().unwrap_or(Value::Void),
-                    );
-                }
-                if let Some(rest) = &function.rest {
-                    let tail = args
-                        .get(function.parameters.len()..)
-                        .unwrap_or_default()
-                        .to_vec();
-                    locals.insert(rest.clone(), self.allocate(ObjectKind::Array(tail))?);
-                }
-                frame.scopes.push(locals);
+                frame.scopes.push(BTreeMap::new());
                 self.run(&function.program, host, budget, frame)
             }
             ObjectKind::Method { receiver, name } => {

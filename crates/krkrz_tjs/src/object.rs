@@ -64,6 +64,9 @@ pub(crate) struct Object {
     pub native_static: bool,
     pub member_layout: crate::member_layout::MemberLayout,
     pub hash_generation: u64,
+    pub valid: bool,
+    pub finalizing: bool,
+    pub native_finalizers: Vec<String>,
 }
 impl Object {
     pub fn new(kind: ObjectKind) -> Self {
@@ -76,6 +79,9 @@ impl Object {
             native_static: false,
             member_layout: Default::default(),
             hash_generation: 0,
+            valid: true,
+            finalizing: false,
+            native_finalizers: vec![],
         }
     }
 }

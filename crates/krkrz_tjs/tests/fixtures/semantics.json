@@ -220,7 +220,7 @@
   },
   {
     "name": "string_utf16_length",
-    "source": "return \"a\ud83d\ude00\".length;",
+    "source": "return \"a😀\".length;",
     "expected": {
       "Integer": 3
     }
@@ -688,6 +688,523 @@
     "source": "var d=%[]; (function {\"var y=7;\"!;} incontextof d)();return d.y;",
     "expected": {
       "Integer": 7
+    }
+  },
+  {
+    "name": "parenthesized_casts",
+    "source": "var a=(int)\"2.5\";return a+\",\"+(string)((real)\"1.5\"+0.5);",
+    "expected": {
+      "String": [
+        50,
+        44,
+        50
+      ]
+    },
+    "reference_skip": "Pinned Habakiri prints integral reals with .0; target-engine cast/string behavior is verified."
+  },
+  {
+    "name": "arrow_is_comma",
+    "source": "var a=[1=>2,3=>4,];var d=%[\"a\",1,\"b\",2];function f(x,y){return x+y;}return a.count+\",\"+d.b+\",\"+f(2=>3);",
+    "expected": {
+      "String": [
+        53,
+        44,
+        50,
+        44,
+        53
+      ]
+    }
+  },
+  {
+    "name": "trailing_empty_arguments",
+    "source": "function f(args*){return args.count;}return f(1,)+\",\"+f(,)+\",\"+[,].count+\",\"+[1,].count;",
+    "expected": {
+      "String": [
+        50,
+        44,
+        50,
+        44,
+        50,
+        44,
+        50
+      ]
+    }
+  },
+  {
+    "name": "octet_literal",
+    "source": "var a=<% a b c, d /* ff */ 12 // ff\n34 %>;return typeof a+\",\"+a.length+\",\"+a[0]+\",\"+a[1]+\",\"+a[2]+\",\"+a[3]+\",\"+a[4];",
+    "expected": {
+      "String": [
+        79,
+        99,
+        116,
+        101,
+        116,
+        44,
+        53,
+        44,
+        49,
+        55,
+        49,
+        44,
+        49,
+        50,
+        44,
+        50,
+        48,
+        57,
+        44,
+        51,
+        53,
+        44,
+        52
+      ]
+    },
+    "reference_skip": "Pinned Habakiri parses octet comments differently and exposes signed bytes; target engine is verified."
+  },
+  {
+    "name": "octet_operations",
+    "source": "var a=<% 00 ff %>,b=a+<% 7f %>;return b.length+\",\"+b[\"1tail\"]+\",\"+(a===<% 00ff %>)+\",\"+(a==\"\")+\",\"+!!<%%>+\",\"+!!a;",
+    "expected": {
+      "String": [
+        51,
+        44,
+        50,
+        53,
+        53,
+        44,
+        49,
+        44,
+        48,
+        44,
+        48,
+        44,
+        49
+      ]
+    },
+    "reference_skip": "Pinned Habakiri rejects numeric-prefix octet indexes; target engine is verified."
+  },
+  {
+    "name": "octet_instanceof",
+    "source": "var a=<%%>;return a.length+\",\"+(a instanceof \"Octet\")+\",\"+<% 12 %>[0];",
+    "expected": {
+      "String": [
+        48,
+        44,
+        49,
+        44,
+        49,
+        56
+      ]
+    }
+  },
+  {
+    "name": "octet_immutable",
+    "source": "var a=<% 01 %>;try{a[0]=2;}catch{return a[0];}return 99;",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "octet_no_string_coercion",
+    "source": "function check(){var a=<%01%>,n=0;try{var s=string a;}catch(e){n++;}try{var t=a+\"\";}catch(e){n++;}try{var i=int a;}catch(e){n++;}return n;} return check();",
+    "expected": {
+      "Integer": 3
+    }
+  },
+  {
+    "name": "const_declarations_are_mutable",
+    "source": "const a=1; a=2; class C {const x=3;} var c=new C(); c.x=4; for(const i=0;i<2;i++)a+=i; return a+c.x;",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "default_parameters",
+    "source": "var n=0; function f(a=++n,b=a+2){return a+\",\"+b;} return f()+\";\"+f(0)+\";\"+f(void,7)+\";\"+n;",
+    "expected": {
+      "String": [
+        49,
+        44,
+        51,
+        59,
+        48,
+        44,
+        50,
+        59,
+        50,
+        44,
+        55,
+        59,
+        50
+      ]
+    }
+  },
+  {
+    "name": "default_parameter_context",
+    "source": "class C{var n=4; function f(a=this.n){return a;}} return (new C()).f();",
+    "expected": {
+      "Integer": 4
+    }
+  },
+  {
+    "name": "default_parameter_throw",
+    "source": "function bad(){throw 3;} function f(a=bad()){return a;} var n=f(8); try{f();}catch(e){n+=e;} return n;",
+    "expected": {
+      "Integer": 11
+    }
+  },
+  {
+    "name": "unnamed_argument_forwarding",
+    "source": "function collect(a*){return a.join(\",\");} function f(a,*){return collect(9,*);} function g(a){return collect(*);} return f(1,2,3)+\";\"+f(1)+\";\"+g(4,5);",
+    "expected": {
+      "String": [
+        57,
+        44,
+        50,
+        44,
+        51,
+        59,
+        57,
+        59,
+        52,
+        44,
+        53
+      ]
+    }
+  },
+  {
+    "name": "octet_nested_comment",
+    "source": "var a=<% 12 /* a /* b */ c */ 34 %>;return a.length+\",\"+a[1];",
+    "expected": {
+      "String": [
+        50,
+        44,
+        53,
+        50
+      ]
+    },
+    "reference_skip": "Pinned Habakiri parses octet comments differently; target engine is verified."
+  },
+  {
+    "name": "forward_modified_parameters",
+    "source": "function collect(a*){return a.join(\",\");} function f(a=7){a+=1;return collect(...);} return f(1,2)+\";\"+f();",
+    "expected": {
+      "String": [
+        49,
+        44,
+        50,
+        59
+      ]
+    }
+  },
+  {
+    "name": "octet_method_coercions",
+    "source": "function f(){var n=0;try{[<%01%>].join(\",\");}catch(e){n++;}try{\"test\".indexOf(<%01%>);}catch(e){n++;}return n;}return f();",
+    "expected": {
+      "Integer": 2
+    }
+  },
+  {
+    "name": "default_parameter_later_scope",
+    "source": "var b=10;function f(a=b,b=20){return a+\",\"+b;}return f();",
+    "expected": {
+      "String": [
+        49,
+        48,
+        44,
+        50,
+        48
+      ]
+    }
+  },
+  {
+    "name": "default_parameter_unnamed_tail",
+    "source": "function collect(a*){return a.join(\",\");}function f(a=collect(*),*){return a;}return f(void,2,3);",
+    "expected": {
+      "String": [
+        50,
+        44,
+        51
+      ]
+    }
+  },
+  {
+    "name": "validity_primitives",
+    "source": "return [isvalid void,isvalid 0,isvalid 1.5,isvalid \"\",isvalid <% %>,invalidate void,invalidate 2,invalidate \"x\"].join(\",\");",
+    "expected": {
+      "String": [
+        49,
+        44,
+        49,
+        44,
+        49,
+        44,
+        49,
+        44,
+        49,
+        44,
+        48,
+        44,
+        48,
+        44,
+        48
+      ]
+    }
+  },
+  {
+    "name": "validity_null",
+    "source": "function f(){var n=0;try{isvalid null;}catch(e){n++;}try{invalidate null;}catch(e){n++;}return n;}return f();",
+    "expected": {
+      "Integer": 2
+    }
+  },
+  {
+    "name": "validity_alias",
+    "source": "var a=%[\"x\"=>1],b=a;var r=[isvalid a,a isvalid,invalidate a,isvalid b,invalidate b];return r.join(\",\");",
+    "expected": {
+      "String": [
+        49,
+        44,
+        49,
+        44,
+        49,
+        44,
+        48,
+        44,
+        48
+      ]
+    }
+  },
+  {
+    "name": "validity_access",
+    "source": "function f(){var a=[1,2],n=0;invalidate a;try{a.count;}catch(e){n++;}try{a[0]=4;}catch(e){n++;}try{delete a.x;}catch(e){n++;}try{a.add(3);}catch(e){n++;}try{typeof a.missing;}catch(e){n++;}return n;}return f();",
+    "expected": {
+      "Integer": 4
+    }
+  },
+  {
+    "name": "validity_finalize",
+    "source": "var trace=\"\";class C{var x=7;function finalize(){trace+=this.x+\":\"+(isvalid this);}}var a=new C();var r=invalidate a;return trace+\":\"+r+\":\"+(isvalid a)+\":\"+(invalidate a);",
+    "expected": {
+      "String": [
+        55,
+        58,
+        49,
+        58,
+        49,
+        58,
+        48,
+        58,
+        48
+      ]
+    }
+  },
+  {
+    "name": "validity_recursive_finalize",
+    "source": "var trace=\"\";class C{function finalize(){trace+=\"a\";trace+=invalidate this;trace+=\"b\";}}var a=new C();invalidate a;return trace;",
+    "expected": {
+      "String": [
+        97,
+        49,
+        98
+      ]
+    }
+  },
+  {
+    "name": "validity_throwing_finalize",
+    "source": "var calls=0;class C{function finalize(){calls++;if(calls==1)throw \"again\";}}function f(){var a=new C(),n=0;try{invalidate a;}catch(e){n++;}n+=10*(isvalid a);n+=100*(invalidate a);return n+1000*calls+10000*(isvalid a);}return f();",
+    "expected": {
+      "Integer": 2111
+    }
+  },
+  {
+    "name": "validity_collection_no_finalize",
+    "source": "var n=0,a=[],b=%[];a.finalize=function(){n++;};b.finalize=function(){n++;};return (invalidate a)+10*(invalidate b)+100*n;",
+    "expected": {
+      "Integer": 11
+    }
+  },
+  {
+    "name": "validity_function",
+    "source": "function f(){return 3;}var g=f;var n=invalidate f;try{g();}catch(e){n+=10;}return n+100*(isvalid g);",
+    "expected": {
+      "Integer": 11
+    }
+  },
+  {
+    "name": "validity_bound_function",
+    "source": "class C{function constant(){return 42;}}var a=new C(),f=a.constant;invalidate a;return f()+100*(isvalid f);",
+    "expected": {
+      "Integer": 142
+    }
+  },
+  {
+    "name": "validity_bind_invalid_context",
+    "source": "var a=%[];invalidate a;var f=(function(){return isvalid this;}) incontextof a;return f();",
+    "expected": {
+      "Integer": 0
+    }
+  },
+  {
+    "name": "validity_invalid_context_global",
+    "source": "var x=5;class C{function f(){return x;}}function run(){var a=new C(),f=a.f;invalidate a;try{return f();}catch(e){return 99;}}return run();",
+    "expected": {
+      "Integer": 99
+    }
+  },
+  {
+    "name": "validity_finalize_noncallable",
+    "source": "class C{var finalize=42;}var a=new C();return invalidate a;",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "validity_class",
+    "source": "class C{function f(){return 8;}}var a=new C(),n=invalidate C;try{new C();}catch(e){n+=10;}return n+100*a.f()+1000*(isvalid a);",
+    "expected": {
+      "Integer": 1811
+    }
+  },
+  {
+    "name": "validity_native_method",
+    "source": "var a=[],f=a.add;return (isvalid f)+10*(invalidate f)+100*(isvalid f);",
+    "expected": {
+      "Integer": 101
+    }
+  },
+  {
+    "name": "validity_property_finalize",
+    "source": "var n=0;class C{property finalize{getter(){n++;return function(){n+=10;};}}}var a=new C();invalidate a;return n;",
+    "expected": {
+      "Integer": 11
+    }
+  },
+  {
+    "name": "validity_operator_precedence",
+    "source": "var a=%[],b=%[];invalidate b;var f=function(){return 1;};return [isvalid f incontextof b,(f incontextof b) isvalid,invalidate a isvalid,isvalid a].join(\",\");",
+    "expected": {
+      "String": [
+        49,
+        44,
+        49,
+        44,
+        48,
+        44,
+        49
+      ]
+    }
+  },
+  {
+    "name": "validity_builtin_class",
+    "source": "var a=new RegExp(\"x\");var n=invalidate RegExp;try{new RegExp(\"y\");}catch(e){n+=10;}return n+100*(isvalid a)+1000*(isvalid RegExp);",
+    "expected": {
+      "Integer": 111
+    }
+  },
+  {
+    "name": "switch_coercion_fallthrough",
+    "source": "var n=0;switch(\"2\"){case 1:n=99;break;case 2:n+=2;case 3:n+=3;break;default:n=88;}return n;",
+    "expected": {
+      "Integer": 5
+    }
+  },
+  {
+    "name": "switch_default_middle",
+    "source": "function f(x){var s=\"\";switch(x){case 1:s+=\"a\";break;default:s+=\"d\";case 2:s+=\"b\";break;case 3:s+=\"c\";}return s;}return f(0)+\",\"+f(2)+\",\"+f(3);",
+    "expected": {
+      "String": [
+        100,
+        98,
+        44,
+        98,
+        44,
+        99
+      ]
+    }
+  },
+  {
+    "name": "switch_case_side_effects",
+    "source": "var n=0,s=\"\";function c(x){s+=x;return x;}switch(c(2)){case c(1):n=99;break;case c(2):n+=2;case c(3):n+=3;}return n+\":\"+s;",
+    "expected": {
+      "String": [
+        53,
+        58,
+        50,
+        49,
+        50
+      ]
+    }
+  },
+  {
+    "name": "switch_case_scope",
+    "source": "var x=8,n=0;switch(1){case 1:var x=2;n+=x;case 2:n+=x;}return n+100*x;",
+    "expected": {
+      "Integer": 810
+    }
+  },
+  {
+    "name": "switch_continue_loop",
+    "source": "var n=0;for(var i=0;i<4;i++){switch(i){case 1:continue;case 2:break;default:n+=10;}n++;}return n;",
+    "expected": {
+      "Integer": 23
+    }
+  },
+  {
+    "name": "switch_nested_break",
+    "source": "var n=0;switch(1){case 1:for(var i=0;i<3;i++){switch(i){case 0:break;default:n++;}}n+=10;break;default:n=99;}return n;",
+    "expected": {
+      "Integer": 12
+    }
+  },
+  {
+    "name": "switch_no_match",
+    "source": "var n=7;switch(9){case 1:n=1;case 2:n=2;}switch(3){}return n;",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "switch_unwind",
+    "source": "var n=0;for(var i=0;i<3;i++){try{with(%[\"v\"=>i]){switch(.v){case 0:continue;case 1:break;default:throw 5;}n+=10;}}catch(e){n+=e;}}return n;",
+    "expected": {
+      "Integer": 15
+    }
+  },
+  {
+    "name": "switch_prelude",
+    "source": "var n=0;switch(9){n=5;case 1:n=1;break;default:n+=7;}return n;",
+    "expected": {
+      "Integer": 12
+    }
+  },
+  {
+    "name": "comma_evaluation",
+    "source": "var a=0,b=0; a=1,b=a+2;return (a+=10,b+=20,a+b);",
+    "expected": {
+      "Integer": 34
+    }
+  },
+  {
+    "name": "comma_call_and_index",
+    "source": "function f(a,b){return a*10+b;}var a=[3,4],i=0;return f((i++,2),a[i++,1])+100*i;",
+    "expected": {
+      "Integer": 224
+    }
+  },
+  {
+    "name": "comma_for_conditions",
+    "source": "var i=0,n=0;for(i=0,n=1;(n++,i<3);i++,n+=2){n+=10;}return n;",
+    "expected": {
+      "Integer": 41
+    }
+  },
+  {
+    "name": "comma_property",
+    "source": "property p{getter(){return this.x;}}var a=%[\"x\"=>7];var n=0;return *(&(n++,p) incontextof a)+100*n;",
+    "expected": {
+      "Integer": 107
     }
   }
 ]

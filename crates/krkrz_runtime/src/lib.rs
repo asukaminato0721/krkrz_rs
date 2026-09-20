@@ -1,7 +1,10 @@
 //! Shared deterministic session services. Presentation and full Kirikiri objects remain unimplemented.
+mod app_lock;
 pub mod audio;
 pub mod compositor;
 mod csv;
+pub mod graphics;
+mod plugins;
 mod save_storage;
 pub mod scheduler;
 pub mod window;
@@ -30,6 +33,8 @@ pub struct Services {
     pub messages: Vec<String>,
     pub trace_enabled: bool,
     pub windows: BTreeMap<usize, window::WindowState>,
+    pub image_cache: graphics::ImageCache,
+    app_locks: app_lock::AppLocks,
     csv_parsers: BTreeMap<usize, csv::Parser>,
     pub arguments: BTreeMap<String, String>,
     loaded_plugins: BTreeSet<String>,
@@ -102,6 +107,10 @@ impl Host for Services {
                 .context("Window requires a non-null context")?;
             if operation == "@initialize" {
                 self.windows.entry(id).or_default();
+                return Ok(Value::Void);
+            }
+            if operation == "@invalidate" {
+                self.windows.remove(&id);
                 return Ok(Value::Void);
             }
             let window = self
@@ -203,6 +212,23 @@ impl Host for Services {
                     .to_ascii_lowercase()
                     .as_str()
                 {
+                    "packinone.dll" => {
+                        if !self.loaded_plugins.contains("packinone.dll") {
+                            for component in ["ScriptsEx.dll", "saveStruct.dll", "csvParser.dll"] {
+                                self.call(vm, "Plugins.link", &[Value::string(component)], budget)?;
+                            }
+                            plugins::packinone(vm)?;
+                            self.loaded_plugins.insert("packinone.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
+                    "kagparserex.dll" => {
+                        if !self.loaded_plugins.contains("kagparserex.dll") {
+                            plugins::declare_class(vm, "KAGParser")?;
+                            self.loaded_plugins.insert("kagparserex.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
                     "scriptsex.dll" => {
                         if !self.loaded_plugins.contains("scriptsex.dll") {
                             vm.register_scripts_ex()?;
@@ -230,6 +256,14 @@ impl Host for Services {
                 }
             }
             "System.getTickCount" => Ok(Value::Integer(self.time_ms as i64)),
+            "System.createAppLock" => Ok(Value::Integer(
+                self.app_locks.acquire(&arg(0)?.text())?.into(),
+            )),
+            "System.get:graphicCacheLimit" => Ok(Value::Integer(self.image_cache.limit() as i64)),
+            "System.set:graphicCacheLimit" => {
+                self.image_cache.set_limit(arg(0)?.integer()?);
+                Ok(Value::Void)
+            }
             "System.getArgument" => Ok(self
                 .arguments
                 .get(&arg(0)?.text())
@@ -354,8 +388,21 @@ impl Session {
         let storage = Storage::open(project, cipher, Limits::default())?;
         let mut vm = Vm::default();
         vm.preprocessor.set("kirikiriz", 1);
+        let constants = krkrz_tjs::compile(
+            "<core constants>",
+            include_str!("../data/core_constants.tjs"),
+        )?;
+        // Trusted, fixed bootstrap data has its own bounded initialization
+        // budget. User scripts retain the full caller-supplied budget.
+        vm.execute(&constants, &mut (), &mut 100_000)?;
         window::register(&mut vm)?;
         let system = vm.register_namespace("System")?;
+        vm.register_native_property(
+            &system,
+            "graphicCacheLimit",
+            Some("System.get:graphicCacheLimit"),
+            Some("System.set:graphicCacheLimit"),
+        )?;
         for (key, value) in [
             ("exePath", format!("{}/", storage.project.display())),
             ("title", "krkrz_rs".into()),
@@ -370,6 +417,7 @@ impl Session {
             "Debug.message",
             "Debug.notice",
             "System.getTickCount",
+            "System.createAppLock",
             "System.getArgument",
             "Scripts.execStorage",
             "Scripts.evalStorage",
@@ -396,6 +444,8 @@ impl Session {
                 messages: vec![],
                 trace_enabled: false,
                 windows: BTreeMap::new(),
+                image_cache: graphics::ImageCache::new(graphics::automatic_limit()),
+                app_locks: app_lock::AppLocks::default(),
                 csv_parsers: BTreeMap::new(),
                 arguments: BTreeMap::from([("-debugwin".into(), "no".into())]),
                 loaded_plugins: BTreeSet::new(),
@@ -440,6 +490,10 @@ impl Session {
             .filter_map(|(id, state)| std::mem::take(&mut state.resize_pending).then_some(*id))
             .collect::<Vec<_>>();
         for id in pending {
+            // An earlier callback in this batch can invalidate another window.
+            if !self.services.windows.contains_key(&id) {
+                continue;
+            }
             let window = Value::object(id);
             let callback = self
                 .vm

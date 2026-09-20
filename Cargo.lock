@@ -402,6 +402,7 @@ dependencies = [
  "krkrz_tjs",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
 ]
 

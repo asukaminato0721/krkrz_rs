@@ -2,10 +2,10 @@ use crate::object::ObjectKind;
 use crate::{Host, Value, Vm, unsupported};
 use anyhow::{Context, Result, bail, ensure};
 
-fn units(value: &Value) -> Vec<u16> {
-    match value {
-        Value::String(s) => s.clone(),
-        _ => value.text().encode_utf16().collect(),
+fn units(value: &Value) -> Result<Vec<u16>> {
+    match value.unary("string")? {
+        Value::String(s) => Ok(s),
+        _ => unreachable!(),
     }
 }
 fn index(key: &Value) -> Option<i64> {
@@ -17,11 +17,14 @@ fn index(key: &Value) -> Option<i64> {
 }
 impl Vm {
     pub(crate) fn delete_member(&mut self, receiver: &Value, key: &Value) -> Result<Value> {
-        let id = self.object_id(receiver)?;
-        self.objects[id].member_flags.remove(&units(key));
-        self.objects[id].member_layout.remove(&units(key));
+        let id = self.object_handle(receiver)?;
+        if !self.objects[id].valid {
+            return Ok(Value::Integer(0));
+        }
+        self.objects[id].member_flags.remove(&units(key)?);
+        self.objects[id].member_layout.remove(&units(key)?);
         let removed = if id == 0 {
-            self.globals.remove(&key.text()).is_some()
+            self.globals.remove(&key.unary("string")?.text()).is_some()
         } else if let ObjectKind::Array(items) = &mut self.objects[id].kind
             && let Some(index) = index(key)
         {
@@ -32,7 +35,7 @@ impl Vm {
                 false
             }
         } else {
-            self.objects[id].members.remove(&units(key)).is_some()
+            self.objects[id].members.remove(&units(key)?).is_some()
         };
         Ok(Value::Integer(i64::from(removed)))
     }
@@ -43,16 +46,16 @@ impl Vm {
         }
         let id = self.object_id(receiver)?;
         if id == 0 {
-            return Ok(self.globals.contains_key(&key.text()));
+            return Ok(self.globals.contains_key(&key.unary("string")?.text()));
         }
-        if self.objects[id].members.contains_key(&units(key)) {
+        if self.objects[id].members.contains_key(&units(key)?) {
             return Ok(true);
         }
         match &self.objects[id].kind {
-            ObjectKind::Class { .. } => Ok(self.class_member(id, &units(key), 0)?.is_some()),
+            ObjectKind::Class { .. } => Ok(self.class_member(id, &units(key)?, 0)?.is_some()),
             ObjectKind::Super { bases, .. } => {
                 for base in bases {
-                    if self.class_member(*base, &units(key), 0)?.is_some() {
+                    if self.class_member(*base, &units(key)?, 0)?.is_some() {
                         return Ok(true);
                     }
                 }
@@ -65,7 +68,33 @@ impl Vm {
         }
     }
     pub fn get_member(&mut self, receiver: &Value, key: &Value, optional: bool) -> Result<Value> {
-        let name = key.text();
+        let name = key.unary("string")?.text();
+        if let Value::Octet(bytes) = receiver {
+            if name == "length" {
+                return Ok(Value::Integer(bytes.len() as i64));
+            }
+            let index = match key {
+                Value::Integer(_) | Value::Real(_) => Some(key.integer()? as i32),
+                Value::String(_) if name.starts_with(|c: char| c.is_ascii_digit()) => Some(
+                    name.chars()
+                        .take_while(char::is_ascii_digit)
+                        .collect::<String>()
+                        .parse::<i64>()? as i32,
+                ),
+                _ => None,
+            };
+            if let Some(index) = index {
+                ensure!(
+                    index >= 0 && (index as usize) < bytes.len(),
+                    "octet index out of range"
+                );
+                return Ok(Value::Integer(bytes[index as usize].into()));
+            }
+            if optional {
+                return Ok(Value::Void);
+            }
+            bail!("octet member not found: {name}");
+        }
         if let Value::String(s) = receiver {
             if name == "length" {
                 return Ok(Value::Integer(s.len() as i64));
@@ -115,19 +144,19 @@ impl Vm {
             self.objects[id].member_layout.rehash(count);
             self.objects[id].hash_generation = self.hash_generation;
         }
-        self.objects[id].member_layout.touch(&units(key));
+        self.objects[id].member_layout.touch(&units(key)?);
         let object = &self.objects[id];
-        if let Some(value) = object.members.get(&units(key)) {
+        if let Some(value) = object.members.get(&units(key)?) {
             return Ok(value.clone());
         }
         if let ObjectKind::Class { .. } = &object.kind
-            && let Some(value) = self.class_member(id, &units(key), 0)?
+            && let Some(value) = self.class_member(id, &units(key)?, 0)?
         {
             return Ok(value);
         }
         if let ObjectKind::Super { bases, context } = &object.kind {
             for base in bases.iter().rev() {
-                if let Some(mut value) = self.class_member(*base, &units(key), 0)? {
+                if let Some(mut value) = self.class_member(*base, &units(key)?, 0)? {
                     if let Value::Object(reference) = &mut value {
                         reference.context = Some(*context);
                     }
@@ -170,13 +199,13 @@ impl Vm {
     }
     pub fn set_member(&mut self, receiver: &Value, key: &Value, value: Value) -> Result<()> {
         let id = self.object_id(receiver)?;
-        self.objects[id].member_flags.remove(&units(key));
+        self.objects[id].member_flags.remove(&units(key)?);
         if id == 0 {
-            self.globals.insert(key.text(), value);
+            self.globals.insert(key.unary("string")?.text(), value);
             return Ok(());
         }
         if let ObjectKind::Array(items) = &mut self.objects[id].kind {
-            let name = key.text();
+            let name = key.unary("string")?.text();
             if name == "count" || name == "length" {
                 let len = value.integer()?;
                 ensure!((0..=1_000_000).contains(&len), "array length exceeds limit");
@@ -197,8 +226,8 @@ impl Vm {
             self.objects[id].members.len() < 100_000,
             "object member limit exceeded"
         );
-        self.objects[id].member_layout.insert(&units(key));
-        self.objects[id].members.insert(units(key), value);
+        self.objects[id].member_layout.insert(&units(key)?);
+        self.objects[id].members.insert(units(key)?, value);
         Ok(())
     }
     pub(crate) fn method(
@@ -273,7 +302,7 @@ impl Vm {
                     Ok(Value::String(s[start.min(end)..start.max(end)].to_vec()))
                 }
                 "indexOf" => {
-                    let needle = units(arg(0)?);
+                    let needle = units(arg(0)?)?;
                     let start = args
                         .get(1)
                         .unwrap_or(&Value::Integer(0))
@@ -290,7 +319,7 @@ impl Vm {
                     Ok(Value::Integer(found.map(|n| n as i64).unwrap_or(-1)))
                 }
                 "split" => {
-                    let separators = units(arg(0)?);
+                    let separators = units(arg(0)?)?;
                     let purge = args.get(2).is_some_and(|v| v.truth().unwrap_or(false));
                     // TJS accepts a set of delimiter characters, not a substring separator.
                     let parts = if separators.is_empty() {
@@ -363,7 +392,7 @@ impl Vm {
                     .unwrap_or(-1),
             )),
             "join" => {
-                let separator = units(arg(0)?);
+                let separator = units(arg(0)?)?;
                 let purge = args.get(2).is_some_and(|v| v.truth().unwrap_or(false));
                 let mut result = vec![];
                 let mut first = true;
@@ -375,7 +404,7 @@ impl Vm {
                         result.extend_from_slice(&separator);
                     }
                     first = false;
-                    result.extend(units(value));
+                    result.extend(units(value)?);
                     ensure!(result.len() <= 32_000_000, "joined string exceeds limit");
                 }
                 Ok(Value::String(result))

@@ -36,7 +36,11 @@ Text stream decoding and TJS value, object, and interpreter semantics follow
 Kirikiri Z (`tjs2/tjsVariant.cpp`, `tjsInterCodeExec.cpp`, `tjsObject.cpp`).
 Preprocessor, regex binding and native-class/window event behavior also follow
 `tjsCompileControl.cpp`, `tjsLex.cpp`, `tjsRegExp.cpp`, `tjsNative.cpp`,
-`visual/WindowIntf.cpp` and `base/EventIntf.h`.
+`visual/WindowIntf.cpp` and `base/EventIntf.h`. Engine constants are adapted from
+`base/ScriptMgnIntf.cpp` (Copyright (C) 2000 W.Dee <dee@kikyou.info> and
+contributors). Cache-limit behavior follows `visual/GraphicsLoaderIntf.cpp`
+and `base/win32/SysInitImpl.cpp`; application-lock behavior follows
+`base/win32/SystemImpl.cpp`.
 ScriptsEx reflection, structural operations and traversal derive from
 `krkrz/krkr2`, revision `dec49af97e174d31059c3ccd7efc700ba3c6b788`,
 `kirikiri2/trunk/kirikiri2/src/plugins/win32/scriptsEx/Main.cpp`.

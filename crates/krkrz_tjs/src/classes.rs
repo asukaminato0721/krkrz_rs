@@ -14,6 +14,7 @@ impl Vm {
             match value {
                 Value::Integer(_) | Value::Real(_) => name == "Number",
                 Value::String(_) => name == "String",
+                Value::Octet(_) => name == "Octet",
                 Value::Object(r) if r.object.is_some() => {
                     let object = &self.objects[self.object_id(value)?];
                     object.classes.iter().any(|n| n == name)
@@ -90,6 +91,7 @@ impl Vm {
         depth: usize,
     ) -> Result<Option<Value>> {
         ensure!(depth < 128, "class inheritance depth exceeded");
+        self.object_id(&Value::object(class))?;
         if let Some(value) = self.objects[class].members.get(key) {
             return Ok(Some(value.clone()));
         }
@@ -111,6 +113,7 @@ impl Vm {
         depth: usize,
     ) -> Result<()> {
         ensure!(depth < 128, "class inheritance depth exceeded");
+        self.object_id(&Value::object(class))?;
         let ObjectKind::Class {
             definition,
             bases,
@@ -126,6 +129,9 @@ impl Vm {
         self.objects[context].classes.push(definition.name.clone());
         if let Some(initializer) = native_initializer {
             host.call_with_context(self, &initializer, instance, &[], budget)?;
+            self.objects[context]
+                .native_finalizers
+                .push(format!("{}.@invalidate", definition.name));
         }
         for (key, mut value) in self.objects[class].members.clone() {
             let flags = self.objects[class]

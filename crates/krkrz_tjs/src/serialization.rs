@@ -263,6 +263,21 @@ impl Writer<'_> {
                 self.text(&format!("{hex} /* {text} */"));
             }
             Value::String(units) => self.quote(units, self.core),
+            Value::Octet(bytes) => {
+                self.text("<% ");
+                for (i, byte) in bytes.iter().enumerate() {
+                    self.charge()?;
+                    if self.core && i > 0 {
+                        self.text(" ");
+                    }
+                    self.text(&if self.core {
+                        format!("{byte:02X}")
+                    } else {
+                        format!("{byte:02x} ")
+                    });
+                }
+                self.text(if self.core { " %>" } else { "%>" });
+            }
             Value::Object(reference) => {
                 let id = if self.core {
                     reference.context.or(reference.object)

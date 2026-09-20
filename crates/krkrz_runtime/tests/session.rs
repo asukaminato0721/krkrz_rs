@@ -172,3 +172,81 @@ fn window_state_and_deferred_resize_callbacks_share_the_session() {
         Value::Integer(320)
     );
 }
+
+#[test]
+fn declared_plugin_exports_do_not_hide_unimplemented_operations() {
+    let dir = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), false, 10_000).unwrap();
+    session.evaluate("Plugins.link('PackinOne.dll')").unwrap();
+    session.evaluate("Plugins.link('KAGParserEx.dll')").unwrap();
+    session
+        .evaluate("Scripts.exec('var parser=KAGParser; var csv=CSVParser;')")
+        .unwrap();
+    session.evaluate("Plugins.link('packinone.DLL')").unwrap();
+    session.evaluate("Plugins.link('kagparserex.DLL')").unwrap();
+    assert_eq!(
+        session
+            .evaluate("parser===KAGParser && csv===CSVParser && FILE_ATTRIBUTE_NORMAL==128")
+            .unwrap(),
+        Value::Integer(1)
+    );
+    assert_eq!(session.evaluate("Scripts.exec('var p=new CSVParser();p.init(\"a,b\");return p.getNextLine().join(\"/\");')").unwrap(), Value::string("a/b"));
+    for call in [
+        "new Layer()",
+        "new KAGParser()",
+        "new Process()",
+        "Storages.getTime(\"x\")",
+    ] {
+        let error = session
+            .evaluate(&format!(
+                "Scripts.exec('try{{{call};}}catch{{return 42;}}')"
+            ))
+            .unwrap_err();
+        assert!(
+            error.downcast_ref::<krkrz_tjs::VmAbort>().is_some(),
+            "{error:#}"
+        );
+    }
+}
+
+#[test]
+fn app_lock_excludes_other_processes_and_releases_with_session() {
+    // A subprocess tests the actual OS lock, not only per-session bookkeeping.
+    const CHILD: &str = "KRKRZ_LOCK_TEST_CHILD";
+    if let Ok(name) = std::env::var(CHILD) {
+        let dir = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        let mut session = Session::open(dir.path(), Some(saves.path()), false, 100).unwrap();
+        assert_eq!(
+            session
+                .evaluate(&format!("System.createAppLock('{name}')"))
+                .unwrap(),
+            Value::Integer(0)
+        );
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    let name = format!(
+        "krkrz-lock-test-{}-{}",
+        std::process::id(),
+        dir.path().file_name().unwrap().to_string_lossy()
+    );
+    let call = format!("System.createAppLock('{name}')");
+    let mut first = Session::open(dir.path(), Some(saves.path()), false, 1000).unwrap();
+    assert_eq!(first.evaluate(&call).unwrap(), Value::Integer(1));
+    assert_eq!(first.evaluate(&call).unwrap(), Value::Integer(0));
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "app_lock_excludes_other_processes_and_releases_with_session",
+        ])
+        .env(CHILD, &name)
+        .status()
+        .unwrap();
+    assert!(status.success());
+    drop(first);
+    let mut second = Session::open(dir.path(), Some(saves.path()), false, 1000).unwrap();
+    assert_eq!(second.evaluate(&call).unwrap(), Value::Integer(1));
+}

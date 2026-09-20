@@ -233,6 +233,10 @@ impl crate::Services {
             self.csv_parsers.entry(id).or_default();
             return Ok(Value::Void);
         }
+        if name == "@invalidate" {
+            self.csv_parsers.remove(&id);
+            return Ok(Value::Void);
+        }
         let parser = self
             .csv_parsers
             .get_mut(&id)

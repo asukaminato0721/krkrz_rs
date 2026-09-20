@@ -4,6 +4,7 @@ mod classes;
 mod compiler;
 mod dispatch;
 pub mod lexer;
+mod lifetime;
 mod literal;
 mod member_layout;
 pub use literal::Literal;

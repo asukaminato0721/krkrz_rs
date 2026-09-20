@@ -9,10 +9,12 @@ use krkrz_core::SourceLocation;
 #[derive(Debug)]
 enum Expr {
     Constant(Box<Expr>),
+    Sequence(Vec<Expr>),
     Value(Value),
     Name(String),
     With,
     ForwardArguments,
+    ForwardTail,
     Spread(Box<Expr>),
     Member(Box<Expr>, Box<Expr>),
     Unary(String, Box<Expr>),
@@ -33,6 +35,7 @@ struct Loop {
     scopes: usize,
     handlers: usize,
     withs: usize,
+    can_continue: bool,
 }
 struct Compiler {
     tokens: Vec<Token>,
@@ -44,6 +47,7 @@ struct Compiler {
     handlers: usize,
     withs: usize,
     loops: Vec<Loop>,
+    unnamed_arguments: usize,
 }
 impl Compiler {
     fn at(&self) -> SourceLocation {
@@ -105,16 +109,28 @@ impl Compiler {
         self.patch_to(i, self.program.code.len());
     }
     fn function(&mut self, name: String) -> Result<Function> {
+        let declaration_at = self.at();
         let mut parameters = vec![];
         let mut rest = None;
+        let mut defaults = vec![];
+        let mut unnamed_arguments = 0;
         if self.eat("(") && !self.eat(")") {
             loop {
                 ensure!(parameters.len() < 1024, "too many TJS parameters");
+                if self.eat("*") {
+                    unnamed_arguments = parameters.len();
+                    self.expect(")")?;
+                    break;
+                }
                 let parameter = self.name()?;
                 if self.eat("*") {
                     rest = Some(parameter);
                     self.expect(")")?;
                     break;
+                }
+                if self.eat("=") {
+                    let at = self.at();
+                    defaults.push((parameters.len(), self.expression(0)?, at));
                 }
                 parameters.push(parameter);
                 if self.eat(")") {
@@ -135,12 +151,62 @@ impl Compiler {
         self.scopes = 1;
         self.handlers = 0;
         self.withs = 0;
-        let result = self.statement();
+        let parent_unnamed = std::mem::replace(&mut self.unnamed_arguments, unnamed_arguments);
+        let result = (|| -> Result<()> {
+            let mut defaults = defaults.into_iter().peekable();
+            for (index, name) in parameters.iter().enumerate() {
+                self.emit(
+                    Op::Parameter {
+                        name: name.clone(),
+                        index,
+                        rest: false,
+                    },
+                    &declaration_at,
+                );
+                if defaults
+                    .peek()
+                    .is_none_or(|(parameter, ..)| *parameter != index)
+                {
+                    continue;
+                }
+                let (_, expression, at) = defaults.next().unwrap();
+                let input = self.compile_expr(
+                    Expr::Binary(
+                        "===".into(),
+                        Box::new(Expr::Name(name.clone())),
+                        Box::new(Expr::Value(Value::Void)),
+                    ),
+                    &at,
+                )?;
+                let end = self.emit(Op::JumpUnless { input, target: 0 }, &at);
+                self.compile_discard(
+                    Expr::Assign(
+                        Box::new(Expr::Name(name.clone())),
+                        "=".into(),
+                        Box::new(expression),
+                    ),
+                    &at,
+                )?;
+                self.patch(end);
+            }
+            if let Some(name) = &rest {
+                self.emit(
+                    Op::Parameter {
+                        name: name.clone(),
+                        index: parameters.len(),
+                        rest: true,
+                    },
+                    &declaration_at,
+                );
+            }
+            self.statement()
+        })();
         let program = std::mem::replace(&mut self.program, parent);
         self.loops = loops;
         self.scopes = scopes;
         self.handlers = handlers;
         self.withs = withs;
+        self.unnamed_arguments = parent_unnamed;
         result?;
         Ok(Function {
             name,
@@ -148,6 +214,18 @@ impl Compiler {
             rest,
             program,
         })
+    }
+    fn full_expression(&mut self) -> Result<Expr> {
+        let mut items = vec![self.expression(0)?];
+        while self.eat(",") {
+            ensure!(items.len() < 100_000, "too many comma expressions");
+            items.push(self.expression(0)?);
+        }
+        if items.len() == 1 {
+            Ok(items.pop().unwrap())
+        } else {
+            Ok(Expr::Sequence(items))
+        }
     }
     fn expression(&mut self, min: u8) -> Result<Expr> {
         self.depth += 1;
@@ -167,8 +245,22 @@ impl Compiler {
         if constant {
             self.pos += 3;
         }
-        let mut left = if self.eat("(") {
-            let e = self.expression(0)?;
+        let cast = self.tokens.get(self.pos..self.pos + 3).and_then(|tokens| {
+            if matches!(&tokens[0].kind, Kind::Symbol(s) if s == "(")
+                && matches!(&tokens[2].kind, Kind::Symbol(s) if s == ")")
+                && let Kind::Name(name) = &tokens[1].kind
+                && ["int", "real", "string"].contains(&name.as_str())
+            {
+                Some(name.clone())
+            } else {
+                None
+            }
+        });
+        let mut left = if let Some(cast) = cast {
+            self.pos += 3;
+            Expr::Unary(cast, Box::new(self.expression(13)?))
+        } else if self.eat("(") {
+            let e = self.full_expression()?;
             self.expect(")")?;
             e
         } else if self.eat("function") {
@@ -179,6 +271,9 @@ impl Compiler {
                 ensure!(!self.eof(), "unterminated array");
                 if self.eat(",") {
                     items.push(Expr::Value(Value::Void));
+                    if self.is("]") {
+                        items.push(Expr::Value(Value::Void));
+                    }
                     continue;
                 }
                 items.push(self.expression(0)?);
@@ -186,6 +281,9 @@ impl Compiler {
                     break;
                 }
                 self.expect(",")?;
+                if self.is("]") {
+                    items.push(Expr::Value(Value::Void));
+                }
             }
             Expr::Array(items)
         } else if self.eat("%[") {
@@ -198,7 +296,7 @@ impl Compiler {
                         e => e,
                     }
                 } else {
-                    self.expect("=>")?;
+                    self.expect(",")?;
                     key
                 };
                 let value = self.expression(0)?;
@@ -216,18 +314,32 @@ impl Compiler {
                 Box::new(Expr::Value(Value::string(&self.name()?))),
             )
         } else if self.eat("++") {
-            Expr::Update(Box::new(self.expression(14)?), true, true)
+            Expr::Update(Box::new(self.expression(13)?), true, true)
         } else if self.eat("--") {
-            Expr::Update(Box::new(self.expression(14)?), false, true)
+            Expr::Update(Box::new(self.expression(13)?), false, true)
         } else if self.eat("new") {
             // Array/Dictionary/Exception constructors currently share call dispatch.
-            let call = self.expression(14)?;
+            let call = self.expression(15)?;
             let Expr::Call(callee, args) = call else {
                 bail!("new requires a constructor call")
             };
             Expr::Construct(callee, args)
         } else if [
-            "!", "~", "+", "-", "typeof", "int", "real", "string", "#", "$", "&", "*", "delete",
+            "!",
+            "~",
+            "+",
+            "-",
+            "typeof",
+            "int",
+            "real",
+            "string",
+            "#",
+            "$",
+            "&",
+            "*",
+            "delete",
+            "isvalid",
+            "invalidate",
         ]
         .iter()
         .any(|op| self.is(op))
@@ -237,7 +349,7 @@ impl Compiler {
                 _ => unreachable!(),
             };
             self.pos += 1;
-            Expr::Unary(op, Box::new(self.expression(14)?))
+            Expr::Unary(op, Box::new(self.expression(13)?))
         } else {
             match self.tokens[self.pos].kind.clone() {
                 Kind::Regex { pattern, flags } => {
@@ -255,8 +367,7 @@ impl Compiler {
                     Expr::Value(v)
                 }
                 Kind::Name(n) => {
-                    if ["invalidate", "isvalid", "instanceof", "switch", "do"].contains(&n.as_str())
-                    {
+                    if ["instanceof", "switch", "do", "octet"].contains(&n.as_str()) {
                         return Err(unsupported(format!("unsupported TJS construct {n}")));
                     }
                     self.pos += 1;
@@ -279,7 +390,7 @@ impl Compiler {
                 continue;
             }
             if self.eat("[") {
-                let key = self.expression(0)?;
+                let key = self.full_expression()?;
                 self.expect("]")?;
                 left = Expr::Member(Box::new(left), Box::new(key));
                 continue;
@@ -291,7 +402,9 @@ impl Compiler {
                         ensure!(args.len() < 1024, "too many TJS arguments");
                         args.push(if self.eat("...") {
                             Expr::ForwardArguments
-                        } else if self.is(",") {
+                        } else if self.eat("*") {
+                            Expr::ForwardTail
+                        } else if self.is(",") || self.is(")") {
                             Expr::Value(Value::Void)
                         } else {
                             self.expression(0)?
@@ -315,6 +428,10 @@ impl Compiler {
             }
             if self.eat("!") {
                 left = Expr::Eval(Box::new(left));
+                continue;
+            }
+            if min <= 13 && self.eat("isvalid") {
+                left = Expr::Unary("isvalid".into(), Box::new(left));
                 continue;
             }
             if min <= 2 && self.eat("?") {
@@ -342,7 +459,7 @@ impl Compiler {
                 "<<" | ">>" | ">>>" => 10,
                 "+" | "-" => 11,
                 "*" | "/" | "%" | "\\" => 12,
-                "incontextof" => 13,
+                "incontextof" => 14,
                 _ => break,
             };
             if precedence < min {
@@ -407,6 +524,26 @@ impl Compiler {
                     at,
                 );
             }
+            Expr::Binary(op, left, right) if op == "incontextof" => {
+                let left = self.read_raw(*left, optional, raw, at)?;
+                let right = self.compile_expr(*right, at)?;
+                self.emit(
+                    Op::Binary {
+                        out,
+                        op,
+                        left,
+                        right,
+                    },
+                    at,
+                );
+            }
+            Expr::Sequence(mut items) => {
+                let last = items.pop().expect("nonempty comma expression");
+                for item in items {
+                    self.compile_discard(item, at)?;
+                }
+                return self.read_raw(last, optional, raw, at);
+            }
             other => return self.compile_expr(other, at),
         }
         Ok(out)
@@ -415,6 +552,7 @@ impl Compiler {
         args.into_iter()
             .map(|e| match e {
                 Expr::ForwardArguments => Ok(Argument::Forward),
+                Expr::ForwardTail => Ok(Argument::ForwardFrom(self.unnamed_arguments)),
                 Expr::Spread(e) => Ok(Argument::Spread(self.compile_expr(*e, at)?)),
                 e => Ok(Argument::Value(self.compile_expr(e, at)?)),
             })
@@ -453,6 +591,13 @@ impl Compiler {
     fn compile_expr(&mut self, e: Expr, at: &SourceLocation) -> Result<usize> {
         let out = self.reg();
         match e {
+            Expr::Sequence(mut items) => {
+                let last = items.pop().expect("nonempty comma expression");
+                for item in items {
+                    self.compile_discard(item, at)?;
+                }
+                return self.compile_expr(last, at);
+            }
             Expr::Constant(value) => {
                 static NEXT_LITERAL: std::sync::atomic::AtomicU64 =
                     std::sync::atomic::AtomicU64::new(1);
@@ -467,7 +612,9 @@ impl Compiler {
                     at,
                 );
             }
-            Expr::ForwardArguments | Expr::Spread(_) => bail!("argument expansion outside call"),
+            Expr::ForwardArguments | Expr::ForwardTail | Expr::Spread(_) => {
+                bail!("argument expansion outside call")
+            }
             Expr::Value(value) => {
                 self.emit(Op::Constant { out, value }, at);
             }
@@ -792,13 +939,14 @@ impl Compiler {
         }
         Ok(())
     }
-    fn begin_loop(&mut self) {
+    fn begin_loop(&mut self, can_continue: bool) {
         self.loops.push(Loop {
             breaks: vec![],
             continues: vec![],
             scopes: self.scopes,
             handlers: self.handlers,
             withs: self.withs,
+            can_continue,
         });
     }
     fn finish_loop(&mut self, continue_at: usize) {
@@ -809,6 +957,76 @@ impl Compiler {
         for jump in state.continues {
             self.patch_to(jump, continue_at);
         }
+    }
+    fn switch(&mut self, at: &SourceLocation) -> Result<()> {
+        self.expect("(")?;
+        let expression = self.full_expression()?;
+        self.expect(")")?;
+        let reference = self.compile_expr(expression, at)?;
+        self.expect("{")?;
+        self.enter_scope(at);
+        self.begin_loop(false);
+        self.enter_scope(at);
+        let mut mismatch = None;
+        let mut default = None;
+        let mut has_case = false;
+        while !self.eat("}") {
+            ensure!(!self.eof(), "unterminated switch");
+            if self.is("case") || self.is("default") {
+                let at = self.at();
+                let case = self.eat("case");
+                if !case {
+                    self.expect("default")?;
+                }
+                // Each case has its own lexical scope. A fallthrough skips the
+                // next comparison, while a mismatch skips the preceding body.
+                self.leave_scope(&at);
+                let fallthrough = has_case.then(|| self.emit(Op::Jump { target: 0 }, &at));
+                if let Some(jump) = mismatch {
+                    self.patch(jump);
+                }
+                if case {
+                    let expression = self.full_expression()?;
+                    let right = self.compile_expr(expression, &at)?;
+                    let input = self.reg();
+                    self.emit(
+                        Op::Binary {
+                            out: input,
+                            op: "==".into(),
+                            left: reference,
+                            right,
+                        },
+                        &at,
+                    );
+                    mismatch = Some(self.emit(Op::JumpUnless { input, target: 0 }, &at));
+                } else {
+                    mismatch = Some(self.emit(Op::Jump { target: 0 }, &at));
+                    default = Some(self.program.code.len());
+                }
+                self.expect(":")?;
+                if let Some(jump) = fallthrough {
+                    self.patch(jump);
+                }
+                self.enter_scope(&at);
+                has_case = true;
+            } else {
+                self.statement()?;
+            }
+        }
+        self.leave_scope(at);
+        let end = has_case.then(|| self.emit(Op::Jump { target: 0 }, at));
+        if let Some(jump) = mismatch {
+            self.patch(jump);
+        }
+        if let Some(target) = default {
+            self.emit(Op::Jump { target }, at);
+        }
+        if let Some(jump) = end {
+            self.patch(jump);
+        }
+        self.finish_loop(0);
+        self.leave_scope(at);
+        Ok(())
     }
     fn statement(&mut self) -> Result<()> {
         self.expr_nodes = 0;
@@ -876,7 +1094,7 @@ impl Compiler {
                 definition.methods.push(self.function(name)?);
             } else if self.eat("property") {
                 definition.properties.push(self.property()?);
-            } else if self.eat("var") {
+            } else if self.eat("var") || self.eat("const") {
                 loop {
                     let field = self.name()?;
                     let expr = if self.eat("=") {
@@ -949,7 +1167,7 @@ impl Compiler {
             self.emit(Op::Declare { name, input: out }, &at);
             return Ok(());
         }
-        if self.eat("var") {
+        if self.eat("var") || self.eat("const") {
             self.variables(&at)?;
             return self.end();
         }
@@ -1003,14 +1221,14 @@ impl Compiler {
             return Ok(());
         }
         if self.eat("throw") {
-            let e = self.expression(0)?;
+            let e = self.full_expression()?;
             let input = self.compile_expr(e, &at)?;
             self.emit(Op::Throw { input }, &at);
             return self.end();
         }
         if self.eat("with") {
             self.expect("(")?;
-            let e = self.expression(0)?;
+            let e = self.full_expression()?;
             self.expect(")")?;
             let input = self.compile_expr(e, &at)?;
             self.emit(Op::EnterWith { input }, &at);
@@ -1022,7 +1240,7 @@ impl Compiler {
         }
         if self.eat("if") {
             self.expect("(")?;
-            let e = self.expression(0)?;
+            let e = self.full_expression()?;
             self.expect(")")?;
             let input = self.compile_expr(e, &at)?;
             let jump = self.emit(Op::JumpUnless { input, target: 0 }, &at);
@@ -1037,13 +1255,16 @@ impl Compiler {
             }
             return Ok(());
         }
+        if self.eat("switch") {
+            return self.switch(&at);
+        }
         if self.eat("for") {
             self.enter_scope(&at);
             self.expect("(")?;
-            if self.eat("var") {
+            if self.eat("var") || self.eat("const") {
                 self.variables(&at)?;
             } else if !self.is(";") {
-                let e = self.expression(0)?;
+                let e = self.full_expression()?;
                 self.compile_expr(e, &at)?;
             }
             self.expect(";")?;
@@ -1051,7 +1272,7 @@ impl Compiler {
             let test = if self.is(";") {
                 Expr::Value(Value::Integer(1))
             } else {
-                self.expression(0)?
+                self.full_expression()?
             };
             let input = self.compile_expr(test, &at)?;
             let end = self.emit(Op::JumpUnless { input, target: 0 }, &at);
@@ -1059,10 +1280,10 @@ impl Compiler {
             let step = if self.is(")") {
                 None
             } else {
-                Some(self.expression(0)?)
+                Some(self.full_expression()?)
             };
             self.expect(")")?;
-            self.begin_loop();
+            self.begin_loop(true);
             self.statement()?;
             let continue_at = self.program.code.len();
             if let Some(step) = step {
@@ -1077,11 +1298,11 @@ impl Compiler {
         if self.eat("while") {
             let top = self.program.code.len();
             self.expect("(")?;
-            let e = self.expression(0)?;
+            let e = self.full_expression()?;
             self.expect(")")?;
             let input = self.compile_expr(e, &at)?;
             let end = self.emit(Op::JumpUnless { input, target: 0 }, &at);
-            self.begin_loop();
+            self.begin_loop(true);
             self.statement()?;
             self.emit(Op::Jump { target: top }, &at);
             self.patch(end);
@@ -1093,10 +1314,12 @@ impl Compiler {
             if !is_break {
                 self.expect("continue")?;
             }
-            let state = self
+            let index = self
                 .loops
-                .last()
-                .ok_or_else(|| anyhow::anyhow!("loop control outside a loop"))?;
+                .iter()
+                .rposition(|state| is_break || state.can_continue)
+                .ok_or_else(|| anyhow::anyhow!("control statement outside a loop or switch"))?;
+            let state = &self.loops[index];
             self.emit(
                 Op::Unwind {
                     scopes: state.scopes,
@@ -1106,7 +1329,7 @@ impl Compiler {
                 &at,
             );
             let jump = self.emit(Op::Jump { target: 0 }, &at);
-            let state = self.loops.last_mut().unwrap();
+            let state = &mut self.loops[index];
             if is_break {
                 state.breaks.push(jump);
             } else {
@@ -1118,15 +1341,15 @@ impl Compiler {
             let e = if self.is(";") || self.is("}") || self.eof() {
                 Expr::Value(Value::Void)
             } else {
-                self.expression(0)?
+                self.full_expression()?
             };
             let input = self.compile_expr(e, &at)?;
             self.emit(Op::Return { input }, &at);
             return self.end();
         }
-        let e = self.expression(0)?;
+        let e = self.full_expression()?;
         if self.eat("if") {
-            let test = self.expression(0)?;
+            let test = self.full_expression()?;
             let input = self.compile_expr(test, &at)?;
             let end = self.emit(Op::JumpUnless { input, target: 0 }, &at);
             self.compile_discard(e, &at)?;
@@ -1162,11 +1385,12 @@ pub fn compile_with_preprocessor(
         handlers: 0,
         withs: 0,
         loops: vec![],
+        unnamed_arguments: 0,
     };
     let result = (|| -> Result<()> {
         if expression {
             let at = c.at();
-            let e = c.expression(0)?;
+            let e = c.full_expression()?;
             ensure!(c.eof(), "unexpected tokens after TJS expression");
             let input = c.compile_expr(e, &at)?;
             c.emit(Op::Return { input }, &at);
@@ -1255,9 +1479,6 @@ mod tests {
                 .to_string()
                 .contains("loop.tjs:1:1")
         );
-        assert!(
-            format!("{:#}", compile("switch.tjs", "switch(x) {}").unwrap_err())
-                .contains("unsupported TJS construct switch")
-        );
+        assert!(compile("switch.tjs", "switch(x) {case 1: continue;}").is_err());
     }
 }

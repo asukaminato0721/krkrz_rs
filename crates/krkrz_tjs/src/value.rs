@@ -13,6 +13,7 @@ pub enum Value {
     Integer(i64),
     Real(f64),
     String(Vec<u16>),
+    Octet(Vec<u8>),
     Object(ObjectRef),
 }
 impl Value {
@@ -36,6 +37,7 @@ impl Value {
             Self::Integer(_) => "Integer",
             Self::Real(_) => "Real",
             Self::String(_) => "String",
+            Self::Octet(_) => "Octet",
             Self::Object(_) => "Object",
         }
     }
@@ -45,6 +47,14 @@ impl Value {
             Self::Integer(n) => n.to_string(),
             Self::Real(n) => real_text(*n),
             Self::String(s) => String::from_utf16_lossy(s),
+            Self::Octet(bytes) => format!(
+                "(octet)<% {} %>",
+                bytes
+                    .iter()
+                    .map(|b| format!("{b:02X}"))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
             Self::Object(o) => {
                 if o.object.is_none() {
                     "(object)(0x00000000)".into()
@@ -59,6 +69,7 @@ impl Value {
             Self::Void => Self::Integer(0),
             Self::String(s) => parse_number(&String::from_utf16_lossy(s)),
             Self::Object(_) => bail!("cannot convert TJS Object to number"),
+            Self::Octet(_) => bail!("cannot convert TJS Octet to number"),
             v => v.clone(),
         })
     }
@@ -80,6 +91,7 @@ impl Value {
         Ok(match self {
             Self::Real(n) => *n != 0.0,
             Self::Object(o) => o.object.is_some(),
+            Self::Octet(bytes) => !bytes.is_empty(),
             _ => self.integer()? != 0,
         })
     }
@@ -90,6 +102,8 @@ impl Value {
         match (self, b) {
             (Self::Integer(a), Self::Integer(b)) => return a == b,
             (Self::String(a), Self::String(b)) => return a == b,
+            (Self::Octet(a), Self::Octet(b)) => return a == b,
+            (Self::Octet(_), _) | (_, Self::Octet(_)) => return false,
             (Self::Object(a), Self::Object(b)) => return a == b,
             (Self::Object(_), _) | (_, Self::Object(_)) => return false,
             _ => (),
@@ -116,11 +130,13 @@ impl Value {
             "real" => Self::Real(self.real()?),
             "string" => Self::String(match self {
                 Self::String(s) => s.clone(),
+                Self::Octet(_) => bail!("cannot convert TJS Octet to String"),
                 _ => self.text().encode_utf16().collect(),
             }),
             "typeof" => Self::string(self.type_name()),
             "#" => match self {
                 Self::String(s) => Self::Integer(s.first().copied().unwrap_or(0) as i64),
+                Self::Octet(_) => bail!("cannot convert TJS Octet to String"),
                 _ => Self::Integer(self.text().encode_utf16().next().unwrap_or(0) as i64),
             },
             "$" => Self::String(vec![self.integer()? as u16]),
@@ -135,6 +151,9 @@ impl Value {
             "===" => return boolean(self.strict_equal(b)),
             "!==" => return boolean(!self.strict_equal(b)),
             "+" if matches!(self, Self::String(_)) || matches!(b, Self::String(_)) => {
+                if matches!(self, Self::Octet(_)) || matches!(b, Self::Octet(_)) {
+                    bail!("cannot convert TJS Octet to String");
+                }
                 let mut units = match self {
                     Self::String(s) => s.clone(),
                     _ => self.text().encode_utf16().collect(),
@@ -182,6 +201,17 @@ impl Value {
                 return Ok(Self::Integer(n));
             }
             _ => (),
+        }
+        if op == "+"
+            && let (Self::Octet(a), Self::Octet(b)) = (self, b)
+        {
+            anyhow::ensure!(
+                a.len().saturating_add(b.len()) <= 64 << 20,
+                "octet exceeds size limit"
+            );
+            let mut bytes = a.clone();
+            bytes.extend_from_slice(b);
+            return Ok(Self::Octet(bytes));
         }
         let (a, b) = (self.number()?, b.number()?);
         if let (Self::Integer(a), Self::Integer(b)) = (&a, &b) {

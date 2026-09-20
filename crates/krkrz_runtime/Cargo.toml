@@ -14,3 +14,4 @@ krkrz_tjs.workspace = true
 krkrz_kag.workspace = true
 encoding_rs.workspace = true
 tempfile.workspace = true
+sha2.workspace = true

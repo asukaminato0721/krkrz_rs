@@ -318,7 +318,63 @@ impl Lexer<'_> {
             return self.next_inner();
         }
         let kind =
-            if c == '/' && self.reserved && self.expect_operand {
+            if self.source[self.pos..].starts_with("<%") {
+                self.bump();
+                self.bump();
+                let mut bytes = vec![];
+                let mut pending = None;
+                loop {
+                    ensure!(self.peek().is_some(), "unterminated octet literal");
+                    if self.source[self.pos..].starts_with("%>") {
+                        self.bump();
+                        self.bump();
+                        if let Some(byte) = pending {
+                            bytes.push(byte);
+                        }
+                        break;
+                    }
+                    if self.source[self.pos..].starts_with("//") {
+                        while self.peek().is_some_and(|c| c != '\n' && c != '\r') {
+                            self.bump();
+                        }
+                        continue;
+                    }
+                    if self.source[self.pos..].starts_with("/*") {
+                        self.bump();
+                        self.bump();
+                        let mut depth = 1;
+                        while depth > 0 {
+                            if self.source[self.pos..].starts_with("/*") {
+                                self.bump();
+                                self.bump();
+                                depth += 1;
+                            } else if self.source[self.pos..].starts_with("*/") {
+                                self.bump();
+                                self.bump();
+                                depth -= 1;
+                            } else {
+                                ensure!(self.bump().is_some(), "unterminated octet comment");
+                            }
+                        }
+                        continue;
+                    }
+                    let ch = self.bump().unwrap();
+                    if let Some(digit) = ch.to_digit(16) {
+                        if let Some(high) = pending.take() {
+                            bytes.push((high << 4) | digit as u8);
+                        } else {
+                            pending = Some(digit as u8);
+                        }
+                    } else if ch == ','
+                        && let Some(byte) = pending.take()
+                    {
+                        bytes.push(byte);
+                    }
+                    ensure!(bytes.len() <= 64 << 20, "octet literal exceeds size limit");
+                }
+                ensure!(bytes.len() <= 64 << 20, "octet literal exceeds size limit");
+                Kind::Literal(Value::Octet(bytes))
+            } else if c == '/' && self.reserved && self.expect_operand {
                 self.bump();
                 let mut pattern = String::new();
                 loop {
@@ -491,7 +547,9 @@ impl Lexer<'_> {
                         for _ in op.chars() {
                             self.bump();
                         }
-                        symbol = Some(op.to_string());
+                        // Upstream lexes the fat arrow as the comma token,
+                        // including in arrays, arguments and declarations.
+                        symbol = Some(if op == "=>" { "," } else { op }.to_string());
                         break;
                     }
                 }
