@@ -137,3 +137,16 @@ fn invalid_filter_handles_and_parameters_are_regular_errors() {
         Value::string("unload")
     );
 }
+
+#[test]
+fn changing_filter_windows_cannot_exceed_the_session_memory_budget() {
+    let (_project, _saves, mut session) = session();
+    session.evaluate("Scripts.exec('for(var i=0;i<24;i++){var f=new WaveSoundBuffer.PhaseVocoder();f.window=64;b.filters.add(f);}b.open(\"tone.wav\");for(var i=0;i<24;i++)b.filters[i].window=32768;b.play();')").unwrap();
+    let sound = session.evaluate("b").unwrap();
+    let error = session.render_sound_source(&sound, 128).unwrap_err();
+    assert!(format!("{error:#}").contains("memory limit"));
+    assert_eq!(
+        session.evaluate("b.samplePosition").unwrap(),
+        Value::Integer(0)
+    );
+}

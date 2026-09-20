@@ -25,6 +25,20 @@ pub(crate) struct Pipeline {
     position: Option<u64>,
 }
 impl Pipeline {
+    pub(crate) fn memory_bound(&self) -> usize {
+        // FFT scratch, phase history, overlap buffers and source-position queues.
+        // Reserve for unopened stages too, so repeated sound opens stay bounded.
+        self.stages
+            .iter()
+            .map(|stage| {
+                let window = stage
+                    .dsp
+                    .as_ref()
+                    .map_or_else(|| stage.settings.get().window, |d| d.window);
+                window * (self.channels + 1) * 96
+            })
+            .sum()
+    }
     pub(super) fn new(channels: usize, filters: Vec<(usize, Settings)>) -> Self {
         Self {
             channels,
@@ -55,6 +69,10 @@ impl Pipeline {
         if self.stages.is_empty() {
             return source.render(frames);
         }
+        ensure!(
+            self.memory_bound() <= 128 << 20,
+            "wave filter memory limit exceeded"
+        );
         let mut work = 16_000_000usize;
         let block = pull(&mut self.stages, source, self.channels, frames, &mut work)?;
         if let Some(position) = block.positions.last() {

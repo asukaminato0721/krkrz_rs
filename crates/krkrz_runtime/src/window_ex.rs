@@ -437,6 +437,12 @@ impl Services {
                 self.image_cache.clear();
                 return Ok(Value::Void);
             }
+            "System.setIconicPreview" => {
+                arg(0)?.truth()?;
+                // The plugin returns SUCCEEDED(DwmSetWindowAttribute(...)).
+                // A Linux/headless host has no Windows application HWND or DWM.
+                return Ok(Value::Integer(0));
+            }
             _ => {}
         }
         if let Some(name) = operation.strip_prefix("Window.") {

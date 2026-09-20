@@ -131,6 +131,7 @@ impl Services {
         channels: i32,
         ahead: i32,
     ) -> Result<Value> {
+        self.validate_sound_filter_memory()?;
         let sound = &self.sounds[&id];
         let Some(loaded) = &sound.loaded else {
             return Ok(Value::Integer(0));
@@ -192,6 +193,7 @@ impl Session {
     /// Labels and EOF are delivered by `dispatch_events`, never during the pull.
     pub fn render_sound_source(&mut self, value: &Value, frames: usize) -> Result<AudioBlock> {
         ensure!(frames <= 1_000_000, "audio block exceeds frame limit");
+        self.services.validate_sound_filter_memory()?;
         let Value::Object(reference) = value else {
             anyhow::bail!("sound must be an object");
         };

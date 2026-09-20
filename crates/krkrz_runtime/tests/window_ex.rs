@@ -30,6 +30,18 @@ const SETUP: &str =
     "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');";
 
 #[test]
+fn linux_host_reports_dwm_preview_unavailable() {
+    assert_eq!(
+        run(
+            &format!("{SETUP}return System.setIconicPreview(true);"),
+            10_000
+        )
+        .unwrap(),
+        Value::Integer(0)
+    );
+}
+
+#[test]
 fn system_menu_snapshot_reset_and_selection_callback() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();

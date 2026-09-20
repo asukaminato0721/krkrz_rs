@@ -13,6 +13,8 @@ pub struct WindowState {
     pub border_style: i32,
     pub inner_width: i32,
     pub inner_height: i32,
+    pub zoom_numer: i32,
+    pub zoom_denom: i32,
     pub left: i32,
     pub top: i32,
     pub primary_layer: Value,
@@ -33,6 +35,8 @@ impl Default for WindowState {
             border_style: 2,
             inner_width: 10,
             inner_height: 10,
+            zoom_numer: 1,
+            zoom_denom: 1,
             left: 0,
             top: 0,
             primary_layer: Value::NULL,
@@ -53,6 +57,7 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         "add",
         "remove",
         "setInnerSize",
+        "setZoom",
         "setPos",
         "onResize",
     ] {
@@ -65,6 +70,8 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         "borderStyle",
         "innerWidth",
         "innerHeight",
+        "zoomNumer",
+        "zoomDenom",
         "left",
         "top",
     ] {
@@ -95,6 +102,19 @@ fn dimension(value: &Value) -> Result<i32> {
     Ok(value)
 }
 impl WindowState {
+    fn set_zoom(&mut self, numer: i32, denom: i32) -> Result<()> {
+        // Preserve the sign chosen by the original signed Euclidean algorithm.
+        // Widen intermediates to avoid i32::MIN / -1 overflow.
+        let (mut a, mut b) = (i64::from(numer), i64::from(denom));
+        while b != 0 {
+            (a, b) = (b, a % b);
+        }
+        ensure!(a != 0, "window zoom ratio is undefined (0/0)");
+        self.zoom_numer = (i64::from(numer) / a) as i32;
+        self.zoom_denom = (i64::from(denom) / a) as i32;
+        Ok(())
+    }
+
     pub(crate) fn call(&mut self, name: &str, args: &[Value]) -> Result<Value> {
         ensure!(self.constructed, "Window constructor has not run");
         let arg = |index: usize| {
@@ -108,6 +128,8 @@ impl WindowState {
                 "borderStyle" => Value::Integer(self.border_style.into()),
                 "innerWidth" => Value::Integer(self.inner_width.into()),
                 "innerHeight" => Value::Integer(self.inner_height.into()),
+                "zoomNumer" => Value::Integer(self.zoom_numer.into()),
+                "zoomDenom" => Value::Integer(self.zoom_denom.into()),
                 "left" => Value::Integer(self.left.into()),
                 "top" => Value::Integer(self.top.into()),
                 "primaryLayer" => self.primary_layer.clone(),
@@ -140,6 +162,9 @@ impl WindowState {
             "set:borderStyle" => self.border_style = coordinate(arg(0)?)?,
             "set:innerWidth" => self.set_size(dimension(arg(0)?)?, self.inner_height),
             "set:innerHeight" => self.set_size(self.inner_width, dimension(arg(0)?)?),
+            "set:zoomNumer" => self.set_zoom(coordinate(arg(0)?)?, self.zoom_denom)?,
+            "set:zoomDenom" => self.set_zoom(self.zoom_numer, coordinate(arg(0)?)?)?,
+            "setZoom" => self.set_zoom(coordinate(arg(0)?)?, coordinate(arg(1)?)?)?,
             "set:left" => self.left = coordinate(arg(0)?)?,
             "set:top" => self.top = coordinate(arg(0)?)?,
             "setInnerSize" => self.set_size(dimension(arg(0)?)?, dimension(arg(1)?)?),

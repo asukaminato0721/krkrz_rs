@@ -24,6 +24,7 @@ mod sound;
 mod sound_stream;
 mod text_render;
 mod timer;
+mod video_overlay;
 pub mod window;
 mod window_ex;
 use anyhow::{Context, Result, ensure};
@@ -68,6 +69,7 @@ pub struct Services {
     csv_parsers: BTreeMap<usize, csv::Parser>,
     sounds: BTreeMap<usize, sound::Sound>,
     vocoders: BTreeMap<usize, phase_vocoder::Settings>,
+    videos: BTreeMap<usize, video_overlay::Video>,
     psb_files: BTreeMap<usize, Option<psb_file::File>>,
     text_renderers: BTreeMap<usize, text_render::Renderer>,
     layer_draw: layer_draw::State,
@@ -183,6 +185,9 @@ impl Host for Services {
         }
         if let Some(operation) = name.strip_prefix("GdiPlus.") {
             return self.layer_draw_call(vm, operation, context, args, budget);
+        }
+        if let Some(operation) = name.strip_prefix("VideoOverlay.") {
+            return self.video_call(vm, operation, context, args, budget);
         }
         if let Some(operation) = name.strip_prefix("PhaseVocoder.") {
             return self.vocoder_call(operation, context, args);
@@ -660,6 +665,7 @@ impl Session {
         font::register(&mut vm)?;
         sound::register(&mut vm)?;
         phase_vocoder::register(&mut vm)?;
+        video_overlay::register(&mut vm)?;
         let system = vm.register_namespace("System")?;
         for name in ["screenWidth", "screenHeight"] {
             vm.register_native_property(&system, name, Some(&format!("System.get:{name}")), None)?;
@@ -728,6 +734,7 @@ impl Session {
                 csv_parsers: BTreeMap::new(),
                 sounds: BTreeMap::new(),
                 vocoders: BTreeMap::new(),
+                videos: BTreeMap::new(),
                 psb_files: BTreeMap::new(),
                 text_renderers: BTreeMap::new(),
                 layer_draw: layer_draw::State::default(),

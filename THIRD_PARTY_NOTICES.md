@@ -37,7 +37,8 @@ Kirikiri Z (`tjs2/tjsVariant.cpp`, `tjsInterCodeExec.cpp`, `tjsObject.cpp`).
 Preprocessor, regex binding and native-class/window event behavior also follow
 `tjsCompileControl.cpp`, `tjsInterCodeGen.cpp`, `syntax/tjs.y`, `tjsLex.cpp`,
 `tjsRegExp.cpp`, `tjsNative.cpp`,
-`visual/WindowIntf.cpp` and `base/EventIntf.h`. Engine constants are adapted from
+`visual/WindowIntf.cpp`, `environ/win32/WindowFormUnit.cpp`,
+`visual/VideoOvlIntf.cpp`, `visual/win32/VideoOvlImpl.cpp` and `base/EventIntf.h`. Engine constants are adapted from
 `base/ScriptMgnIntf.cpp` (Copyright (C) 2000 W.Dee <dee@kikyou.info> and
 contributors). Cache-limit behavior follows `visual/GraphicsLoaderIntf.cpp`
 and `base/win32/SysInitImpl.cpp`; application-lock behavior follows

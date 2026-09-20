@@ -4,8 +4,9 @@ This repository contains an initial implementation toward the Otome Domain
 playable slice. **The game is not playable yet.** Original startup loads the
 framework through `Override.tjs`, registers eight embedded fonts, and constructs
 the game menus, including windowEx system menus. Execution currently stops in
-`MessageLayer.tjs` at the missing Layer focus API, after native KAGParser,
-base-layer and message-layer construction. The title,
+`MainWindow.tjs` at the missing Window.fullScreen API, after message layers,
+voice tracks (including PhaseVocoder), movie objects and zoom initialization.
+Movie decoding and native presentation remain unimplemented. The title,
 New Game, first choice, scene transition, and original save/load acceptance
 criteria have not been met. Execution failures never count as checkpoints.
 

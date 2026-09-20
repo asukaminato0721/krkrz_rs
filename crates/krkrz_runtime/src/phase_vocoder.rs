@@ -46,6 +46,19 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
 }
 
 impl Services {
+    pub(crate) fn validate_sound_filter_memory(&self) -> Result<()> {
+        let bytes: usize = self
+            .sounds
+            .values()
+            .filter_map(|s| s.loaded.as_ref())
+            .map(|s| s.pipeline.memory_bound())
+            .sum();
+        ensure!(
+            bytes <= 128 << 20,
+            "session wave filter memory limit exceeded"
+        );
+        Ok(())
+    }
     pub(crate) fn vocoder_call(
         &mut self,
         op: &str,
@@ -162,6 +175,17 @@ impl Services {
             );
             connected.push((id, settings));
         }
-        Ok(Pipeline::new(channels, connected))
+        let pipeline = Pipeline::new(channels, connected);
+        let other_bytes: usize = self
+            .sounds
+            .values()
+            .filter_map(|s| s.loaded.as_ref())
+            .map(|s| s.pipeline.memory_bound())
+            .sum();
+        ensure!(
+            other_bytes + pipeline.memory_bound() <= 128 << 20,
+            "session wave filter memory limit exceeded"
+        );
+        Ok(pipeline)
     }
 }
