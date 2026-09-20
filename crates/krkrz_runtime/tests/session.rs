@@ -55,3 +55,26 @@ fn nested_scripts_cannot_reset_execution_budget() {
     assert!(format!("{:#}", session.startup().unwrap_err()).contains("execution budget exhausted"));
     assert_eq!(session.budget, 0);
 }
+
+#[test]
+fn script_catch_cannot_hide_missing_plugins_or_compiled_script_support() {
+    for call in [
+        "Plugins.link('required.dll')",
+        "Scripts.execStorage('binary.tjs')",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("startup.tjs"),
+            format!("try{{{call};}}catch{{return 42;}}"),
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("binary.tjs"), b"TJS2").unwrap();
+        let mut session = Session::open(dir.path(), Some(saves.path()), false, 1000).unwrap();
+        let error = session.startup().unwrap_err();
+        assert!(
+            error.downcast_ref::<krkrz_tjs::VmAbort>().is_some(),
+            "{error:#}"
+        );
+    }
+}

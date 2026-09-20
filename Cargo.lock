@@ -376,6 +376,7 @@ dependencies = [
  "anyhow",
  "krkrz_core",
  "serde",
+ "serde_json",
  "tempfile",
 ]
 

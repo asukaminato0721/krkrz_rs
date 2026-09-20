@@ -1,5 +1,11 @@
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
+/// An arena-owned dispatch object and its optional bound `this` context.
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct ObjectRef {
+    pub object: Option<usize>,
+    pub context: Option<usize>,
+}
 /// TJS strings retain UTF-16 code units, including isolated surrogates.
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub enum Value {
@@ -7,8 +13,19 @@ pub enum Value {
     Integer(i64),
     Real(f64),
     String(Vec<u16>),
+    Object(ObjectRef),
 }
 impl Value {
+    pub const NULL: Self = Self::Object(ObjectRef {
+        object: None,
+        context: None,
+    });
+    pub(crate) fn object(id: usize) -> Self {
+        Self::Object(ObjectRef {
+            object: Some(id),
+            context: None,
+        })
+    }
     pub fn string(s: &str) -> Self {
         Self::String(s.encode_utf16().collect())
     }
@@ -18,6 +35,7 @@ impl Value {
             Self::Integer(_) => "Integer",
             Self::Real(_) => "Real",
             Self::String(_) => "String",
+            Self::Object(_) => "Object",
         }
     }
     pub fn text(&self) -> String {
@@ -26,12 +44,20 @@ impl Value {
             Self::Integer(n) => n.to_string(),
             Self::Real(n) => n.to_string(),
             Self::String(s) => String::from_utf16_lossy(s),
+            Self::Object(o) => {
+                if o.object.is_none() {
+                    "(object)(0x00000000)".into()
+                } else {
+                    format!("(object)({:?})", o.object)
+                }
+            }
         }
     }
     pub fn number(&self) -> Result<Self> {
         Ok(match self {
             Self::Void => Self::Integer(0),
             Self::String(s) => parse_number(&String::from_utf16_lossy(s)),
+            Self::Object(_) => bail!("cannot convert TJS Object to number"),
             v => v.clone(),
         })
     }
@@ -52,6 +78,7 @@ impl Value {
     pub fn truth(&self) -> Result<bool> {
         Ok(match self {
             Self::Real(n) => *n != 0.0,
+            Self::Object(o) => o.object.is_some(),
             _ => self.integer()? != 0,
         })
     }
@@ -62,6 +89,8 @@ impl Value {
         match (self, b) {
             (Self::Integer(a), Self::Integer(b)) => return a == b,
             (Self::String(a), Self::String(b)) => return a == b,
+            (Self::Object(a), Self::Object(b)) => return a == b,
+            (Self::Object(_), _) | (_, Self::Object(_)) => return false,
             _ => (),
         }
         if matches!(self, Self::String(_)) || matches!(b, Self::String(_)) {
@@ -88,11 +117,12 @@ impl Value {
                 Self::String(s) => s.clone(),
                 _ => self.text().encode_utf16().collect(),
             }),
-            "typeof" => Self::string(if matches!(self, Self::Void) {
-                "undefined"
-            } else {
-                self.type_name()
-            }),
+            "typeof" => Self::string(self.type_name()),
+            "#" => match self {
+                Self::String(s) => Self::Integer(s.first().copied().unwrap_or(0) as i64),
+                _ => Self::Integer(self.text().encode_utf16().next().unwrap_or(0) as i64),
+            },
+            "$" => Self::String(vec![self.integer()? as u16]),
             _ => bail!("unsupported TJS unary operator {op}"),
         })
     }

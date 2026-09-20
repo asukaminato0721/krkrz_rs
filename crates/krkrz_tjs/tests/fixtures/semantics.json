@@ -1,0 +1,478 @@
+[
+  {
+    "name": "throw_value",
+    "source": "try { throw 42; } catch(e) { return e; }",
+    "expected": {
+      "Integer": 42
+    }
+  },
+  {
+    "name": "catch_scope",
+    "source": "var e=2; try { throw 9; } catch(e) {} return e;",
+    "expected": {
+      "Integer": 2
+    }
+  },
+  {
+    "name": "nested_rethrow",
+    "source": "try { try { throw 4; } catch(e) { throw e+3; } } catch(e) {return e;}",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "caught_arithmetic",
+    "source": "var z=0; try { return 1\\z; } catch(e) { return typeof e.message; }",
+    "expected": {
+      "String": [
+        83,
+        116,
+        114,
+        105,
+        110,
+        103
+      ]
+    }
+  },
+  {
+    "name": "caught_call",
+    "source": "function f(){throw 7;} try{f();}catch(e){return e;}",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "catch_forms",
+    "source": "var x=0; try{throw 1;} catch {x++;} try{throw 2;} catch() {x++;} return x;",
+    "expected": {
+      "Integer": 2
+    }
+  },
+  {
+    "name": "block_scope",
+    "source": "var x=2; {var x=3;} return x;",
+    "expected": {
+      "Integer": 2
+    }
+  },
+  {
+    "name": "function_parameters",
+    "source": "function add(a,b){return a+b;} return add(3,4);",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "recursion",
+    "source": "function fact(n){if(n<=1)return 1; return n*fact(n-1);} return fact(6);",
+    "expected": {
+      "Integer": 720
+    }
+  },
+  {
+    "name": "no_lexical_capture",
+    "source": "var x=2; function f(x){return function {return x;};} return f(4)();",
+    "expected": {
+      "Integer": 2
+    }
+  },
+  {
+    "name": "member_call_context",
+    "source": "var x=2; var o=%[\"x\"=>3]; o.f=function{return this.x;}; return o.f();",
+    "expected": {
+      "Integer": 3
+    }
+  },
+  {
+    "name": "extracted_function_context",
+    "source": "var x=2; var o=%[\"x\"=>3]; o.f=function{return x;}; var f=o.f; return f();",
+    "expected": {
+      "Integer": 2
+    }
+  },
+  {
+    "name": "explicit_bound_context",
+    "source": "var x=2; var o=%[\"x\"=>3]; var f=function{return x;} incontextof o; return f();",
+    "expected": {
+      "Integer": 3
+    }
+  },
+  {
+    "name": "with_dot",
+    "source": "var x=2; var o=%[\"x\"=>3]; with(o){return .x+x;}",
+    "expected": {
+      "Integer": 5
+    }
+  },
+  {
+    "name": "array_mutation",
+    "source": "var a=[1,2,3]; a.erase(0); a.reverse(); a.add(4); return a.join(\",\");",
+    "expected": {
+      "String": [
+        51,
+        44,
+        50,
+        44,
+        52
+      ]
+    }
+  },
+  {
+    "name": "dictionary_missing",
+    "source": "var d=%[]; return typeof d.missing;",
+    "expected": {
+      "String": [
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "indexed_assignment_once",
+    "source": "var a=[2,3], i=0; a[i++]+=5; return a[0]*10+i;",
+    "expected": {
+      "Integer": 71
+    }
+  },
+  {
+    "name": "postfix_and_prefix",
+    "source": "var a=1; return (a++)*100+(++a)*10+a;",
+    "expected": {
+      "Integer": 133
+    }
+  },
+  {
+    "name": "for_and_continue",
+    "source": "var n=0; for(var i=0;i<8;i++){if(i==2)continue; if(i==5)break; n+=i;} return n;",
+    "expected": {
+      "Integer": 8
+    }
+  },
+  {
+    "name": "unwind_loop_handler",
+    "source": "var x=0; for(var i=0;i<3;i++){try{if(i==1)continue; x++;}catch{x=99;}} try{throw 1;}catch(e){x+=e;}return x;",
+    "expected": {
+      "Integer": 3
+    }
+  },
+  {
+    "name": "interpolation",
+    "source": "var x=2; return @\"a${x+1}:&x+2;\";",
+    "expected": {
+      "String": [
+        97,
+        51,
+        58,
+        52
+      ]
+    },
+    "reference_skip": "Pinned Habakiri rejects interpolated strings with adjacent literal text; Rust-only regression."
+  },
+  {
+    "name": "nested_interpolation",
+    "source": "return @\"a${@'b${3}'}c\";",
+    "expected": {
+      "String": [
+        97,
+        98,
+        51,
+        99
+      ]
+    },
+    "reference_skip": "Pinned Habakiri rejects interpolated strings with adjacent literal text; Rust-only regression."
+  },
+  {
+    "name": "interpolation_utf16",
+    "source": "return @\"${'\\xd800'}\";",
+    "expected": {
+      "String": [
+        55296
+      ]
+    }
+  },
+  {
+    "name": "dynamic_eval",
+    "source": "return \"3+4\"!;",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "eval_context",
+    "source": "var x=2; var o=%[\"x\"=>3]; var f=function {var x=7; return \"x\"!;} incontextof o; return f();",
+    "expected": {
+      "Integer": 3
+    }
+  },
+  {
+    "name": "character_operators",
+    "source": "return #($65);",
+    "expected": {
+      "Integer": 65
+    }
+  },
+  {
+    "name": "string_utf16_length",
+    "source": "return \"a\ud83d\ude00\".length;",
+    "expected": {
+      "Integer": 3
+    }
+  },
+  {
+    "name": "string_split_character_set",
+    "source": "return \"axbyc\".split(\"xy\").join(\"|\");",
+    "expected": {
+      "String": [
+        97,
+        124,
+        98,
+        124,
+        99
+      ]
+    }
+  },
+  {
+    "name": "new_dictionary",
+    "source": "var d=new Dictionary(); d.x=5; return d.x;",
+    "expected": {
+      "Integer": 5
+    }
+  },
+  {
+    "name": "new_exception",
+    "source": "try{throw new Exception(\"hello\");}catch(e){return e.message;}",
+    "expected": {
+      "String": [
+        104,
+        101,
+        108,
+        108,
+        111
+      ]
+    }
+  },
+  {
+    "name": "null_truth",
+    "source": "return (!null)*10 + (null==void);",
+    "expected": {
+      "Integer": 10
+    }
+  },
+  {
+    "name": "optional_member_type",
+    "source": "return typeof global.missing;",
+    "expected": {
+      "String": [
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "return_through_try",
+    "source": "function f(){try{return 7;}catch{return 9;}}return f();",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "class_constructor",
+    "source": "class A {var x=1; function A(n){x=n;} function get(){return x;}} var a=new A(7); return a.get();",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "class_extracted_method",
+    "source": "class A {var x=3; function f(){return x;}} var a=new A(); var f=a.f; return f();",
+    "expected": {
+      "Integer": 3
+    }
+  },
+  {
+    "name": "class_field_timing",
+    "source": "var n=0; class A {var x=++n;} var a=new A(); var b=new A(); return a.x*10+b.x;",
+    "expected": {
+      "Integer": 12
+    }
+  },
+  {
+    "name": "class_no_implicit_base_constructor",
+    "source": "class A {var x=2; function A(){x=9;}} class B extends A {} var b=new B(); return b.x;",
+    "expected": {
+      "Integer": 2
+    }
+  },
+  {
+    "name": "class_super",
+    "source": "class A {var x=2; function f(){return x;}} class B extends A {function f(){return super.f()+5;}} var b=new B(); return b.f();",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "class_explicit_base_constructor",
+    "source": "class A {var x=2; function A(n){x=n;}} class B extends A {function B(n){super.A(n+1);}} var b=new B(8); return b.x;",
+    "expected": {
+      "Integer": 9
+    }
+  },
+  {
+    "name": "property_global",
+    "source": "var v=2; property p {getter(){return v;} setter(n){v=n;}} p=7; return p;",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "property_instance",
+    "source": "class A {var x=2; property p {getter(){return x;} setter(n){x=n;}}} var a=new A(); a.p+=3; return a.p;",
+    "expected": {
+      "Integer": 5
+    }
+  },
+  {
+    "name": "property_explicit_context",
+    "source": "class A {var x=7; property p {getter(){return x;}}} var a=new A(); return *(&A.p incontextof a);",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "property_local_reference",
+    "source": "class A {var x=3; property p {getter(){return x;} setter(n){x=n;}} function f(){var p=&this.p; *p=8;return *p;}} var a=new A(); return a.f();",
+    "expected": {
+      "Integer": 8
+    }
+  },
+  {
+    "name": "forward_arguments",
+    "source": "function f(a,b){return a*10+b;} function g(){return f(...);}return g(2,3);",
+    "expected": {
+      "Integer": 23
+    }
+  },
+  {
+    "name": "rest_parameters",
+    "source": "function f(a,rest*){return a+rest[0]*10+rest.count;}return f(1,2,3);",
+    "expected": {
+      "Integer": 23
+    }
+  },
+  {
+    "name": "spread_arguments",
+    "source": "function f(a,b,c){return a*100+b*10+c;}var a=[2,3];return f(1,a*);",
+    "expected": {
+      "Integer": 123
+    }
+  },
+  {
+    "name": "forward_constructor",
+    "source": "class A {var x; function A(n){x=n;}} class B extends A {function B(){super.A(...);}} var b=new B(8);return b.x;",
+    "expected": {
+      "Integer": 8
+    }
+  },
+  {
+    "name": "typeof_void",
+    "source": "return typeof void;",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100
+      ]
+    }
+  },
+  {
+    "name": "typeof_local_void",
+    "source": "function f(){var x;return typeof x;}return f();",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100
+      ]
+    }
+  },
+  {
+    "name": "typeof_stored_void",
+    "source": "var d=%[\"x\"=>void];return typeof d.x;",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100
+      ]
+    }
+  },
+  {
+    "name": "typeof_missing_array",
+    "source": "var a=[];return typeof a[0];",
+    "expected": {
+      "String": [
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "split_reserved_argument",
+    "source": "return \"a,,b\".split(\",\",true,false).count;",
+    "expected": {
+      "Integer": 3
+    }
+  },
+  {
+    "name": "split_purge_empty",
+    "source": "return \"a,,b\".split(\",\",,true).count;",
+    "expected": {
+      "Integer": 2
+    }
+  },
+  {
+    "name": "instanceof_inheritance",
+    "source": "class A{} class B extends A{}var b=new B();return (b instanceof \"A\")+(b instanceof \"B\")*10+(b instanceof \"Object\")*100;",
+    "expected": {
+      "Integer": 111
+    }
+  },
+  {
+    "name": "instanceof_types",
+    "source": "return (2 instanceof \"Number\")+(null instanceof \"Object\")*10+(\"a\" instanceof \"String\")*100;",
+    "expected": {
+      "Integer": 111
+    }
+  },
+  {
+    "name": "instanceof_exception",
+    "source": "var e=new Exception(\"x\");return e instanceof \"Exception\";",
+    "expected": {
+      "Integer": 1
+    }
+  }
+]

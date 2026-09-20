@@ -1,8 +1,9 @@
 # Rust Kirikiri Z compatibility engine
 
 This repository contains an initial implementation toward the Otome Domain
-playable slice. **The game is not playable yet.** Original startup currently
-stops at `startup.tjs:5:49` because TJS `try` is not implemented. The title,
+playable slice. **The game is not playable yet.** Original startup now
+executes through its framework call. Compilation of `system/Initialize.tjs`
+stops at line 80 because TJS preprocessing (`@if`) is not implemented. The title,
 New Game, first choice, scene transition, and original save/load acceptance
 criteria have not been met. Execution failures never count as checkpoints.
 
@@ -38,11 +39,13 @@ cargo run -p krkrz_cli --bin krkrz_tool -- eval '3 / 2'
 ```
 
 Other commands: `extract NAME NEW_FILE`, `image NAME NEW_PNG`, `audio NAME`,
-`loops NAME`, `kag NAME`, and `compile NAME`. Extraction is always explicit and refuses to
+`loops NAME`, `kag NAME`, `compile NAME`, and `exec NAME`. Extraction is always explicit and refuses to
 replace files or write inside the installation. `inventory` lists **static
 candidates**, including lexer diagnostics; it does not establish reachability.
 `compile` emits this implementation's diagnostic register instructions, not
-Kirikiri's original bytecode format.
+Kirikiri's original bytecode format. `exec` runs a source file in the standalone
+TJS VM and prints a JSON value; Kirikiri services are provided by the engine
+command instead.
 
 An unfiltered `verify` deliberately returns failure for the installation's
 malformed protection-notice entry. It verifies all other resolved resources
@@ -78,13 +81,13 @@ outside the installation.
 |---|---|---|
 | `krkrz_core` | Storage-name normalization, resource limits, source/input types, separate save path selection | Full Kirikiri URI/media normalization |
 | `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, text decoding, PSB v2, PNG/JPEG/TLG5, Vorbis PCM, SLI loops and labels | TLG6, PSB plugin object bindings, font integration, MPEG/AlphaMovie |
-| `krkrz_tjs` | UTF-16 primitive values, lexer, register compiler/interpreter for expressions, assignment, `var`, blocks, `if`, `while`, `return`, qualified native calls, short-circuiting and budgets | Full numeric grammar, object/property dispatch, closures, classes, arrays/dictionaries, exceptions, preprocessing, interpolation, original bytecode loader and differential tests |
+| `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, loops, interpolation, argument forwarding/rest/spread, `instanceof`, register interpreter, budgets, community differential tests | Preprocessing, full grammar and built-ins, function hoisting/default arguments, object finalization/collection, original bytecode loader |
 | `krkrz_kag` | Ordered tags/attributes, labels, text/escaped brackets, multiline tags, explicit jump/call/return and restorable cursor | Macros, conditionals, parameter expansion, script-driven parser bindings, complete KAGParserEx state |
 | `krkrz_runtime` | Shared session services, nested script execution, basic storage/script/debug natives, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
 | `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, static inventory, primitive evaluation, startup diagnostics | Deterministic interactive replay, input-driven checkpoints, frame/audio comparison, native play |
 
 The compositor, scheduler and PCM mixer are tested components, not yet a game player.
-The primitive interpreter deliberately rejects unsupported constructs; it does
+The interpreter deliberately rejects unsupported constructs; it does
 not replace TJS with JavaScript. KAG cursor restoration is not a game save.
 
 ## Installed-game validation
@@ -98,7 +101,8 @@ KRKRZ_PROJECT_DIR=/path/to/otome_domain \
   cargo test -p krkrz_runtime --test installed_game -- --ignored --nocapture
 ```
 
-See [validation.md](docs/validation.md) for observed results and outstanding
+See [community-implementations.md](docs/community-implementations.md) for the
+community source map and differential-test command, [validation.md](docs/validation.md) for observed results and outstanding
 acceptance work, [references.json](docs/references.json) for pinned research
 sources, and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for adapted code
 notices. Proprietary scripts, scenarios, media and saves are not included.

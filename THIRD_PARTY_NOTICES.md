@@ -32,7 +32,10 @@ IN THE SOFTWARE.
 ## Kirikiri
 
 TLG5 decoding derives from W.Dee’s TLG implementation through GARbro.
-Text stream decoding and TJS primitive semantics follow Kirikiri Z.
+Text stream decoding and TJS value, object, and interpreter semantics follow
+Kirikiri Z (`tjs2/tjsVariant.cpp`, `tjsInterCodeExec.cpp`, `tjsObject.cpp`).
+Habakiri is used only as an external differential-test reference. Its Java
+sources are not bundled or linked into the Rust engine.
 SLI parsing and PCM loop mixing are adapted from Kirikiri Z
 `sound/WaveLoopManager.cpp` and `sound/WaveLoopManager.h`.
 Original TLG copyright: Copyright (C) 2000-2005 W.Dee and contributors.

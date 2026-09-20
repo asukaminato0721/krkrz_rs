@@ -2,10 +2,10 @@
 pub mod audio;
 pub mod compositor;
 pub mod scheduler;
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use krkrz_assets::{cx::CxEncryption, storage::Storage, text};
 use krkrz_core::{Limits, save_directory, storage_name};
-use krkrz_tjs::{Host, Instruction, Value, Vm, compile, compile_expression};
+use krkrz_tjs::{Host, Instruction, Value, Vm, compile, compile_expression, unsupported};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 #[derive(Clone, Debug, Serialize)]
@@ -27,12 +27,15 @@ pub struct Services {
 }
 impl Services {
     fn script(&mut self, vm: &mut Vm, name: &str, budget: &mut u64) -> Result<Value> {
-        ensure!(self.depth < 128, "script call stack depth exceeded");
+        if self.depth >= 128 {
+            return Err(unsupported("script call stack depth exceeded"));
+        }
         let bytes = self.storage.read(name)?;
-        ensure!(
-            !bytes.starts_with(b"TJS2"),
-            "{name}: compiled TJS2 bytecode execution is not implemented"
-        );
+        if bytes.starts_with(b"TJS2") {
+            return Err(unsupported(format!(
+                "{name}: compiled TJS2 bytecode execution is not implemented"
+            )));
+        }
         let source = text::decode(&bytes).with_context(|| format!("decode {name}"))?;
         let program = compile(name, &source)?;
         self.depth += 1;
@@ -62,7 +65,9 @@ impl Host for Services {
                 } else {
                     compile("<exec>", &source)?
                 };
-                ensure!(self.depth < 128, "dynamic script call depth exceeded");
+                if self.depth >= 128 {
+                    return Err(unsupported("dynamic script call depth exceeded"));
+                }
                 self.depth += 1;
                 let result = vm.execute(&program, self, budget);
                 self.depth -= 1;
@@ -85,7 +90,9 @@ impl Host for Services {
                     Err(_) => Ok(Value::string("")),
                 }
             }
-            _ => bail!("unsupported Kirikiri native operation: {name}"),
+            _ => Err(unsupported(format!(
+                "unsupported Kirikiri native operation: {name}"
+            ))),
         }
     }
     fn trace(&mut self, instruction: &Instruction) -> Result<()> {
@@ -121,8 +128,23 @@ impl Session {
             None
         };
         let storage = Storage::open(project, cipher, Limits::default())?;
+        let mut vm = Vm::default();
+        for name in [
+            "Debug.message",
+            "Debug.notice",
+            "System.getTickCount",
+            "Scripts.execStorage",
+            "Scripts.exec",
+            "Scripts.eval",
+            "Storages.addAutoPath",
+            "Storages.isExistentStorage",
+            "Storages.getPlacedPath",
+            "Plugins.link",
+        ] {
+            vm.register_native(name)?;
+        }
         Ok(Self {
-            vm: Vm::default(),
+            vm,
             services: Services {
                 storage,
                 save_dir,

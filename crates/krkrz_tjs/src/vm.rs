@@ -1,8 +1,16 @@
-use crate::Value;
+use crate::object::{Object, ObjectKind, Thrown};
+use crate::{Class, Function, ObjectRef, Property, Value, VmAbort, unsupported};
 use anyhow::{Context, Result, bail, ensure};
 use krkrz_core::SourceLocation;
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum Argument {
+    Value(usize),
+    Spread(usize),
+    Forward,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Op {
     Constant {
@@ -13,8 +21,14 @@ pub enum Op {
         out: usize,
         name: String,
         optional: bool,
+        raw: bool,
     },
     Store {
+        name: String,
+        input: usize,
+        raw: bool,
+    },
+    Declare {
         name: String,
         input: usize,
     },
@@ -33,6 +47,68 @@ pub enum Op {
         left: usize,
         right: usize,
     },
+    Get {
+        out: usize,
+        object: usize,
+        key: usize,
+        optional: bool,
+        raw: bool,
+    },
+    TypeOfMember {
+        out: usize,
+        object: usize,
+        key: usize,
+    },
+    Set {
+        object: usize,
+        key: usize,
+        input: usize,
+        raw: bool,
+    },
+    Array {
+        out: usize,
+        items: Vec<usize>,
+    },
+    Dictionary {
+        out: usize,
+        items: Vec<(usize, usize)>,
+    },
+    Function {
+        out: usize,
+        function: Box<Function>,
+    },
+    Call {
+        out: usize,
+        callee: usize,
+        context: Option<usize>,
+        args: Vec<Argument>,
+    },
+    Construct {
+        out: usize,
+        callee: usize,
+        args: Vec<Argument>,
+    },
+    Class {
+        out: usize,
+        definition: Box<Class>,
+        bases: Vec<usize>,
+    },
+    Property {
+        out: usize,
+        definition: Box<Property>,
+    },
+    ReadProperty {
+        out: usize,
+        input: usize,
+    },
+    WriteProperty {
+        property: usize,
+        input: usize,
+    },
+    Eval {
+        out: usize,
+        input: usize,
+    },
     Jump {
         target: usize,
     },
@@ -40,10 +116,27 @@ pub enum Op {
         input: usize,
         target: usize,
     },
-    Call {
+    EnterScope,
+    LeaveScope,
+    EnterWith {
+        input: usize,
+    },
+    LeaveWith,
+    With {
         out: usize,
-        name: String,
-        args: Vec<usize>,
+    },
+    Try {
+        target: usize,
+        exception: usize,
+    },
+    EndTry,
+    Unwind {
+        scopes: usize,
+        handlers: usize,
+        withs: usize,
+    },
+    Throw {
+        input: usize,
     },
     Return {
         input: usize,
@@ -62,34 +155,127 @@ pub struct Program {
 }
 impl Program {
     pub fn validate(&self) -> Result<()> {
+        self.validate_depth(0)
+    }
+    fn validate_depth(&self, depth: usize) -> Result<()> {
         ensure!(
-            self.registers <= 1_000_000 && self.code.len() <= 1_000_000,
+            depth < 128 && self.registers <= 1_000_000 && self.code.len() <= 1_000_000,
             "TJS program exceeds limit"
         );
         for i in &self.code {
-            let regs = match &i.op {
-                Op::Constant { out, .. } | Op::Load { out, .. } => vec![*out],
-                Op::Store { input, .. } | Op::Return { input } | Op::JumpUnless { input, .. } => {
-                    vec![*input]
+            let mut regs = vec![];
+            match &i.op {
+                Op::Constant { out, value } => {
+                    ensure!(
+                        !matches!(value, Value::Object(o) if o.object.is_some() || o.context.is_some()),
+                        "live object handle in TJS constant pool"
+                    );
+                    regs.push(*out);
                 }
-                Op::Move { out, input } | Op::Unary { out, input, .. } => vec![*out, *input],
+                Op::Load { out, .. } | Op::With { out } => regs.push(*out),
+                Op::Store { input, .. }
+                | Op::Declare { input, .. }
+                | Op::Return { input }
+                | Op::Throw { input }
+                | Op::EnterWith { input } => regs.push(*input),
+                Op::ReadProperty { out, input }
+                | Op::Move { out, input }
+                | Op::Unary { out, input, .. }
+                | Op::Eval { out, input } => regs.extend([*out, *input]),
                 Op::Binary {
                     out, left, right, ..
-                } => vec![*out, *left, *right],
-                Op::Call { out, args, .. } => {
-                    let mut r = args.clone();
-                    r.push(*out);
-                    r
+                } => regs.extend([*out, *left, *right]),
+                Op::Get {
+                    out, object, key, ..
                 }
-                Op::Jump { .. } => vec![],
-            };
+                | Op::TypeOfMember { out, object, key } => regs.extend([*out, *object, *key]),
+                Op::Set {
+                    object, key, input, ..
+                } => regs.extend([*object, *key, *input]),
+                Op::Array { out, items } => {
+                    regs.push(*out);
+                    regs.extend(items);
+                }
+                Op::Dictionary { out, items } => {
+                    regs.push(*out);
+                    for (key, value) in items {
+                        regs.extend([*key, *value]);
+                    }
+                }
+                Op::Function { out, function } => {
+                    regs.push(*out);
+                    ensure!(function.parameters.len() <= 1024, "too many TJS parameters");
+                    function.program.validate_depth(depth + 1)?;
+                }
+                Op::WriteProperty { property, input } => regs.extend([*property, *input]),
+                Op::Property { out, definition } => {
+                    regs.push(*out);
+                    for f in [&definition.getter, &definition.setter]
+                        .into_iter()
+                        .flatten()
+                    {
+                        f.program.validate_depth(depth + 1)?;
+                    }
+                }
+                Op::Class {
+                    out,
+                    definition,
+                    bases,
+                } => {
+                    regs.push(*out);
+                    regs.extend(bases);
+                    for f in &definition.methods {
+                        f.program.validate_depth(depth + 1)?;
+                    }
+                    for (_, p) in &definition.fields {
+                        p.validate_depth(depth + 1)?;
+                    }
+                    for p in &definition.properties {
+                        for f in [&p.getter, &p.setter].into_iter().flatten() {
+                            f.program.validate_depth(depth + 1)?;
+                        }
+                    }
+                }
+                Op::Construct { out, callee, args } => {
+                    regs.extend([*out, *callee]);
+                    for arg in args {
+                        if let Argument::Value(r) | Argument::Spread(r) = arg {
+                            regs.push(*r);
+                        }
+                    }
+                }
+                Op::Call {
+                    out,
+                    callee,
+                    context,
+                    args,
+                } => {
+                    ensure!(args.len() <= 1024, "too many TJS arguments");
+                    regs.extend([*out, *callee]);
+                    regs.extend(context);
+                    for arg in args {
+                        if let Argument::Value(r) | Argument::Spread(r) = arg {
+                            regs.push(*r);
+                        }
+                    }
+                }
+                Op::JumpUnless { input, target } => {
+                    regs.push(*input);
+                    ensure!(*target <= self.code.len(), "invalid TJS branch target");
+                }
+                Op::Jump { target } => {
+                    ensure!(*target <= self.code.len(), "invalid TJS branch target")
+                }
+                Op::Try { target, exception } => {
+                    regs.push(*exception);
+                    ensure!(*target < self.code.len(), "invalid TJS handler target");
+                }
+                _ => (),
+            }
             ensure!(
                 regs.into_iter().all(|r| r < self.registers),
                 "invalid TJS register operand"
             );
-            if let Op::Jump { target } | Op::JumpUnless { target, .. } = i.op {
-                ensure!(target <= self.code.len(), "invalid TJS branch target");
-            }
         }
         Ok(())
     }
@@ -101,45 +287,235 @@ pub trait Host {
     }
 }
 impl Host for () {
-    fn call(
-        &mut self,
-        _vm: &mut Vm,
-        name: &str,
-        _args: &[Value],
-        _budget: &mut u64,
-    ) -> Result<Value> {
-        bail!("unsupported native call: {name}")
+    fn call(&mut self, _: &mut Vm, name: &str, _: &[Value], _: &mut u64) -> Result<Value> {
+        Err(unsupported(format!("unsupported native call: {name}")))
     }
 }
-#[derive(Default)]
 pub struct Vm {
     pub globals: BTreeMap<String, Value>,
     pub executed: u64,
+    pub(crate) objects: Vec<Object>,
+    depth: usize,
+}
+impl Default for Vm {
+    fn default() -> Self {
+        let mut vm = Self {
+            globals: BTreeMap::new(),
+            executed: 0,
+            objects: vec![Object::new(ObjectKind::Global)],
+            depth: 0,
+        };
+        for name in ["Array", "Dictionary", "Exception"] {
+            vm.register_native(name).expect("initial TJS heap");
+        }
+        vm
+    }
+}
+struct Handler {
+    target: usize,
+    exception: usize,
+    scopes: usize,
+    withs: usize,
+}
+pub(crate) struct Frame {
+    scopes: Vec<BTreeMap<String, Value>>,
+    handlers: Vec<Handler>,
+    withs: Vec<Value>,
+    pub(crate) context: usize,
+    owner: Option<usize>,
+    arguments: Vec<Value>,
+}
+impl Frame {
+    pub(crate) fn global() -> Self {
+        Self {
+            scopes: vec![],
+            handlers: vec![],
+            withs: vec![],
+            context: 0,
+            owner: None,
+            arguments: vec![],
+        }
+    }
 }
 impl Vm {
-    /// The budget is shared by repeated executions through the caller's mutable counter.
+    pub(crate) fn allocate(&mut self, kind: ObjectKind) -> Result<Value> {
+        if self.objects.len() >= 100_000 {
+            return Err(unsupported("TJS object allocation limit exceeded"));
+        }
+        let id = self.objects.len();
+        self.objects.push(Object::new(kind));
+        Ok(Value::object(id))
+    }
+    pub(crate) fn object_id(&self, value: &Value) -> Result<usize> {
+        let Value::Object(ObjectRef {
+            object: Some(id), ..
+        }) = value
+        else {
+            bail!("TJS value is not a non-null object");
+        };
+        ensure!(*id < self.objects.len(), "invalid TJS object handle");
+        Ok(*id)
+    }
+    pub fn register_namespace(&mut self, name: &str) -> Result<Value> {
+        if let Some(value) = self.globals.get(name) {
+            return Ok(value.clone());
+        }
+        let value = self.allocate(ObjectKind::Namespace)?;
+        self.globals.insert(name.into(), value.clone());
+        Ok(value)
+    }
+    pub fn register_native(&mut self, name: &str) -> Result<()> {
+        let value = self.allocate(ObjectKind::Native(name.into()))?;
+        if let Some((namespace, member)) = name.split_once('.') {
+            ensure!(
+                !member.contains('.'),
+                "native registration supports one namespace component"
+            );
+            let receiver = self.register_namespace(namespace)?;
+            self.set_member(&receiver, &Value::string(member), value)?;
+        } else {
+            self.globals.insert(name.into(), value);
+        }
+        Ok(())
+    }
     pub fn execute(
         &mut self,
         program: &Program,
         host: &mut impl Host,
         budget: &mut u64,
     ) -> Result<Value> {
-        program.validate()?;
+        self.run(program, host, budget, Frame::global())
+    }
+    pub(crate) fn run(
+        &mut self,
+        program: &Program,
+        host: &mut impl Host,
+        budget: &mut u64,
+        frame: Frame,
+    ) -> Result<Value> {
+        program
+            .validate()
+            .map_err(|e| unsupported(format!("invalid TJS program: {e}")))?;
+        if self.depth >= 128 {
+            return Err(unsupported("TJS call stack depth exceeded"));
+        }
+        self.depth += 1;
+        let result = self.run_inner(program, host, budget, frame);
+        self.depth -= 1;
+        result
+    }
+    fn load_name(
+        &mut self,
+        frame: &Frame,
+        name: &str,
+        optional: bool,
+        raw: bool,
+        host: &mut impl Host,
+        budget: &mut u64,
+    ) -> Result<Value> {
+        if name == "global" {
+            return Ok(Value::object(0));
+        }
+        if name == "this" {
+            return Ok(Value::object(frame.context));
+        }
+        if name == "super" {
+            let owner = frame.owner.context("super outside class method")?;
+            let ObjectKind::Class { bases, .. } = &self.objects[owner].kind else {
+                bail!("invalid super owner")
+            };
+            return self.allocate(ObjectKind::Super {
+                bases: bases.clone(),
+                context: frame.context,
+            });
+        }
+        for scope in frame.scopes.iter().rev() {
+            if let Some(value) = scope.get(name) {
+                return Ok(value.clone());
+            }
+        }
+        if frame.context != 0 {
+            let key: Vec<u16> = name.encode_utf16().collect();
+            if self.objects[frame.context].members.contains_key(&key) {
+                return self.get_property(
+                    &Value::object(frame.context),
+                    &Value::string(name),
+                    optional,
+                    raw,
+                    host,
+                    budget,
+                );
+            }
+        }
+        if self.globals.contains_key(name) {
+            return self.get_property(
+                &Value::object(0),
+                &Value::string(name),
+                optional,
+                raw,
+                host,
+                budget,
+            );
+        }
+        if optional {
+            Ok(Value::Void)
+        } else {
+            bail!("member not found: {name}")
+        }
+    }
+    fn store_name(
+        &mut self,
+        frame: &mut Frame,
+        name: &str,
+        value: Value,
+        declare: bool,
+    ) -> Result<()> {
+        if declare {
+            if let Some(scope) = frame.scopes.last_mut() {
+                scope.insert(name.into(), value);
+            } else {
+                self.globals.insert(name.into(), value);
+            }
+            return Ok(());
+        }
+        for scope in frame.scopes.iter_mut().rev() {
+            if let Some(member) = scope.get_mut(name) {
+                *member = value;
+                return Ok(());
+            }
+        }
+        if frame.context != 0 {
+            let key: Vec<u16> = name.encode_utf16().collect();
+            if let Some(member) = self.objects[frame.context].members.get_mut(&key) {
+                *member = value;
+                return Ok(());
+            }
+        }
+        self.globals.insert(name.into(), value);
+        Ok(())
+    }
+    fn run_inner(
+        &mut self,
+        program: &Program,
+        host: &mut impl Host,
+        budget: &mut u64,
+        mut frame: Frame,
+    ) -> Result<Value> {
         let mut registers = vec![Value::Void; program.registers];
         let mut ip = 0;
         while let Some(instruction) = program.code.get(ip) {
             let at = &instruction.location;
-            ensure!(
-                *budget > 0,
-                "{}:{}:{}: execution budget exhausted after {} instructions",
-                at.storage,
-                at.line,
-                at.column,
-                self.executed
-            );
+            if *budget == 0 {
+                return Err(unsupported(format!(
+                    "{}:{}:{}: execution budget exhausted after {} instructions",
+                    at.storage, at.line, at.column, self.executed
+                )));
+            }
             *budget -= 1;
             self.executed += 1;
-            host.trace(instruction)?;
+            host.trace(instruction)
+                .map_err(|e| unsupported(format!("trace failed: {e:#}")))?;
+            let executing = ip;
             ip += 1;
             let result = (|| -> Result<Option<Value>> {
                 match &instruction.op {
@@ -148,18 +524,36 @@ impl Vm {
                         out,
                         name,
                         optional,
+                        raw,
                     } => {
-                        registers[*out] = if *optional {
-                            self.globals.get(name).cloned().unwrap_or(Value::Void)
-                        } else {
-                            self.globals
-                                .get(name)
-                                .with_context(|| format!("member not found: {name}"))?
-                                .clone()
-                        }
+                        registers[*out] =
+                            self.load_name(&frame, name, *optional, *raw, host, budget)?
                     }
-                    Op::Store { name, input } => {
-                        self.globals.insert(name.clone(), registers[*input].clone());
+                    Op::Declare { name, input } => {
+                        self.store_name(&mut frame, name, registers[*input].clone(), true)?
+                    }
+                    Op::Store { name, input, raw } => {
+                        let local = frame.scopes.iter().any(|s| s.contains_key(name));
+                        if local {
+                            self.store_name(&mut frame, name, registers[*input].clone(), false)?;
+                        } else {
+                            let context = if self.objects[frame.context]
+                                .members
+                                .contains_key(&name.encode_utf16().collect::<Vec<_>>())
+                            {
+                                frame.context
+                            } else {
+                                0
+                            };
+                            self.set_property(
+                                &Value::object(context),
+                                &Value::string(name),
+                                registers[*input].clone(),
+                                *raw,
+                                host,
+                                budget,
+                            )?;
+                        }
                     }
                     Op::Move { out, input } => registers[*out] = registers[*input].clone(),
                     Op::Unary { out, op, input } => {
@@ -170,40 +564,321 @@ impl Vm {
                         op,
                         left,
                         right,
-                    } => registers[*out] = registers[*left].binary(op, &registers[*right])?,
+                    } => {
+                        registers[*out] = if op == "incontextof" {
+                            let Value::Object(mut object) = registers[*left] else {
+                                bail!("incontextof requires an object");
+                            };
+                            let Value::Object(context) = registers[*right] else {
+                                bail!("incontextof context must be an object");
+                            };
+                            if context.object.is_some() {
+                                self.object_id(&registers[*right])?;
+                            }
+                            object.context = context.object;
+                            Value::Object(object)
+                        } else if op == "instanceof" {
+                            self.instance_of(&registers[*left], &registers[*right].text())?
+                        } else {
+                            registers[*left].binary(op, &registers[*right])?
+                        };
+                    }
+                    Op::Get {
+                        out,
+                        object,
+                        key,
+                        optional,
+                        raw,
+                    } => {
+                        registers[*out] = self.get_property(
+                            &registers[*object],
+                            &registers[*key],
+                            *optional,
+                            *raw,
+                            host,
+                            budget,
+                        )?
+                    }
+                    Op::TypeOfMember { out, object, key } => {
+                        let value = self.get_property(
+                            &registers[*object],
+                            &registers[*key],
+                            true,
+                            false,
+                            host,
+                            budget,
+                        )?;
+                        registers[*out] = if matches!(value, Value::Void)
+                            && !self.has_member(&registers[*object], &registers[*key])?
+                        {
+                            Value::string("undefined")
+                        } else {
+                            value.unary("typeof")?
+                        };
+                    }
+                    Op::Set {
+                        object,
+                        key,
+                        input,
+                        raw,
+                    } => self.set_property(
+                        &registers[*object],
+                        &registers[*key],
+                        registers[*input].clone(),
+                        *raw,
+                        host,
+                        budget,
+                    )?,
+                    Op::Array { out, items } => {
+                        registers[*out] = self.allocate(ObjectKind::Array(
+                            items.iter().map(|i| registers[*i].clone()).collect(),
+                        ))?
+                    }
+                    Op::Dictionary { out, items } => {
+                        let value = self.allocate(ObjectKind::Dictionary)?;
+                        for (key, input) in items {
+                            self.set_member(&value, &registers[*key], registers[*input].clone())?;
+                        }
+                        registers[*out] = value;
+                    }
+                    Op::Function { out, function } => {
+                        registers[*out] =
+                            self.allocate(ObjectKind::Function(Arc::new(*function.clone())))?
+                    }
+                    Op::Call {
+                        out,
+                        callee,
+                        context,
+                        args,
+                    } => {
+                        let context = context
+                            .as_ref()
+                            .map(|r| registers[*r].clone())
+                            .unwrap_or(Value::object(frame.context));
+                        let args = self.expand_args(args, &registers, &frame.arguments)?;
+                        registers[*out] =
+                            self.invoke(&registers[*callee], &context, &args, host, budget)?;
+                    }
+                    Op::Construct { out, callee, args } => {
+                        let args = self.expand_args(args, &registers, &frame.arguments)?;
+                        registers[*out] =
+                            self.construct(&registers[*callee], &args, host, budget)?;
+                    }
+                    Op::Class {
+                        out,
+                        definition,
+                        bases,
+                    } => {
+                        let bases = bases
+                            .iter()
+                            .map(|i| registers[*i].clone())
+                            .collect::<Vec<_>>();
+                        registers[*out] = self.define_class(definition, &bases)?;
+                    }
+                    Op::Property { out, definition } => {
+                        registers[*out] = self.define_property(definition, None)?
+                    }
+                    Op::ReadProperty { out, input } => {
+                        registers[*out] = self.read_property(
+                            &registers[*input],
+                            &Value::object(frame.context),
+                            host,
+                            budget,
+                        )?
+                    }
+                    Op::WriteProperty { property, input } => {
+                        self.write_property(
+                            &registers[*property],
+                            &Value::object(frame.context),
+                            registers[*input].clone(),
+                            host,
+                            budget,
+                        )?;
+                    }
+                    Op::Eval { out, input } => {
+                        let p = crate::compile_expression(
+                            "<eval operator>",
+                            &registers[*input].text(),
+                        )?;
+                        // TJS eval sees the current object context, not local lexical variables.
+                        let mut eval = Frame::global();
+                        eval.context = frame.context;
+                        registers[*out] = self.run(&p, host, budget, eval)?;
+                    }
                     Op::Jump { target } => ip = *target,
                     Op::JumpUnless { input, target } => {
                         if !registers[*input].truth()? {
                             ip = *target;
                         }
                     }
-                    Op::Call { out, name, args } => {
-                        registers[*out] = host.call(
-                            self,
-                            name,
-                            &args
-                                .iter()
-                                .map(|i| registers[*i].clone())
-                                .collect::<Vec<_>>(),
-                            budget,
-                        )?
+                    Op::EnterScope => frame.scopes.push(BTreeMap::new()),
+                    Op::LeaveScope => {
+                        frame.scopes.pop().context("TJS scope stack underflow")?;
+                    }
+                    Op::EnterWith { input } => {
+                        self.object_id(&registers[*input])?;
+                        frame.withs.push(registers[*input].clone());
+                    }
+                    Op::LeaveWith => {
+                        frame.withs.pop().context("TJS with stack underflow")?;
+                    }
+                    Op::With { out } => {
+                        registers[*out] = frame
+                            .withs
+                            .last()
+                            .context("dot member outside with")?
+                            .clone()
+                    }
+                    Op::Try { target, exception } => frame.handlers.push(Handler {
+                        target: *target,
+                        exception: *exception,
+                        scopes: frame.scopes.len(),
+                        withs: frame.withs.len(),
+                    }),
+                    Op::EndTry => {
+                        frame
+                            .handlers
+                            .pop()
+                            .context("TJS handler stack underflow")?;
+                    }
+                    Op::Unwind {
+                        scopes,
+                        handlers,
+                        withs,
+                    } => {
+                        ensure!(
+                            *scopes <= frame.scopes.len()
+                                && *handlers <= frame.handlers.len()
+                                && *withs <= frame.withs.len(),
+                            "invalid TJS unwind depth"
+                        );
+                        frame.scopes.truncate(*scopes);
+                        frame.handlers.truncate(*handlers);
+                        frame.withs.truncate(*withs);
+                    }
+                    Op::Throw { input } => {
+                        return Err(anyhow::Error::new(Thrown {
+                            value: registers[*input].clone(),
+                            message: format!("TJS throw: {}", registers[*input].text()),
+                        }));
                     }
                     Op::Return { input } => return Ok(Some(registers[*input].clone())),
                 }
                 Ok(None)
             })();
-            if let Some(value) = result.with_context(|| {
-                format!(
-                    "{}:{}:{} at VM instruction {}",
-                    at.storage,
-                    at.line,
-                    at.column,
-                    ip.saturating_sub(1)
-                )
-            })? {
-                return Ok(value);
+            match result {
+                Ok(Some(value)) => return Ok(value),
+                Ok(None) => (),
+                Err(error) => {
+                    let error = error.context(format!(
+                        "{}:{}:{} at VM instruction {executing}",
+                        at.storage, at.line, at.column
+                    ));
+                    if error.downcast_ref::<VmAbort>().is_some() {
+                        return Err(error);
+                    }
+                    if let Some(handler) = frame.handlers.pop() {
+                        registers[handler.exception] =
+                            if let Some(thrown) = error.downcast_ref::<Thrown>() {
+                                thrown.value.clone()
+                            } else {
+                                self.exception_object(&format!("{error:#}"))?
+                            };
+                        frame.scopes.truncate(handler.scopes);
+                        frame.withs.truncate(handler.withs);
+                        ip = handler.target;
+                    } else {
+                        return Err(error);
+                    }
+                }
             }
         }
         Ok(Value::Void)
+    }
+    fn expand_args(
+        &self,
+        args: &[Argument],
+        registers: &[Value],
+        forwarded: &[Value],
+    ) -> Result<Vec<Value>> {
+        let mut values = vec![];
+        for arg in args {
+            let expanded: &[Value] = match arg {
+                Argument::Value(r) => std::slice::from_ref(&registers[*r]),
+                Argument::Forward => forwarded,
+                Argument::Spread(r) => {
+                    let id = self.object_id(&registers[*r])?;
+                    let ObjectKind::Array(items) = &self.objects[id].kind else {
+                        bail!("argument expansion requires Array");
+                    };
+                    items
+                }
+            };
+            if values.len() + expanded.len() > 1024 {
+                return Err(unsupported("too many expanded TJS arguments"));
+            }
+            values.extend_from_slice(expanded);
+        }
+        Ok(values)
+    }
+    pub(crate) fn invoke(
+        &mut self,
+        callee: &Value,
+        context: &Value,
+        args: &[Value],
+        host: &mut impl Host,
+        budget: &mut u64,
+    ) -> Result<Value> {
+        let id = self.object_id(callee)?;
+        let Value::Object(reference) = callee else {
+            unreachable!()
+        };
+        let kind = self.objects[id].kind.clone();
+        match kind {
+            ObjectKind::Native(name) => match name.as_str() {
+                "Dictionary" => self.allocate(ObjectKind::Dictionary),
+                "Array" => self.allocate(ObjectKind::Array(vec![])),
+                "Exception" => {
+                    self.exception_object(&args.first().map(Value::text).unwrap_or_default())
+                }
+                _ => host.call(self, &name, args, budget),
+            },
+            ObjectKind::Function(function) => {
+                let mut frame = Frame::global();
+                frame.context = reference.context.unwrap_or(self.object_id(context)?);
+                frame.owner = self.objects[id].owner;
+                frame.arguments = args.to_vec();
+                ensure!(
+                    frame.context < self.objects.len(),
+                    "invalid TJS bound context"
+                );
+                let mut locals = BTreeMap::new();
+                for (index, name) in function.parameters.iter().enumerate() {
+                    locals.insert(
+                        name.clone(),
+                        args.get(index).cloned().unwrap_or(Value::Void),
+                    );
+                }
+                if let Some(rest) = &function.rest {
+                    let tail = args
+                        .get(function.parameters.len()..)
+                        .unwrap_or_default()
+                        .to_vec();
+                    locals.insert(rest.clone(), self.allocate(ObjectKind::Array(tail))?);
+                }
+                frame.scopes.push(locals);
+                self.run(&function.program, host, budget, frame)
+            }
+            ObjectKind::Method { receiver, name } => self.method(&receiver, &name, args),
+            _ => bail!("TJS object is not callable"),
+        }
+    }
+    pub(crate) fn exception_object(&mut self, message: &str) -> Result<Value> {
+        let value = self.allocate(ObjectKind::Dictionary)?;
+        let id = self.object_id(&value)?;
+        self.objects[id].classes.push("Exception".into());
+        self.set_member(&value, &Value::string("message"), Value::string(message))?;
+        self.set_member(&value, &Value::string("trace"), Value::string(message))?;
+        Ok(value)
     }
 }

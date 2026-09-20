@@ -1,6 +1,7 @@
 use crate::Value;
 use anyhow::{Result, bail, ensure};
 use krkrz_core::SourceLocation;
+use std::collections::VecDeque;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Kind {
     Name(String),
@@ -19,8 +20,128 @@ struct Lexer<'a> {
     pos: usize,
     line: usize,
     column: usize,
+    pending: VecDeque<Token>,
+    interpolation_depth: usize,
 }
 impl Lexer<'_> {
+    fn escape(&mut self) -> Result<Vec<u16>> {
+        let ch = self
+            .bump()
+            .ok_or_else(|| anyhow::anyhow!("truncated string escape"))?;
+        if ch == 'x' {
+            let (mut n, mut count) = (0, 0);
+            while count < 4 {
+                let Some(d) = self.peek().and_then(|c| c.to_digit(16)) else {
+                    break;
+                };
+                self.bump();
+                n = n * 16 + d;
+                count += 1;
+            }
+            ensure!(count > 0, "empty TJS hex escape");
+            Ok(vec![n as u16])
+        } else {
+            let ch = match ch {
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                'b' => '\u{8}',
+                'f' => '\u{c}',
+                'v' => '\u{b}',
+                'a' => '\u{7}',
+                '0' => '\0',
+                v => v,
+            };
+            Ok(ch.encode_utf16(&mut [0; 2]).to_vec())
+        }
+    }
+    fn interpolation(&mut self) -> Result<Vec<Token>> {
+        self.interpolation_depth += 1;
+        ensure!(
+            self.interpolation_depth <= 64,
+            "TJS interpolation nesting exceeds limit"
+        );
+        let at = self.location();
+        self.bump();
+        let quote = self.bump().unwrap();
+        let symbol = |s: &str| Token {
+            kind: Kind::Symbol(s.into()),
+            location: at.clone(),
+        };
+        let literal = |s| Token {
+            kind: Kind::Literal(Value::String(s)),
+            location: at.clone(),
+        };
+        let mut tokens = vec![symbol("("), literal(vec![])];
+        let mut units = vec![];
+        loop {
+            let ch = self
+                .bump()
+                .ok_or_else(|| anyhow::anyhow!("unterminated interpolated string"))?;
+            if ch == quote {
+                break;
+            }
+            if ch == '\\' {
+                units.extend(self.escape()?);
+                continue;
+            }
+            let terminator = if ch == '&' {
+                Some(";")
+            } else if ch == '$' && self.peek() == Some('{') {
+                self.bump();
+                Some("}")
+            } else {
+                None
+            };
+            if let Some(terminator) = terminator {
+                if !units.is_empty() {
+                    tokens.push(symbol("+"));
+                    tokens.push(literal(std::mem::take(&mut units)));
+                }
+                tokens.push(symbol("+"));
+                tokens.push(Token {
+                    kind: Kind::Name("string".into()),
+                    location: at.clone(),
+                });
+                tokens.push(symbol("("));
+                let mut nesting = 0usize;
+                loop {
+                    let token = self.next()?;
+                    ensure!(
+                        token.kind != Kind::Eof,
+                        "unterminated interpolation expression"
+                    );
+                    if let Kind::Symbol(s) = &token.kind {
+                        if s == terminator && nesting == 0 {
+                            break;
+                        }
+                        if ["(", "[", "%[", "{"].contains(&s.as_str()) {
+                            nesting += 1;
+                        }
+                        if [")", "]", "}"].contains(&s.as_str()) {
+                            ensure!(nesting > 0, "unbalanced interpolation expression");
+                            nesting -= 1;
+                        }
+                    }
+                    tokens.push(token);
+                    ensure!(
+                        tokens.len() < 1_000_000,
+                        "interpolation token limit exceeded"
+                    );
+                }
+                tokens.push(symbol(")"));
+            } else {
+                units.extend(ch.encode_utf16(&mut [0; 2]).iter().copied());
+            }
+        }
+        if !units.is_empty() {
+            tokens.push(symbol("+"));
+            tokens.push(literal(units));
+        }
+        tokens.push(symbol(")"));
+        self.interpolation_depth -= 1;
+        Ok(tokens)
+    }
     fn location(&self) -> SourceLocation {
         SourceLocation {
             storage: self.storage.into(),
@@ -74,6 +195,9 @@ impl Lexer<'_> {
         }
     }
     fn next(&mut self) -> Result<Token> {
+        if let Some(token) = self.pending.pop_front() {
+            return Ok(token);
+        }
         self.skip()?;
         let location = self.location();
         let Some(c) = self.peek() else {
@@ -82,7 +206,12 @@ impl Lexer<'_> {
                 location,
             });
         };
-        let kind = if c == '_' || c == '$' || c.is_alphabetic() {
+        if c == '@' && self.source[self.pos + 1..].starts_with(['\'', '"']) {
+            let tokens = self.interpolation()?;
+            self.pending.extend(tokens);
+            return self.next();
+        }
+        let kind = if c == '_' || c.is_alphabetic() {
             let start = self.pos;
             while self
                 .peek()
@@ -94,6 +223,7 @@ impl Lexer<'_> {
                 "void" => Kind::Literal(Value::Void),
                 "true" => Kind::Literal(Value::Integer(1)),
                 "false" => Kind::Literal(Value::Integer(0)),
+                "null" => Kind::Literal(Value::NULL),
                 s => Kind::Name(s.into()),
             }
         } else if c.is_ascii_digit()
@@ -185,7 +315,8 @@ impl Lexer<'_> {
             let mut symbol = None;
             for op in [
                 ">>>=", "===", "!==", ">>>", "<<=", ">>=", "...", "==", "!=", "<=", ">=", "&&",
-                "||", "<<", ">>", "+=", "-=", "*=", "/=", "++", "--", "=>", "%[", "<%", "%>",
+                "||", "<<", ">>", "+=", "-=", "*=", "/=", "%=", "\\=", "&=", "|=", "^=", "++",
+                "--", "=>", "%[", "<%", "%>",
             ] {
                 if self.source[self.pos..].starts_with(op) {
                     for _ in op.chars() {
@@ -197,7 +328,7 @@ impl Lexer<'_> {
             }
             if let Some(s) = symbol {
                 Kind::Symbol(s)
-            } else if "{}[]();,.?:+-*/%\\!~&|^=<>@#".contains(c) {
+            } else if "{}[]();,.?:+-*/%\\!~&|^=<>@#$".contains(c) {
                 self.bump();
                 Kind::Symbol(c.to_string())
             } else {
@@ -214,6 +345,8 @@ pub fn lex(storage: &str, source: &str) -> Result<Vec<Token>> {
         pos: 0,
         line: 1,
         column: 1,
+        pending: VecDeque::new(),
+        interpolation_depth: 0,
     };
     let mut result = Vec::new();
     loop {

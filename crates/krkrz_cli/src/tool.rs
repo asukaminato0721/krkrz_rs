@@ -50,6 +50,12 @@ enum Command {
     Kag { name: String },
     /// Compile the supported TJS subset to diagnostic register instructions.
     Compile { name: String },
+    /// Execute a source script with the TJS core (without Kirikiri host services).
+    Exec {
+        name: String,
+        #[arg(long, default_value_t = 100000)]
+        budget: u64,
+    },
     /// Evaluate a TJS primitive expression with a bounded interpreter.
     Eval {
         expression: String,
@@ -146,6 +152,11 @@ fn run() -> Result<()> {
             &mut out,
             &krkrz_tjs::compile(&name, &text::decode(&storage.read(&name)?)?)?,
         )?,
+        Command::Exec { name, mut budget } => {
+            let program = krkrz_tjs::compile(&name, &text::decode(&storage.read(&name)?)?)?;
+            let value = krkrz_tjs::Vm::default().execute(&program, &mut (), &mut budget)?;
+            serde_json::to_writer_pretty(&mut out, &value)?;
+        }
         Command::Eval {
             expression,
             mut budget,

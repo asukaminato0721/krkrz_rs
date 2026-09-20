@@ -2,7 +2,7 @@
 name = "krkrz_tjs"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license = "MIT AND BSD-3-Clause"
 
 [dependencies]
 anyhow.workspace = true
@@ -11,3 +11,4 @@ krkrz_core.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
+serde_json.workspace = true
