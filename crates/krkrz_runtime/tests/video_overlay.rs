@@ -82,6 +82,24 @@ fn movie_session() -> (Session, tempfile::TempDir, tempfile::TempDir) {
     session.evaluate("Scripts.exec('global.w=new Window();global.l=new Layer(w,null);l.setSize(32,24);global.v=new VideoOverlay(w);v.mode=vomLayer;v.layer1=l;global.events=[];v.onStatusChanged=function(s){events.add(s);};v.onPeriod=function(r){events.add(\"period\"+r);};v.open(\"movie.mpg\");')").unwrap();
     (session, project, saves)
 }
+
+#[test]
+fn overlay_frames_clip_to_window_bounds_and_respect_visibility() {
+    let (mut session, _project, _saves) = movie_session();
+    session.evaluate("Scripts.exec('v.close();v.mode=vomOverlay;v.open(\"movie.mpg\");l.fillRect(0,0,32,24,0xff00ff00);v.setBounds(-2,5,16,12);v.visible=true;')").unwrap();
+    let window = session.evaluate("w").unwrap();
+    let image = session.capture_window(&window).unwrap();
+    let pixel = |x: usize, y: usize| &image.rgba[(y * 32 + x) * 4..(y * 32 + x + 1) * 4];
+    assert_eq!(pixel(0, 4), &[0, 255, 0, 255]);
+    assert!(pixel(0, 5)[0] > 240 && pixel(0, 5)[1] < 16);
+    assert!(pixel(13, 16)[0] > 240);
+    assert_eq!(pixel(14, 16), &[0, 255, 0, 255]);
+    assert_eq!(pixel(13, 17), &[0, 255, 0, 255]);
+    session.evaluate("v.visible=false").unwrap();
+    let hidden = session.capture_window(&window).unwrap();
+    assert_eq!(&hidden.rgba[(5 * 32) * 4..(5 * 32 + 1) * 4], &[0, 255, 0, 255]);
+}
+
 #[test]
 fn movie_frames_pcm_pause_seek_and_eof_use_session_clock() {
     let (mut session, _project, _saves) = movie_session();

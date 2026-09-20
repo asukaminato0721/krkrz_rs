@@ -73,3 +73,12 @@ fn decoded_frame_updates_layer_pixels_geometry_and_transport() {
         Value::string("0|7|-3|16|16|16|16|8880517|153|9867412|180|0")
     );
 }
+
+#[test]
+fn packet_sequences_loop_before_padding_and_seek_to_requested_frame() {
+    let source = "Plugins.link('AlphaMovie.dll');var w=new Window();var l=new Layer(w,null);var a=new AlphaMovie();a.open(System.exePath+'empty.amv');a.play();var r=[];for(var i=0;i<6;i++)r.add(a.showNextImage(l));a.frame=2;r.add(a.showNextImage(l));a.frame=0;r.add(a.showNextImage(l));a.loop=false;a.frame=2;r.add(a.showNextImage(l));r.add(a.showNextImage(l));return r.join('|');";
+    assert_eq!(
+        execute(source, 100_000).unwrap(),
+        Value::string("0|0|1|2|0|0|2|0|2|2")
+    );
+}

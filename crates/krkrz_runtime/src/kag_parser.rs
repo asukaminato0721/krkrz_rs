@@ -754,7 +754,7 @@ impl Services {
                     if p.exclude != -1 {
                         continue;
                     }
-                    if ch == 93 { eprintln!("KAG BRACKET: {}:{}:{} buffer={:?}", p.storage, p.position.line, pos, p.position.buffer.as_ref().map(|v| String::from_utf16_lossy(v).to_string())); }
+                    if ch == 93 { eprintln!("KAG BRACKET: {}:{}:{} source={:?} calls={:?}", p.storage, p.position.line, pos, String::from_utf16_lossy(&line), p.calls.iter().map(|c| (&c.storage, c.position.line, c.position.pos)).collect::<Vec<_>>()); }
                     p.args.add(
                         vm,
                         "tagname",

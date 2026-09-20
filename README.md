@@ -20,6 +20,10 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
+Movie playback and the movie integration tests require `ffmpeg` and `ffprobe`
+on PATH. MPEG frames stream through a bounded decoder; stereo PCM is mixed on
+the session clock.
+
 The workspace builds independently of sibling repositories. `Cargo.lock` pins
 Rust dependencies. Research checkouts, extracted scripts and media belong outside
 the source tree, for example `$XDG_CACHE_HOME/krkrz_rs`.

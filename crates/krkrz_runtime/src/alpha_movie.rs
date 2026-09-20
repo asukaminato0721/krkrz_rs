@@ -1,7 +1,7 @@
 //! AlphaMovie registration, storage and transport controls. Observed against the
 //! installed DLL with synthetic AJPM resources; see docs/alpha-movie-interface.json.
-//! Pixel reconstruction uses the checked assets decoder. Queued movies and seeks
-//! beyond the first frame remain explicit unsupported calls.
+//! Pixel reconstruction uses the checked assets decoder. Queued movies remain
+//! explicit unsupported calls; frame decoding is synchronous.
 use crate::Services;
 use anyhow::{Context, Result, ensure};
 use krkrz_assets::amv::Movie;
@@ -141,7 +141,11 @@ impl Services {
                 .movie
                 .as_ref()
                 .context("AlphaMovie has no open movie")?;
-            if player.packet >= movie.packets.len() {
+            if movie
+                .packets
+                .get(player.packet)
+                .is_none_or(|p| p.sequence >= movie.header.frame_count)
+            {
                 if !player.looping {
                     return Ok(Value::Integer(player.displayed as i64));
                 }
@@ -172,11 +176,7 @@ impl Services {
             "get:numOfFrame" => header.map_or(0, |h| h.frame_count as i64),
             "get:FPSRate" => header.map_or(0, |h| h.fps_rate as i64),
             "get:FPSScale" => header.map_or(0, |h| h.fps_scale as i64),
-            "get:frame" => player
-                .movie
-                .as_ref()
-                .and_then(|m| m.packets.get(player.packet))
-                .map_or(player.displayed, |p| p.sequence) as i64,
+            "get:frame" => player.displayed as i64,
             "get:loop" => player.looping.into(),
             "get:nextLoop" => player.next_loop.into(),
             "get:preloadSamples" => player.preload.into(),
@@ -214,12 +214,20 @@ impl Services {
                     .first()
                     .context("AlphaMovie.frame requires a value")?
                     .integer()? as i32;
-                if frame <= 0 || header.is_none_or(|h| frame as u32 >= h.frame_count) {
+                if frame < 0 || header.is_none_or(|h| frame as u32 >= h.frame_count) {
                     return Ok(Value::Void);
                 }
-                return Err(unsupported(
-                    "AlphaMovie random frame seeking is not implemented",
-                ));
+                let movie = player.movie.as_ref().unwrap();
+                *budget = budget
+                    .checked_sub(movie.packets.len() as u64)
+                    .ok_or_else(|| unsupported("AlphaMovie seek execution budget exceeded"))?;
+                player.packet = movie
+                    .packets
+                    .iter()
+                    .position(|p| p.sequence == frame as u32)
+                    .context("AlphaMovie requested frame is absent")?;
+                player.displayed = frame as u32;
+                return Ok(Value::Void);
             }
             "setPosition" => {
                 ensure!(
