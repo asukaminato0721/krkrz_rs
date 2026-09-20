@@ -1013,6 +1013,9 @@ impl Services {
         if op == "assignImages" {
             return self.layer_assign_images(id, arg(0)?, budget);
         }
+        if op == "adjustGamma" {
+            return self.layer_gamma(id, args, budget);
+        }
         if op == "doGrayScale" {
             return self.layer_grayscale(id, budget);
         }
@@ -1021,6 +1024,9 @@ impl Services {
         }
         if op == "clipAlphaRect" {
             return self.layer_clip_alpha(id, args, budget);
+        }
+        if op == "fillAlpha" {
+            return self.layer_fill_alpha(id, budget);
         }
         if matches!(op, "copyRect" | "operateRect") {
             return self.layer_blit(id, op, args, budget);
@@ -1050,7 +1056,9 @@ mod blit;
 mod blur;
 mod clip_alpha;
 mod draw;
+mod fill_alpha;
 mod focus;
+mod gamma;
 mod grayscale;
 mod images;
 pub(crate) mod input;
