@@ -43,6 +43,16 @@ ScriptsEx reflection, structural operations and traversal derive from
 Its authors are Go Watanabe / ゆんゆん探偵; its readme specifies the
 Kirikiri license reproduced below. Member enumeration and deferred rehashing
 follow Kirikiri Z `tjs2/tjsObject.cpp` and `tjs2/tjsHashSearch.h`.
+Native structured serialization, hexadecimal real formatting, constant literals
+and text stream encoding follow Kirikiri Z `tjs2/tjsArray.cpp`,
+`tjs2/tjsDictionary.cpp`, `tjs2/tjsVariant.cpp`, `tjs2/tjsLex.cpp` and
+`base/TextStream.cpp`. The saveStruct component follows the historical
+`saveStruct/Main.cpp` and Kirikiroid2 `src/plugins/saveStruct.cpp`, adjusted
+against the installed plugin's output. The historical plugin lists Go Watanabe
+and miahmie as authors and specifies the same Kirikiri license below.
+CSVParser parsing, row callbacks and stream boundaries follow historical
+`csvParser/Main.cpp`, by Go Watanabe, under the same Kirikiri license. The
+installed PackinOne storage-mode behavior was established by comparison.
 Habakiri is used only as an external differential-test reference. Its Java
 sources are not bundled or linked into the Rust engine.
 SLI parsing and PCM loop mixing are adapted from Kirikiri Z

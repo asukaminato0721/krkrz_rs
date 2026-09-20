@@ -1,6 +1,8 @@
 //! Shared deterministic session services. Presentation and full Kirikiri objects remain unimplemented.
 pub mod audio;
 pub mod compositor;
+mod csv;
+mod save_storage;
 pub mod scheduler;
 pub mod window;
 use anyhow::{Context, Result, ensure};
@@ -28,29 +30,50 @@ pub struct Services {
     pub messages: Vec<String>,
     pub trace_enabled: bool,
     pub windows: BTreeMap<usize, window::WindowState>,
+    csv_parsers: BTreeMap<usize, csv::Parser>,
     pub arguments: BTreeMap<String, String>,
     loaded_plugins: BTreeSet<String>,
     depth: usize,
 }
 impl Services {
+    fn read_storage(&mut self, name: &str) -> Result<Vec<u8>> {
+        if let Ok(path) = save_storage::path(&self.storage.project, &self.save_dir, name)
+            && path.is_file()
+        {
+            ensure!(
+                path.metadata()?.len() <= 512 << 20,
+                "save resource exceeds size limit"
+            );
+            return Ok(std::fs::read(path)?);
+        }
+        Ok(self.storage.read(name)?.to_vec())
+    }
     fn script(
         &mut self,
         vm: &mut Vm,
         name: &str,
         context: &Value,
         expression: bool,
+        mode: &str,
         budget: &mut u64,
     ) -> Result<Value> {
         if self.depth >= 128 {
             return Err(unsupported("script call stack depth exceeded"));
         }
-        let bytes = self.storage.read(name)?;
+        let bytes = self.read_storage(name)?;
+        let (mode, offset) = save_storage::offset_mode(mode)?;
+        if !mode.is_empty() {
+            return Err(unsupported("unsupported script storage read mode"));
+        }
+        let bytes = bytes
+            .get(offset.unwrap_or(0)..)
+            .context("script read offset exceeds file size")?;
         if bytes.starts_with(b"TJS2") {
             return Err(unsupported(format!(
                 "{name}: compiled TJS2 bytecode execution is not implemented"
             )));
         }
-        let source = text::decode(&bytes).with_context(|| format!("decode {name}"))?;
+        let source = text::decode(bytes).with_context(|| format!("decode {name}"))?;
         let program = compile_with_preprocessor(name, &source, expression, &mut vm.preprocessor)?;
         self.depth += 1;
         let result = vm.execute_in_context(&program, context, self, budget);
@@ -67,6 +90,9 @@ impl Host for Services {
         args: &[Value],
         budget: &mut u64,
     ) -> Result<Value> {
+        if let Some(operation) = name.strip_prefix("CSVParser.") {
+            return self.csv_call(vm, operation, context, args, budget);
+        }
         if let Some(operation) = name.strip_prefix("Window.") {
             let Value::Object(reference) = context else {
                 anyhow::bail!("Window requires an object context")
@@ -124,6 +150,45 @@ impl Host for Services {
                 .with_context(|| format!("{name}: missing argument {i}"))
         };
         match name {
+            "TextStream.read" => {
+                let bytes = self.read_storage(&arg(0)?.text())?;
+                let (mode, offset) = save_storage::offset_mode(&arg(1)?.text())?;
+                if !mode.is_empty() {
+                    return Err(unsupported("unsupported text read mode"));
+                }
+                Ok(Value::String(text::decode_units(
+                    bytes
+                        .get(offset.unwrap_or(0)..)
+                        .context("text read offset exceeds file size")?,
+                )?))
+            }
+            "TextStream.write" | "TextStream.writePlugin" => {
+                let Value::String(units) = arg(1)? else {
+                    anyhow::bail!("text writer requires a string");
+                };
+                let path =
+                    save_storage::path(&self.storage.project, &self.save_dir, &arg(0)?.text())?;
+                let (bytes, offset) = if name == "TextStream.write" {
+                    let (mode, offset) = save_storage::offset_mode(&arg(2)?.text())?;
+                    (text::encode_units(units, &mode)?, offset)
+                } else {
+                    let string = String::from_utf16(units)?;
+                    let bytes = if arg(2)?.text() == "utf8" {
+                        string.into_bytes()
+                    } else {
+                        let (bytes, _, errors) = encoding_rs::SHIFT_JIS.encode(&string);
+                        if errors {
+                            return Err(unsupported(
+                                "saveStruct CP932 fallback escaping is not implemented",
+                            ));
+                        }
+                        bytes.into_owned()
+                    };
+                    (bytes, None)
+                };
+                save_storage::write(&path, &bytes, offset)?;
+                Ok(Value::Void)
+            }
             "Debug.message" | "Debug.notice" => {
                 self.messages
                     .push(args.iter().map(Value::text).collect::<Vec<_>>().join(" "));
@@ -145,6 +210,20 @@ impl Host for Services {
                         }
                         Ok(Value::Void)
                     }
+                    "csvparser.dll" => {
+                        if !self.loaded_plugins.contains("csvparser.dll") {
+                            csv::register(vm)?;
+                            self.loaded_plugins.insert("csvparser.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
+                    "savestruct.dll" => {
+                        if !self.loaded_plugins.contains("savestruct.dll") {
+                            vm.register_save_struct()?;
+                            self.loaded_plugins.insert("savestruct.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
                     _ => Err(unsupported(format!(
                         "unsupported Kirikiri native operation: Plugins.link({path})"
                     ))),
@@ -157,18 +236,13 @@ impl Host for Services {
                 .map(|v| Value::string(v))
                 .unwrap_or(Value::Void)),
             "Scripts.execStorage" | "Scripts.evalStorage" => {
-                if args
-                    .get(1)
-                    .is_some_and(|v| !matches!(v, Value::Void) && !v.text().is_empty())
-                {
-                    return Err(unsupported("script storage read modes are not implemented"));
-                }
                 let context = script_context(args.get(2));
                 self.script(
                     vm,
                     &arg(0)?.text(),
                     &context,
                     name == "Scripts.evalStorage",
+                    &args.get(1).map(Value::text).unwrap_or_default(),
                     budget,
                 )
             }
@@ -209,7 +283,9 @@ impl Host for Services {
                 Ok(Value::Void)
             }
             "Storages.isExistentStorage" => Ok(Value::Integer(i64::from(
-                self.storage.resolve(&arg(0)?.text()).is_ok(),
+                save_storage::path(&self.storage.project, &self.save_dir, &arg(0)?.text())
+                    .is_ok_and(|p| p.is_file())
+                    || self.storage.resolve(&arg(0)?.text()).is_ok(),
             ))),
             "Storages.extractStorageName"
             | "Storages.extractStoragePath"
@@ -228,6 +304,11 @@ impl Host for Services {
             }
             "Storages.getPlacedPath" => {
                 let name = arg(0)?.text();
+                if let Ok(path) = save_storage::path(&self.storage.project, &self.save_dir, &name)
+                    && path.is_file()
+                {
+                    return Ok(Value::string(&path.to_string_lossy()));
+                }
                 match self.storage.placed_path(&name) {
                     Ok(path) => Ok(Value::string(&path)),
                     Err(_) => Ok(Value::string("")),
@@ -281,6 +362,7 @@ impl Session {
             ("osName", std::env::consts::OS.into()),
             ("platformName", std::env::consts::OS.into()),
             ("versionString", "1.2.0.3".into()),
+            ("dataPath", format!("{}/", save_dir.display())),
         ] {
             vm.set_member(&system, &Value::string(key), Value::string(&value))?;
         }
@@ -314,6 +396,7 @@ impl Session {
                 messages: vec![],
                 trace_enabled: false,
                 windows: BTreeMap::new(),
+                csv_parsers: BTreeMap::new(),
                 arguments: BTreeMap::from([("-debugwin".into(), "no".into())]),
                 loaded_plugins: BTreeSet::new(),
                 depth: 0,
@@ -330,6 +413,7 @@ impl Session {
             name,
             &Value::object(0),
             false,
+            "",
             &mut self.budget,
         )
     }

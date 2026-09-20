@@ -13,6 +13,11 @@ pub enum Argument {
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum Op {
+    ConstantObject {
+        out: usize,
+        identity: u64,
+        literal: crate::Literal,
+    },
     DeleteName {
         out: usize,
         name: String,
@@ -206,6 +211,10 @@ impl Program {
                 Op::Set {
                     object, key, input, ..
                 } => regs.extend([*object, *key, *input]),
+                Op::ConstantObject { out, literal, .. } => {
+                    regs.push(*out);
+                    literal.validate(0)?;
+                }
                 Op::Array { out, items } => {
                     regs.push(*out);
                     regs.extend(items);
@@ -323,6 +332,7 @@ pub struct Vm {
     pub executed: u64,
     pub(crate) objects: Vec<Object>,
     pub(crate) hash_generation: u64,
+    literal_objects: BTreeMap<u64, Value>,
     depth: usize,
 }
 impl Default for Vm {
@@ -333,11 +343,14 @@ impl Default for Vm {
             executed: 0,
             objects: vec![Object::new(ObjectKind::Global)],
             hash_generation: 0,
+            literal_objects: BTreeMap::new(),
             depth: 0,
         };
         for name in ["Array", "Dictionary", "Exception", "RegExp"] {
             vm.register_native(name).expect("initial TJS heap");
         }
+        vm.register_serialization(false)
+            .expect("initial serialization members");
         vm
     }
 }
@@ -386,6 +399,29 @@ impl Vm {
         if bound && let Value::Object(reference) = &mut value {
             reference.context = Some(id);
         }
+        if matches!(self.objects[id].kind, ObjectKind::Array(_)) {
+            let class = self
+                .globals
+                .get("Array")
+                .cloned()
+                .context("Array class is missing")?;
+            let class_id = self.object_id(&class)?;
+            for (key, mut member) in self.objects[class_id].members.clone() {
+                let flags = self.objects[class_id]
+                    .member_flags
+                    .get(&key)
+                    .copied()
+                    .unwrap_or(0);
+                if flags & crate::scripts_ex::STATIC != 0 {
+                    continue;
+                }
+                if let Value::Object(reference) = &mut member {
+                    reference.context = Some(id);
+                }
+                self.set_member(&value, &Value::String(key.clone()), member)?;
+                self.objects[id].member_flags.insert(key, flags);
+            }
+        }
         Ok(value)
     }
     pub(crate) fn object_id(&self, value: &Value) -> Result<usize> {
@@ -405,6 +441,9 @@ impl Vm {
         let value = self.allocate(ObjectKind::Namespace)?;
         self.globals.insert(name.into(), value.clone());
         Ok(value)
+    }
+    pub fn new_array(&mut self, items: Vec<Value>) -> Result<Value> {
+        self.allocate(ObjectKind::Array(items))
     }
     pub fn new_dictionary(&mut self) -> Result<Value> {
         self.allocate(ObjectKind::Dictionary)
@@ -761,6 +800,20 @@ impl Vm {
                         host,
                         budget,
                     )?,
+                    Op::ConstantObject {
+                        out,
+                        identity,
+                        literal,
+                    } => {
+                        let value = if let Some(value) = self.literal_objects.get(identity) {
+                            value.clone()
+                        } else {
+                            let value = self.materialize_literal(literal, budget)?;
+                            self.literal_objects.insert(*identity, value.clone());
+                            value
+                        };
+                        registers[*out] = value;
+                    }
                     Op::Array { out, items } => {
                         registers[*out] = self.allocate(ObjectKind::Array(
                             items.iter().map(|i| registers[*i].clone()).collect(),
@@ -1010,6 +1063,20 @@ impl Vm {
                         .map(Value::object)
                         .unwrap_or_else(|| context.clone());
                     self.scripts_ex(&name[10..], &context, args, host, budget, result_needed)
+                }
+                _ if name.starts_with("Serialization.") => {
+                    let context = reference
+                        .context
+                        .map(Value::object)
+                        .unwrap_or_else(|| context.clone());
+                    self.serialization_call(
+                        &name[14..],
+                        &context,
+                        args,
+                        host,
+                        budget,
+                        result_needed,
+                    )
                 }
                 _ => {
                     let context = reference

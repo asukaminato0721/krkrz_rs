@@ -8,6 +8,7 @@ use krkrz_core::SourceLocation;
 
 #[derive(Debug)]
 enum Expr {
+    Constant(Box<Expr>),
     Value(Value),
     Name(String),
     With,
@@ -152,9 +153,20 @@ impl Compiler {
         self.depth += 1;
         self.expr_nodes += 1;
         ensure!(
-            self.depth <= 128 && self.expr_nodes <= 512,
+            self.depth <= 128 && self.expr_nodes <= 100_000,
             "TJS expression complexity exceeds limit"
         );
+        let constant = self
+            .tokens
+            .get(self.pos..self.pos + 3)
+            .is_some_and(|tokens| {
+                matches!(&tokens[0].kind, Kind::Symbol(s) if s == "(")
+                    && matches!(&tokens[1].kind, Kind::Name(s) if s == "const")
+                    && matches!(&tokens[2].kind, Kind::Symbol(s) if s == ")")
+            });
+        if constant {
+            self.pos += 3;
+        }
         let mut left = if self.eat("(") {
             let e = self.expression(0)?;
             self.expect(")")?;
@@ -253,6 +265,13 @@ impl Compiler {
                 ref token => bail!("unsupported TJS expression token {token:?}"),
             }
         };
+        if constant {
+            ensure!(
+                matches!(left, Expr::Array(_) | Expr::Dictionary(_)),
+                "(const) requires an array or dictionary literal"
+            );
+            left = Expr::Constant(Box::new(left));
+        }
         loop {
             if self.eat(".") {
                 let key = Expr::Value(Value::string(&self.name()?));
@@ -434,6 +453,20 @@ impl Compiler {
     fn compile_expr(&mut self, e: Expr, at: &SourceLocation) -> Result<usize> {
         let out = self.reg();
         match e {
+            Expr::Constant(value) => {
+                static NEXT_LITERAL: std::sync::atomic::AtomicU64 =
+                    std::sync::atomic::AtomicU64::new(1);
+                let literal = constant_literal(*value)?;
+                let identity = NEXT_LITERAL.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.emit(
+                    Op::ConstantObject {
+                        out,
+                        identity,
+                        literal,
+                    },
+                    at,
+                );
+            }
             Expr::ForwardArguments | Expr::Spread(_) => bail!("argument expansion outside call"),
             Expr::Value(value) => {
                 self.emit(Op::Constant { out, value }, at);
@@ -1157,6 +1190,33 @@ pub fn compile(storage: &str, source: &str) -> Result<Program> {
 pub fn compile_expression(storage: &str, source: &str) -> Result<Program> {
     compile_with_preprocessor(storage, source, true, &mut crate::Preprocessor::default())
 }
+fn constant_literal(expression: Expr) -> Result<crate::Literal> {
+    use crate::Literal;
+    Ok(match expression {
+        Expr::Value(value) => Literal::Value(value),
+        Expr::Constant(value) => constant_literal(*value)?,
+        Expr::Array(items) => Literal::Array(
+            items
+                .into_iter()
+                .map(constant_literal)
+                .collect::<Result<_>>()?,
+        ),
+        Expr::Dictionary(items) => Literal::Dictionary(
+            items
+                .into_iter()
+                .map(|(key, value)| Ok((constant_literal(key)?, constant_literal(value)?)))
+                .collect::<Result<_>>()?,
+        ),
+        Expr::Unary(op, expression) if op == "+" || op == "-" => {
+            let Literal::Value(value) = constant_literal(*expression)? else {
+                bail!("non-primitive constant operand");
+            };
+            Literal::Value(value.unary(&op)?)
+        }
+        _ => bail!("constant container requires literal values"),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

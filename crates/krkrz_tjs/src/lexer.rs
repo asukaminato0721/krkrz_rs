@@ -356,6 +356,8 @@ impl Lexer<'_> {
                     "true" => Kind::Literal(Value::Integer(1)),
                     "false" => Kind::Literal(Value::Integer(0)),
                     "null" => Kind::Literal(Value::NULL),
+                    "NaN" => Kind::Literal(Value::Real(f64::NAN)),
+                    "Infinity" => Kind::Literal(Value::Real(f64::INFINITY)),
                     s => Kind::Name(s.into()),
                 }
             } else if c.is_ascii_digit()
@@ -372,9 +374,32 @@ impl Lexer<'_> {
                         .peek()
                         .is_some_and(|c| matches!(c, 'x' | 'X' | 'b' | 'B'))
                 {
-                    self.bump();
-                    while self.peek().is_some_and(|c| c.is_ascii_hexdigit()) {
+                    let radix = if matches!(self.bump(), Some('x' | 'X')) {
+                        16
+                    } else {
+                        2
+                    };
+                    while self.peek().is_some_and(|c| c.is_digit(radix)) {
                         self.bump();
+                    }
+                    ensure!(
+                        radix == 16 || !matches!(self.peek(), Some('.' | 'p' | 'P')),
+                        "binary real literals are not implemented"
+                    );
+                    if self.peek() == Some('.') {
+                        self.bump();
+                        while self.peek().is_some_and(|c| c.is_ascii_hexdigit()) {
+                            self.bump();
+                        }
+                    }
+                    if self.peek().is_some_and(|c| c == 'p' || c == 'P') {
+                        self.bump();
+                        if self.peek().is_some_and(|c| c == '+' || c == '-') {
+                            self.bump();
+                        }
+                        while self.peek().is_some_and(|c| c.is_ascii_digit()) {
+                            self.bump();
+                        }
                     }
                 } else {
                     while self.peek().is_some_and(|c| c.is_ascii_digit()) {

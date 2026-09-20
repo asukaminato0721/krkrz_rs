@@ -1,0 +1,739 @@
+[
+  {
+    "name": "plugin_array",
+    "source": "Plugins.link(\"saveStruct.dll\");return [1,1.5,void,null,[],%[]].toStructString();",
+    "expected": {
+      "String": [
+        91,
+        105,
+        110,
+        116,
+        32,
+        49,
+        44,
+        114,
+        101,
+        97,
+        108,
+        32,
+        48,
+        120,
+        49,
+        46,
+        56,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        112,
+        48,
+        32,
+        47,
+        42,
+        32,
+        49,
+        46,
+        53,
+        32,
+        42,
+        47,
+        44,
+        118,
+        111,
+        105,
+        100,
+        44,
+        110,
+        117,
+        108,
+        108,
+        44,
+        91,
+        93,
+        44,
+        37,
+        91,
+        93,
+        93
+      ]
+    },
+    "files": []
+  },
+  {
+    "name": "plugin_dictionary",
+    "source": "Plugins.link(\"saveStruct.dll\");return (Dictionary.toStructString incontextof %[\"a\"=>1,\"b\"=>[2,3],\"c\"=>\"x\"])();",
+    "expected": {
+      "String": [
+        37,
+        91,
+        34,
+        99,
+        34,
+        61,
+        62,
+        34,
+        120,
+        34,
+        44,
+        13,
+        10,
+        34,
+        97,
+        34,
+        61,
+        62,
+        105,
+        110,
+        116,
+        32,
+        49,
+        44,
+        13,
+        10,
+        34,
+        98,
+        34,
+        61,
+        62,
+        91,
+        105,
+        110,
+        116,
+        32,
+        50,
+        44,
+        105,
+        110,
+        116,
+        32,
+        51,
+        93,
+        93
+      ]
+    },
+    "files": []
+  },
+  {
+    "name": "plugin_linefeed",
+    "source": "Plugins.link(\"saveStruct.dll\");return (Dictionary.toStructString incontextof %[\"a\"=>1,\"b\"=>2])(1);",
+    "expected": {
+      "String": [
+        37,
+        91,
+        34,
+        97,
+        34,
+        61,
+        62,
+        105,
+        110,
+        116,
+        32,
+        49,
+        44,
+        10,
+        34,
+        98,
+        34,
+        61,
+        62,
+        105,
+        110,
+        116,
+        32,
+        50,
+        93
+      ]
+    },
+    "files": []
+  },
+  {
+    "name": "plugin_ignores_later_options",
+    "source": "Plugins.link(\"saveStruct.dll\");return (Dictionary.toStructString incontextof %[\"a\"=>1,\"b\"=>2])(0,7);",
+    "expected": {
+      "String": [
+        37,
+        91,
+        34,
+        97,
+        34,
+        61,
+        62,
+        105,
+        110,
+        116,
+        32,
+        49,
+        44,
+        13,
+        10,
+        34,
+        98,
+        34,
+        61,
+        62,
+        105,
+        110,
+        116,
+        32,
+        50,
+        93
+      ]
+    },
+    "files": []
+  },
+  {
+    "name": "plugin_precision",
+    "source": "Plugins.link(\"saveStruct.dll\");return [1.0,0.1,1.2345678901234567,1e20,1e-20,-0.0].toStructString();",
+    "expected": {
+      "String": [
+        91,
+        114,
+        101,
+        97,
+        108,
+        32,
+        48,
+        120,
+        49,
+        46,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        48,
+        112,
+        48,
+        32,
+        47,
+        42,
+        32,
+        49,
+        32,
+        42,
+        47,
+        44,
+        114,
+        101,
+        97,
+        108,
+        32,
+        48,
+        120,
+        49,
+        46,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        57,
+        65,
+        112,
+        45,
+        52,
+        32,
+        47,
+        42,
+        32,
+        48,
+        46,
+        49,
+        32,
+        42,
+        47,
+        44,
+        114,
+        101,
+        97,
+        108,
+        32,
+        48,
+        120,
+        49,
+        46,
+        51,
+        67,
+        48,
+        67,
+        65,
+        52,
+        50,
+        56,
+        67,
+        53,
+        57,
+        70,
+        66,
+        112,
+        48,
+        32,
+        47,
+        42,
+        32,
+        49,
+        46,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        48,
+        49,
+        50,
+        51,
+        52,
+        54,
+        32,
+        42,
+        47,
+        44,
+        114,
+        101,
+        97,
+        108,
+        32,
+        48,
+        120,
+        49,
+        46,
+        53,
+        65,
+        70,
+        49,
+        68,
+        55,
+        56,
+        66,
+        53,
+        56,
+        67,
+        52,
+        48,
+        112,
+        54,
+        54,
+        32,
+        47,
+        42,
+        32,
+        49,
+        101,
+        43,
+        48,
+        50,
+        48,
+        32,
+        42,
+        47,
+        44,
+        114,
+        101,
+        97,
+        108,
+        32,
+        48,
+        120,
+        49,
+        46,
+        55,
+        57,
+        67,
+        65,
+        49,
+        48,
+        67,
+        57,
+        50,
+        52,
+        50,
+        50,
+        51,
+        112,
+        45,
+        54,
+        55,
+        32,
+        47,
+        42,
+        32,
+        49,
+        101,
+        45,
+        48,
+        50,
+        48,
+        32,
+        42,
+        47,
+        44,
+        114,
+        101,
+        97,
+        108,
+        32,
+        45,
+        48,
+        46,
+        48,
+        32,
+        47,
+        42,
+        32,
+        45,
+        48,
+        46,
+        48,
+        32,
+        42,
+        47,
+        93
+      ]
+    },
+    "files": []
+  },
+  {
+    "name": "plugin_objects",
+    "source": "Plugins.link(\"saveStruct.dll\");class C{var a=2;function f(){}}return [new C(),function(){}].toStructString();",
+    "expected": {
+      "String": [
+        91,
+        37,
+        91,
+        34,
+        97,
+        34,
+        61,
+        62,
+        105,
+        110,
+        116,
+        32,
+        50,
+        44,
+        13,
+        10,
+        34,
+        102,
+        34,
+        61,
+        62,
+        37,
+        91,
+        93,
+        93,
+        44,
+        37,
+        91,
+        93,
+        93
+      ]
+    },
+    "files": []
+  },
+  {
+    "name": "plugin_strings",
+    "source": "Plugins.link(\"saveStruct.dll\");return [\"a\\n\\t\\r\\\"\\\\\"].toStructString();",
+    "expected": {
+      "String": [
+        91,
+        34,
+        97,
+        10,
+        9,
+        13,
+        92,
+        34,
+        92,
+        92,
+        34,
+        93
+      ]
+    },
+    "files": []
+  },
+  {
+    "name": "plugin_save_utf8",
+    "source": "Plugins.link(\"saveStruct.dll\");var p=System.exePath+\"plugin.txt\";[1,\"日本語\"].saveStruct2(p,true);var a=[];a.load(p);return a.join(\"|\");",
+    "expected": {
+      "String": [
+        91,
+        105,
+        110,
+        116,
+        32,
+        49,
+        44,
+        34,
+        26085,
+        26412,
+        35486,
+        34,
+        93
+      ]
+    },
+    "files": [
+      "plugin.txt"
+    ]
+  },
+  {
+    "name": "plugin_save_cp932",
+    "source": "Plugins.link(\"saveStruct.dll\");[\"日本語\"].saveStruct2(System.exePath+\"sjis.txt\",false);return 1;",
+    "expected": {
+      "Integer": 1
+    },
+    "files": [
+      "sjis.txt"
+    ]
+  },
+  {
+    "name": "plugin_save_lines",
+    "source": "Plugins.link(\"saveStruct.dll\");var p=System.exePath+\"lines.txt\";[\"a\",\"日本語\",\"\"].save2(p,true,1);var a=[];a.load(p);return a.join(\"|\");",
+    "expected": {
+      "String": [
+        97,
+        124,
+        26085,
+        26412,
+        35486,
+        124
+      ]
+    },
+    "files": [
+      "lines.txt"
+    ]
+  },
+  {
+    "name": "native_lines",
+    "source": "Plugins.link(\"saveStruct.dll\");var p=System.exePath+\"native.txt\",a=[\"x\",1,1.5,void,null,%[]];var r=a.save(p);var b=[];b.load(p);return (r===a)+\",\"+b.count+\",\"+b.join(\"|\");",
+    "expected": {
+      "String": [
+        49,
+        44,
+        54,
+        44,
+        120,
+        124,
+        49,
+        124,
+        49,
+        46,
+        53,
+        124,
+        124,
+        124
+      ]
+    },
+    "files": [
+      "native.txt"
+    ]
+  },
+  {
+    "name": "native_const_format",
+    "source": "Plugins.link(\"saveStruct.dll\");var p=System.exePath+\"structured.txt\",a=[1,1.5,\"日本語\\n\",%[\"x\"=>2],null];a.add(a);a.saveStruct(p);var b=Scripts.evalStorage(p);return b[0]+\",\"+b[1]+\",\"+b[3].x+\",\"+(b[5]===null);",
+    "expected": {
+      "String": [
+        49,
+        44,
+        49,
+        46,
+        53,
+        44,
+        50,
+        44,
+        49
+      ]
+    },
+    "files": [
+      "structured.txt"
+    ]
+  },
+  {
+    "name": "native_dictionary",
+    "source": "Plugins.link(\"saveStruct.dll\");var p=System.exePath+\"dictionary.txt\",d=%[\"a\"=>1,\"b\"=>[2,3],\"c\"=>\"x\"];var r=(Dictionary.saveStruct incontextof d)(p);var e=Scripts.evalStorage(p);return (r===d)+\",\"+e.a+\",\"+e.b[1]+\",\"+e.c;",
+    "expected": {
+      "String": [
+        49,
+        44,
+        49,
+        44,
+        51,
+        44,
+        120
+      ]
+    },
+    "files": [
+      "dictionary.txt"
+    ]
+  },
+  {
+    "name": "native_mode_c",
+    "source": "Plugins.link(\"saveStruct.dll\");var p=System.exePath+\"mode_c.txt\";[\"日本語\",0.1].saveStruct(p,\"c\");var a=Scripts.evalStorage(p);return a[0]+\",\"+a[1];",
+    "expected": {
+      "String": [
+        26085,
+        26412,
+        35486,
+        44,
+        48,
+        46,
+        49
+      ]
+    },
+    "files": [
+      "mode_c.txt"
+    ]
+  },
+  {
+    "name": "native_mode_c1",
+    "source": "Plugins.link(\"saveStruct.dll\");var p=System.exePath+\"mode_c1.txt\";[\"日本語\",0.1].saveStruct(p,\"c1\");var a=Scripts.evalStorage(p);return a[0]+\",\"+a[1];",
+    "expected": {
+      "String": [
+        26085,
+        26412,
+        35486,
+        44,
+        48,
+        46,
+        49
+      ]
+    },
+    "files": [
+      "mode_c1.txt"
+    ]
+  },
+  {
+    "name": "native_mode_z",
+    "source": "Plugins.link(\"saveStruct.dll\");var p=System.exePath+\"mode_z.txt\";[\"日本語\",0.1].saveStruct(p,\"z\");var a=Scripts.evalStorage(p);return a[0]+\",\"+a[1];",
+    "expected": {
+      "String": [
+        26085,
+        26412,
+        35486,
+        44,
+        48,
+        46,
+        49
+      ]
+    },
+    "files": [
+      "mode_z.txt"
+    ]
+  },
+  {
+    "name": "native_mode_z0",
+    "source": "Plugins.link(\"saveStruct.dll\");var p=System.exePath+\"mode_z0.txt\";[\"日本語\",0.1].saveStruct(p,\"z0\");var a=Scripts.evalStorage(p);return a[0]+\",\"+a[1];",
+    "expected": {
+      "String": [
+        26085,
+        26412,
+        35486,
+        44,
+        48,
+        46,
+        49
+      ]
+    },
+    "files": [
+      "mode_z0.txt"
+    ]
+  },
+  {
+    "name": "native_mode_z9",
+    "source": "Plugins.link(\"saveStruct.dll\");var p=System.exePath+\"mode_z9.txt\";[\"日本語\",0.1].saveStruct(p,\"z9\");var a=Scripts.evalStorage(p);return a[0]+\",\"+a[1];",
+    "expected": {
+      "String": [
+        26085,
+        26412,
+        35486,
+        44,
+        48,
+        46,
+        49
+      ]
+    },
+    "files": [
+      "mode_z9.txt"
+    ]
+  },
+  {
+    "name": "native_line_boundaries",
+    "source": "Plugins.link(\"saveStruct.dll\");var p=System.exePath+\"boundaries.txt\";[\"a\\r\\nb\\rc\\n\\nd\"].save(p);var a=[];a.load(p);return a.join(\"|\");",
+    "expected": {
+      "String": [
+        97,
+        124,
+        98,
+        124,
+        99,
+        124,
+        124,
+        100
+      ]
+    },
+    "files": [
+      "boundaries.txt"
+    ]
+  },
+  {
+    "name": "native_offset",
+    "source": "Plugins.link(\"saveStruct.dll\");var p=System.exePath+\"offset.txt\";[\"prefix\"].save(p);[7].saveStruct(p,\"o16\");return Scripts.evalStorage(p,\"o16\")[0];",
+    "expected": {
+      "Integer": 7
+    },
+    "files": [
+      "offset.txt"
+    ]
+  },
+  {
+    "name": "constant_identity",
+    "source": "Plugins.link(\"saveStruct.dll\");function f(){return (const)[1];}var a=f();a[0]=7;return (a===f())*10+f()[0];",
+    "expected": {
+      "Integer": 17
+    },
+    "files": []
+  },
+  {
+    "name": "constant_nested",
+    "source": "Plugins.link(\"saveStruct.dll\");var a=(const)[1,(const)%[\"v\"=>(const)[2]]];return a[1].v[0];",
+    "expected": {
+      "Integer": 2
+    },
+    "files": []
+  },
+  {
+    "name": "hexadecimal_real",
+    "source": "Plugins.link(\"saveStruct.dll\");return string (0x1.8000000000000p0 + 0x1.0000000000000p-1);",
+    "expected": {
+      "String": [
+        50
+      ]
+    },
+    "files": []
+  }
+]

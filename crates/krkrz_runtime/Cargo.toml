@@ -12,6 +12,5 @@ krkrz_core.workspace = true
 krkrz_assets.workspace = true
 krkrz_tjs.workspace = true
 krkrz_kag.workspace = true
-
-[dev-dependencies]
+encoding_rs.workspace = true
 tempfile.workspace = true

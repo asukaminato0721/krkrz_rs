@@ -43,7 +43,7 @@ impl Value {
         match self {
             Self::Void => String::new(),
             Self::Integer(n) => n.to_string(),
-            Self::Real(n) => n.to_string(),
+            Self::Real(n) => real_text(*n),
             Self::String(s) => String::from_utf16_lossy(s),
             Self::Object(o) => {
                 if o.object.is_none() {
@@ -220,6 +220,34 @@ pub fn parse_number(text: &str) -> Value {
         (10, 0)
     };
     if radix != 10 {
+        if radix == 16 && (s.contains('.') || s.contains(['p', 'P'])) {
+            let body = &s[2..];
+            let (mantissa, exponent) = body.split_once(['p', 'P']).unwrap_or((body, "0"));
+            let mut value = 0.0;
+            let mut fraction = false;
+            let mut scale = 1.0;
+            for ch in mantissa.chars() {
+                if ch == '.' {
+                    fraction = true;
+                    continue;
+                }
+                let Some(digit) = ch.to_digit(16) else {
+                    break;
+                };
+                if fraction {
+                    scale /= 16.0;
+                    value += f64::from(digit) * scale;
+                } else {
+                    value = value * 16.0 + f64::from(digit);
+                }
+            }
+            let exponent = exponent.parse::<i32>().unwrap_or(0).clamp(-4096, 4096);
+            // Split scaling to retain subnormal values without overflowing the divisor.
+            let first = exponent.clamp(-1022, 1023);
+            value *= 2.0f64.powi(first);
+            value *= 2.0f64.powi(exponent - first);
+            return Value::Real(value * sign as f64);
+        }
         let digits = s[prefix..]
             .chars()
             .take_while(|c| c.is_digit(radix))
@@ -268,6 +296,55 @@ pub fn parse_number(text: &str) -> Value {
         });
         Value::Integer(n as i64).unary_sign(sign)
     }
+}
+
+/// Target engine's %.15g formatting, including its three-digit exponent.
+pub fn real_text(value: f64) -> String {
+    if value.is_nan() {
+        return "NaN".into();
+    }
+    if value.is_infinite() {
+        return if value.is_sign_negative() {
+            "-Infinity"
+        } else {
+            "+Infinity"
+        }
+        .into();
+    }
+    if value == 0.0 {
+        return if value.is_sign_negative() {
+            "-0.0"
+        } else {
+            "+0.0"
+        }
+        .into();
+    }
+    let formatted = format!("{:.14e}", value.abs());
+    let (mantissa, exponent) = formatted.split_once('e').unwrap();
+    let exponent: i32 = exponent.parse().unwrap();
+    let sign = if value.is_sign_negative() { "-" } else { "" };
+    if !(-4..15).contains(&exponent) {
+        return format!(
+            "{sign}{}e{}{exponent:03}",
+            mantissa.trim_end_matches('0').trim_end_matches('.'),
+            if exponent < 0 { "-" } else { "+" },
+            exponent = exponent.abs()
+        );
+    }
+    let digits = mantissa.replace('.', "");
+    let mut body = if exponent < 0 {
+        format!("0.{}{digits}", "0".repeat((-exponent - 1) as usize))
+    } else {
+        let split = exponent as usize + 1;
+        format!("{}.{}", &digits[..split], &digits[split..])
+    };
+    while body.ends_with('0') {
+        body.pop();
+    }
+    if body.ends_with('.') {
+        body.pop();
+    }
+    format!("{sign}{body}")
 }
 impl Value {
     fn unary_sign(self, sign: i64) -> Self {

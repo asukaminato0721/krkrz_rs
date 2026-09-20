@@ -55,6 +55,8 @@ enum Command {
         name: String,
         #[arg(long)]
         runtime: bool,
+        #[arg(long, requires = "runtime")]
+        save_dir: Option<PathBuf>,
         #[arg(long, default_value_t = 100000)]
         budget: u64,
     },
@@ -158,11 +160,12 @@ fn run() -> Result<()> {
             name,
             mut budget,
             runtime,
+            save_dir,
         } => {
             if runtime {
                 let mut session = krkrz_runtime::Session::open(
                     &args.project_dir,
-                    None,
+                    save_dir.as_deref(),
                     matches!(args.profile, Profile::OtomeDomain),
                     budget,
                 )?;

@@ -48,6 +48,7 @@ Kirikiri's original bytecode format. `exec` runs a source file in the standalone
 TJS VM and prints a JSON value; Kirikiri services are provided by the engine
 command or `exec NAME --runtime`. The runtime option uses the same Session as
 the engine, including plugin registration and shared execution budgets.
+Use `exec NAME --runtime --save-dir PATH` to select a separate writable directory.
 
 An unfiltered `verify` deliberately returns failure for the installation's
 malformed protection-notice entry. It verifies all other resolved resources
@@ -68,8 +69,11 @@ selects it explicitly. It never executes the Windows executable or DLLs.
 
 The save directory defaults to `$XDG_DATA_HOME/krkrz_rs/<project-path-hash>`
 (or `$HOME/.local/share/krkrz_rs/<project-path-hash>`). Save paths within the
-installation are rejected. No save serializer is implemented yet, and startup
-does not create a save directory. Existing Windows saves remain untouched.
+installation are rejected. Native Array/Dictionary structured saves, Array text
+load/save, and the standalone saveStruct plugin now write through a separate
+overlay. Game-relative writes are redirected there; reads prefer that overlay.
+Directories are created when data is written. Existing Windows saves remain
+untouched. Original game save/load acceptance is still open.
 
 The engine currently returns an explicit error for unsupported source/native
 operations, compiled scripts, or the absent native presentation loop. The
@@ -82,10 +86,10 @@ outside the installation.
 | Crate | Implemented | Still required for the slice |
 |---|---|---|
 | `krkrz_core` | Storage-name normalization, resource limits, source/input types, separate save path selection | Full Kirikiri URI/media normalization |
-| `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding, PSB v2, PNG/JPEG/TLG5, Vorbis PCM, SLI loops and labels | TLG6, PSB plugin object bindings, font integration, MPEG/AlphaMovie |
-| `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, loops, interpolation, argument forwarding/rest/spread, `instanceof`, preprocessing, RegExp, native class/accessor registration, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting/default arguments, object finalization/collection, original bytecode loader |
+| `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5, Vorbis PCM, SLI loops and labels | TLG6, PSB plugin object bindings, font integration, MPEG/AlphaMovie |
+| `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, loops, interpolation, argument forwarding/rest/spread, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting/default arguments, object finalization/collection, original bytecode loader |
 | `krkrz_kag` | Ordered tags/attributes, labels, text/escaped brackets, multiline tags, explicit jump/call/return and restorable cursor | Macros, conditionals, parameter expansion, script-driven parser bindings, complete KAGParserEx state |
-| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, Window state and deferred resize callbacks, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
+| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, Window state and deferred resize callbacks, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
 | `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, static inventory, primitive evaluation, startup diagnostics | Deterministic interactive replay, input-driven checkpoints, frame/audio comparison, native play |
 
 The compositor, scheduler, Window state and PCM mixer are tested components, not yet a game player. Window support currently covers construction, caption, visibility, client size, position, primary-layer lookup and resize/action callbacks in headless sessions. It does not create an OS window.
@@ -99,6 +103,23 @@ the community source and the installed PackinOne component's behavior. Array
 member reflection and octet MD5 remain explicit unsupported operations, as do
 some object kinds in `foreach`. This component is not yet a replacement for
 the complete PackinOne bundle, so original startup still stops at that plugin.
+
+The `saveStruct.dll` component provides `save2`, `saveStruct2` and
+`toStructString`. Native saves use Kirikiri UTF-16, optional text cipher/zlib
+modes and byte offsets. The plugin writes UTF-8 or Japanese CP932. Twenty-three
+synthetic serialization cases match the original engine and plugin, including
+saved bytes (decompressed content for zlib). This does not establish original
+game save compatibility. Unsupported CP932 fallback characters and plugin
+cycles fail explicitly. Failed serialization leaves the previous save intact;
+upstream can leave a partial file on some error paths.
+
+The `csvParser.dll` component supplies CSVParser instances and subclasses,
+UTF-16 string input, UTF-8/CP932 storage input, custom separators, multiline
+fields, logical line numbers and `doLine` callbacks. It follows the older
+PackinOne API; the second storage argument is a boolean, not a text-stream
+mode. Invalid legacy encoding replacement rules and object finalization remain
+open. Full PackinOne registration is still required before original startup
+can use these components together.
 
 ## Installed-game validation
 

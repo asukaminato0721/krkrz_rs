@@ -1,0 +1,337 @@
+[
+  {
+    "name": "basic",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();p.init(\"a,b\\r\\nc,d\");var a=p.getNextLine(),b=p.getNextLine();return a.join(\"|\")+\",\"+b.join(\"|\")+\",\"+p.currentLineNumber+\",\"+typeof p.getNextLine();",
+    "expected": {
+      "String": [
+        97,
+        124,
+        98,
+        44,
+        99,
+        124,
+        100,
+        44,
+        50,
+        44,
+        118,
+        111,
+        105,
+        100
+      ]
+    }
+  },
+  {
+    "name": "empty",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();p.init(\"\");return typeof p.getNextLine()+\",\"+p.currentLineNumber;",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100,
+        44,
+        48
+      ]
+    }
+  },
+  {
+    "name": "blank_lines",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();p.init(\"\\n,\\n\\n\");return p.getNextLine().count+\",\"+p.getNextLine().count+\",\"+p.getNextLine().count+\",\"+p.currentLineNumber;",
+    "expected": {
+      "String": [
+        48,
+        44,
+        50,
+        44,
+        48,
+        44,
+        51
+      ]
+    }
+  },
+  {
+    "name": "quotes",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();p.init('\"a,b\",\"c\"\"d\",e');return p.getNextLine().join(\"|\");",
+    "expected": {
+      "String": [
+        97,
+        44,
+        98,
+        124,
+        99,
+        34,
+        100,
+        124,
+        101
+      ]
+    }
+  },
+  {
+    "name": "quoted_tail",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();p.init('\"a\"tail,b');return p.getNextLine().join(\"|\");",
+    "expected": {
+      "String": [
+        97,
+        116,
+        97,
+        105,
+        108,
+        124,
+        98
+      ]
+    }
+  },
+  {
+    "name": "multiline",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();p.init('\"a\\nb\",c\\nx,y');var a=p.getNextLine();return a.join(\"|\")+\",\"+p.currentLineNumber+\",\"+p.getNextLine().join(\"|\")+\",\"+p.currentLineNumber;",
+    "expected": {
+      "String": [
+        97,
+        13,
+        10,
+        98,
+        124,
+        99,
+        44,
+        49,
+        44,
+        120,
+        124,
+        121,
+        44,
+        50
+      ]
+    }
+  },
+  {
+    "name": "unterminated",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();p.init('\"a');return p.getNextLine()[0];",
+    "expected": {
+      "String": [
+        97,
+        13,
+        10
+      ]
+    }
+  },
+  {
+    "name": "custom",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser(null,#\";\",\"/\");p.init('\"a\\nb\";c;');return p.getNextLine().join(\"|\");",
+    "expected": {
+      "String": [
+        97,
+        47,
+        98,
+        124,
+        99,
+        124
+      ]
+    }
+  },
+  {
+    "name": "cr_final",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();p.init(\"a\\rb\");var a=p.getNextLine();return a.join(\"|\")+\",\"+typeof p.getNextLine()+\",\"+p.currentLineNumber;",
+    "expected": {
+      "String": [
+        97,
+        44,
+        118,
+        111,
+        105,
+        100,
+        44,
+        49
+      ]
+    }
+  },
+  {
+    "name": "cr_normal",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();p.init(\"a\\rbc\");return p.getNextLine()[0]+\",\"+p.getNextLine()[0];",
+    "expected": {
+      "String": [
+        97,
+        44,
+        98,
+        99
+      ]
+    }
+  },
+  {
+    "name": "callback_target",
+    "source": "Plugins.link(\"csvParser.dll\");var target=%[\"sum\"=>0];target.doLine=function(a,n){sum+=int a[0]+n;return 0;};var p=new CSVParser(target);p.parse(\"3\\n5\");return target.sum;",
+    "expected": {
+      "Integer": 11
+    }
+  },
+  {
+    "name": "callback_subclass",
+    "source": "Plugins.link(\"csvParser.dll\");class P extends CSVParser {var result=\"\";function doLine(a,n){result+=n+\":\"+a.join(\"|\")+\";\";}}var p=new P();p.parse(\"a,b\\nc,d\");return p.result;",
+    "expected": {
+      "String": [
+        49,
+        58,
+        97,
+        124,
+        98,
+        59,
+        50,
+        58,
+        99,
+        124,
+        100,
+        59
+      ]
+    }
+  },
+  {
+    "name": "missing_handler_keeps_input",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();p.parse(\"a\\nb\");return p.currentLineNumber+\",\"+p.getNextLine()[0];",
+    "expected": {
+      "String": [
+        48,
+        44,
+        97
+      ]
+    }
+  },
+  {
+    "name": "init_resets",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();p.init(\"a\\nb\");p.getNextLine();p.init(\"c\");return p.currentLineNumber+\",\"+p.getNextLine()[0]+\",\"+p.currentLineNumber;",
+    "expected": {
+      "String": [
+        48,
+        44,
+        99,
+        44,
+        49
+      ]
+    }
+  },
+  {
+    "name": "reentrant_init",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser(),seen=\"\";p.doLine=function(a,n){seen+=a[0]+n;if(a[0]==\"a\")p.init(\"b\");};p.parse(\"a\\nc\");return seen;",
+    "expected": {
+      "String": [
+        97,
+        49,
+        98,
+        49
+      ]
+    }
+  },
+  {
+    "name": "callback_ignores_bound_context",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser(),other=%[\"x\"=>90];p.x=0;p.doLine=(function(a,n){x+=n;}) incontextof other;p.parse(\"a\\nb\");return p.x+\",\"+other.x;",
+    "expected": {
+      "String": [
+        51,
+        44,
+        57,
+        48
+      ]
+    }
+  },
+  {
+    "name": "storage_string_is_boolean",
+    "source": "Plugins.link(\"csvParser.dll\");Plugins.link(\"saveStruct.dll\");var path=System.exePath+\"csv.txt\";[\"日本,語\"].save2(path,true);var p=new CSVParser();p.initStorage(path,\"1\");return p.getNextLine().join(\"|\");",
+    "expected": {
+      "String": [
+        26085,
+        26412,
+        124,
+        35486
+      ]
+    }
+  },
+  {
+    "name": "storage_utf8",
+    "source": "Plugins.link(\"csvParser.dll\");Plugins.link(\"saveStruct.dll\");var path=System.exePath+\"csv.txt\";[\"日本,語\"].save2(path,true);var p=new CSVParser();p.initStorage(path,true);return p.getNextLine().join(\"|\");",
+    "expected": {
+      "String": [
+        26085,
+        26412,
+        124,
+        35486
+      ]
+    }
+  },
+  {
+    "name": "storage_cp932",
+    "source": "Plugins.link(\"csvParser.dll\");Plugins.link(\"saveStruct.dll\");var path=System.exePath+\"csv.txt\";[\"日本,語\"].save2(path,false);var p=new CSVParser();p.initStorage(path);return p.getNextLine().join(\"|\");",
+    "expected": {
+      "String": [
+        26085,
+        26412,
+        124,
+        35486
+      ]
+    }
+  },
+  {
+    "name": "parse_storage",
+    "source": "Plugins.link(\"csvParser.dll\");Plugins.link(\"saveStruct.dll\");var path=System.exePath+\"csv.txt\";[\"1,2\",\"3,4\"].save2(path,true);var p=new CSVParser(),out=\"\";p.doLine=function(a,n){out+=a.join(\"|\");};p.parseStorage(path,\"\");return out;",
+    "expected": {
+      "String": [
+        49,
+        124,
+        50,
+        51,
+        124,
+        52
+      ]
+    }
+  },
+  {
+    "name": "readonly_line_number",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();try{p.currentLineNumber=9;}catch{return p.currentLineNumber;}return 99;",
+    "expected": {
+      "Integer": 0
+    }
+  },
+  {
+    "name": "idempotent_link",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();Plugins.link(\"csvParser.dll\");p.init(\"x\");return p.getNextLine()[0];",
+    "expected": {
+      "String": [
+        120
+      ]
+    }
+  },
+  {
+    "name": "storage_bom_eof",
+    "source": "Plugins.link(\"csvParser.dll\");var path=System.exePath+\"csv.txt\";[\"a,b\"].save(path);var p=new CSVParser();p.initStorage(path,\"\");return typeof p.getNextLine();",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100
+      ]
+    }
+  },
+  {
+    "name": "failed_open_closes_input",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser();p.init(\"a\\nb\");p.getNextLine();try{p.initStorage(\"does-not-exist.csv\");}catch{}return typeof p.getNextLine()+\",\"+p.currentLineNumber;",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100,
+        44,
+        49
+      ]
+    }
+  },
+  {
+    "name": "parse_current_input",
+    "source": "Plugins.link(\"csvParser.dll\");var p=new CSVParser(),s=\"\";p.init(\"a\\nb\");p.getNextLine();p.doLine=function(a,n){s+=a[0]+n;};p.parseStorage();return s;",
+    "expected": {
+      "String": [
+        98,
+        50
+      ]
+    }
+  }
+]
