@@ -57,7 +57,9 @@ against the installed plugin's output. The historical plugin lists Go Watanabe
 and miahmie as authors and specifies the same Kirikiri license below.
 KAGParserEx parsing, macro expansion and native parser state follow wamsoft/KAGParserEx
 `KAGParser.cpp`, Copyright (C) 2000 W.Dee <dee@kikyou.info> and contributors,
-under the same Kirikiri license below. The pinned revision is in `docs/references.json`.
+under the same Kirikiri license below. Layer focus, province pixels and colorRect
+follow `visual/LayerIntf.cpp`, `visual/LayerBitmapIntf.cpp`, `visual/tvpgl.c`
+and `visual/gl/colorfill_sse2.cpp`. The pinned revision is in `docs/references.json`.
 CSVParser parsing, row callbacks and stream boundaries follow historical
 `csvParser/Main.cpp`, by Go Watanabe, under the same Kirikiri license. The
 installed PackinOne storage-mode behavior was established by comparison.
@@ -67,6 +69,8 @@ SLI parsing and PCM loop mixing are adapted from Kirikiri Z
 `sound/WaveLoopManager.cpp` and `sound/WaveLoopManager.h`. Sound control state
 and fades follow `sound/WaveIntf.cpp`, `sound/SoundBufferBaseIntf.cpp`,
 `sound/win32/WaveImpl.cpp` and `sound/win32/SoundBufferBaseImpl.h`.
+PhaseVocoder control and streaming DSP follow `sound/PhaseVocoderFilter.cpp`
+and `sound/PhaseVocoderDSP.cpp`; RustFFT supplies the FFT implementation.
 The getSample replacement follows Kirikiroid2
 `src/plugins/getSample.cpp`, revision `d1c2b1259423542c893e0b65eaeb46c848848f2b`,
 under the Kirikiri notice below. Visualization downmix follows Kirikiri Z

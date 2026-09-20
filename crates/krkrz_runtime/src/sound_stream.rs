@@ -53,6 +53,7 @@ impl Services {
             && let Some(loaded) = &mut sound.loaded
         {
             loaded.stream.seek(0)?;
+            loaded.pipeline.reset();
             loaded.ended = false;
         }
         Ok(())
@@ -104,6 +105,7 @@ impl Services {
         } else {
             LoopInfo::default()
         };
+        let pipeline = self.connect_sound_filters(vm, id, audio.channels as usize, budget)?;
         let audio = Arc::new(audio);
         let mut stream = SoundStream::new(audio.clone(), info)?;
         let sound = self
@@ -115,6 +117,7 @@ impl Services {
         sound.loaded = Some(Loaded {
             audio,
             stream,
+            pipeline,
             ended: false,
         });
         self.sound_status(vm, context, id, "stop", budget)?;
@@ -160,8 +163,9 @@ impl Services {
             "visualization destination is too small"
         );
         let mut preview = loaded.stream.clone();
-        preview.render(ahead as usize)?;
-        let block = preview.render(frames as usize)?;
+        let mut pipeline = loaded.pipeline.clone();
+        pipeline.render(&mut preview, ahead as usize)?;
+        let block = pipeline.render(&mut preview, frames as usize)?;
         let source_channels = loaded.audio.channels as usize;
         let written = block.samples.len() / source_channels;
         if channels == 1 {
@@ -207,7 +211,7 @@ impl Session {
         if loaded.ended {
             return Ok(AudioBlock::default());
         }
-        let block = loaded.stream.render(frames)?;
+        let block = loaded.pipeline.render(&mut loaded.stream, frames)?;
         ensure!(
             sound.events.len() + block.labels.len() < 65_536,
             "sound event queue limit exceeded"

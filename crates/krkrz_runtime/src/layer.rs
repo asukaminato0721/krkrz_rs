@@ -639,7 +639,7 @@ impl Layer {
                             for y in top.max(0)..bottom.min(p.height as i32) {
                                 for x in left.max(0)..right.min(p.width as i32) {
                                     p.pixels[y as usize * p.width + x as usize] = color;
-                    self.image_modified = true;
+                                    self.image_modified = true;
                                     self.image_modified = true;
                                 }
                             }

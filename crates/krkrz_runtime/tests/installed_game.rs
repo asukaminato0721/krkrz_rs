@@ -216,3 +216,24 @@ fn original_text_render_wrapper_uses_native_layout() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+#[ignore = "requires the installed Otome Domain game and KRKRZ_PROJECT_DIR"]
+fn original_voice_track_constructs_with_phase_vocoder() -> Result<()> {
+    use krkrz_runtime::Session;
+    use krkrz_tjs::Value;
+    let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
+    let saves = tempfile::tempdir()?;
+    let mut session = Session::open(Path::new(&project), Some(saves.path()), true, 100_000)?;
+    session.evaluate("Plugins.link('getSample.dll')")?;
+    session.execute_storage("system/voice.tjs")?;
+    session.evaluate("Scripts.exec('global.voice=new VoiceSoundBuffer(%[],0);')")?;
+    assert_eq!(session.evaluate("voice.status")?, Value::string("unload"));
+    assert_eq!(
+        session.evaluate("voice.vocoder.window")?,
+        Value::Integer(256)
+    );
+    assert_eq!(session.evaluate("voice.filters.count")?, Value::Integer(0));
+    session.evaluate("invalidate voice")?;
+    Ok(())
+}

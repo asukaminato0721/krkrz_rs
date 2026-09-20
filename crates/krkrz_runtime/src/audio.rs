@@ -81,6 +81,20 @@ impl SoundStream {
     /// Render at the source rate. EOF returns a short block; labels use output frames.
     /// Crossfade state persists across calls, so output does not depend on block size.
     pub fn render(&mut self, frames: usize) -> Result<AudioBlock> {
+        self.render_inner(frames, None)
+    }
+    pub(crate) fn render_tracked(
+        &mut self,
+        frames: usize,
+        positions: &mut Vec<u64>,
+    ) -> Result<AudioBlock> {
+        self.render_inner(frames, Some(positions))
+    }
+    fn render_inner(
+        &mut self,
+        frames: usize,
+        mut positions: Option<&mut Vec<u64>>,
+    ) -> Result<AudioBlock> {
         ensure!(frames <= 1_000_000, "audio block exceeds frame limit");
         let channels = self.audio.channels as usize;
         let total = self.audio.frames() as u64;
@@ -156,6 +170,9 @@ impl SoundStream {
                 let start = self.position as usize * channels;
                 out.samples
                     .extend_from_slice(&self.audio.samples[start..start + count * channels]);
+            }
+            if let Some(positions) = &mut positions {
+                positions.extend((1..=count as u64).map(|offset| self.position + offset));
             }
             self.position += count as u64;
             written += count;

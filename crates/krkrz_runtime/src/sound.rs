@@ -18,6 +18,7 @@ struct Fade {
 pub(crate) struct Loaded {
     pub audio: Arc<Audio>,
     pub stream: SoundStream,
+    pub pipeline: crate::phase_vocoder::Pipeline,
     pub ended: bool,
 }
 pub(crate) struct Sound {
@@ -29,6 +30,7 @@ pub(crate) struct Sound {
     output_channels: u8,
     pub(crate) frequency: i32,
     owner: Value,
+    pub(crate) filters: Value,
     constructed: bool,
     volume: i32,
     volume2: i32,
@@ -51,6 +53,7 @@ impl Default for Sound {
             output_channels: 0,
             frequency: 0,
             owner: Value::NULL,
+            filters: Value::Void,
             constructed: false,
             volume: 100_000,
             volume2: 100_000,
@@ -193,7 +196,13 @@ impl Services {
             .object
             .context("WaveSoundBuffer requires a non-null context")?;
         if operation == "@initialize" {
-            self.sounds.entry(id).or_default();
+            if let std::collections::btree_map::Entry::Vacant(entry) = self.sounds.entry(id) {
+                let filters = vm.new_native_array(vec![])?;
+                entry.insert(Sound {
+                    filters,
+                    ..Sound::default()
+                });
+            }
             return Ok(Value::Void);
         }
         if operation == "@invalidate" {
@@ -226,6 +235,7 @@ impl Services {
         }
         ensure!(sound.constructed, "WaveSoundBuffer constructor has not run");
         match operation {
+            "get:filters" => return Ok(sound.filters.clone()),
             "get:volume" => return Ok(Value::Integer(sound.volume.into())),
             "get:volume2" => return Ok(Value::Integer(sound.volume2.into())),
             "get:pan" => return Ok(Value::Integer(sound.pan.into())),
@@ -257,7 +267,10 @@ impl Services {
                 let position = if sound.output_rate == 0 {
                     0
                 } else {
-                    sound.loaded.as_ref().map_or(0, |s| s.stream.position())
+                    sound
+                        .loaded
+                        .as_ref()
+                        .map_or(0, |s| s.pipeline.position(&s.stream))
                 };
                 return Ok(Value::Integer(
                     if operation == "get:position" && sound.output_rate != 0 {
@@ -289,6 +302,7 @@ impl Services {
                     .context("cannot seek an unloaded sound")?;
                 if position < loaded.audio.frames() as u64 {
                     loaded.stream.seek(position)?;
+                    loaded.pipeline.reset();
                     loaded.ended = false;
                     sound.generation += 1;
                     sound.events.clear();
