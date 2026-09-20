@@ -183,11 +183,14 @@ fn window_state_and_deferred_resize_callbacks_share_the_session() {
             function action(e) {if(e.type=='onResize' && e.target===this) actions++;}
         }
         var a=new PoolWindow(), b=new Window();
+        var missingLayer=false;
+        try {a.poolLayer;} catch(e) {missingLayer=true;}
+        var primary=new Layer(a,null);
         a.setInnerSize(1280,720); a.innerWidth=960;
         a.visible=true; a.caption='Story';
         var resize=a.setInnerSize; resize(800,600);
         b.setInnerSize(320,240);
-        return (a.poolLayer===null) && b.caption=='Title' && a.resized==0;
+        return missingLayer && (a.poolLayer===primary) && b.caption=='Title' && a.resized==0;
     "#,
     )
     .unwrap();

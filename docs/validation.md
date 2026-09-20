@@ -28,6 +28,16 @@ roots and finalizers are covered by focused VM/runtime tests. Native and replay
 hosts collect between ticks; Session embedders explicitly provide retained Values.
 Finalizer timing is deferred, rather than immediate reference counting.
 
+Original-engine lifetime probes additionally establish that layer parent/child
+links and a window's primary-layer pointer are weak references. A cached
+`children` array, focus, and modal state retain their targets. The runtime now
+follows these rules, with a separate layer manager that can outlive a deleted
+primary layer while children remain. Ten original-engine cases verify idle
+finalization, cached children, focus/modal retention, and orphan-layer behavior;
+the runtime test explicitly collects between ticks. This corrects retention of
+obsolete PSD layers during extended dialogue. Full-route acceptance is still in
+progress; see [playthrough-validation.md](playthrough-validation.md).
+
 A native Xvfb run also displayed the title, accepted X11 New Game input and
 advanced from the first dialogue to the next character with a second click.
 The software GL run needed more wall-clock time than the headless replay.

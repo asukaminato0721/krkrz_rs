@@ -1,6 +1,6 @@
-//! Installed-game acceptance runner. Uses normal New Game, held Ctrl, and choice clicks.
+//! Installed-game acceptance runner. Uses normal New Game or Load UI, held Ctrl, and choice clicks.
 //! Usage: XDG_CACHE_HOME=/tmp/unique-cache cargo run --release -p krkrz_runtime
-//! --example otome_playthrough -- PROJECT SAVE_DIR OUTPUT_DIR kaz|yuz|hin [LIMIT_MS]
+//! --example otome_playthrough -- PROJECT SAVE_DIR OUTPUT_DIR kaz|yuz|hin [LIMIT_MS] [--load-slot0]
 //! All outputs must be separate from the original installation and saves.
 use anyhow::{Context, Result, bail, ensure};
 use krkrz_runtime::{InputEvent, Session};
@@ -64,6 +64,7 @@ fn run(
     session: &mut Session,
     route: &str,
     limit: u64,
+    load_slot0: bool,
     directory: &Path,
     output: &mut impl Write,
 ) -> Result<()> {
@@ -78,12 +79,24 @@ fn run(
     let mut last_progress = String::new();
     let mut last_report_ms = 0;
     let mut reached_route = false;
+    let mut reached_epilogue = false;
+    let mut load_stage = 0;
+    let mut load_stage_at = 0;
     let route_prefix = match route {
         "kaz" => "ra",
         "yuz" => "rb",
         "hin" => "rc",
         _ => unreachable!(),
     };
+    let epilogue = format!("{route_prefix}04_4.txt");
+    let clear_expression = format!("!!kag.sflags.clear_{route}");
+    let initially_cleared = session.evaluate(&clear_expression)?.integer()? != 0;
+    record(
+        output,
+        json!({"event":"start","route":route,"limit_ms":limit,
+        "start_mode":if load_slot0 { "load_slot0" } else { "new_game" },
+        "initially_cleared":initially_cleared}),
+    )?;
     for at in (0..=limit).step_by(16) {
         if session.vm.should_collect_garbage() {
             session.collect_garbage(&[])?;
@@ -107,6 +120,7 @@ fn run(
         if scene.starts_with(route_prefix) {
             reached_route = true;
         }
+        reached_epilogue |= scene.starts_with(&epilogue);
         if state != last_progress || at - last_report_ms >= 5000 {
             record(
                 output,
@@ -120,7 +134,12 @@ fn run(
         if fields[0] == "title.ks" && fields[1] == "*wait" {
             if !launched {
                 capture(session, directory, "title.png")?;
-                click(session, 110, 650)?;
+                click(session, if load_slot0 { 290 } else { 110 }, 650)?;
+                if load_slot0 {
+                    load_stage = 1;
+                    load_stage_at = at;
+                    record(output, json!({"event":"load_ui_requested","at_ms":at}))?;
+                }
                 launched = true;
                 continue;
             }
@@ -133,12 +152,55 @@ fn run(
                     reached_route,
                     "returned to title before reaching requested route {route}"
                 );
+                let cleared = session.evaluate(&clear_expression)?.integer()? != 0;
+                let complete = reached_epilogue && cleared;
                 record(
                     output,
-                    json!({"event":"returned_title","at_ms":at,"route":route,"scenes":scenes}),
+                    json!({"event":"returned_title","at_ms":at,"route":route,
+                    "scenes":scenes,"reached_epilogue":reached_epilogue,"clear_flag":cleared,
+                    "outcome":if complete { "full_route_ending" } else { "incomplete_return" }}),
                 )?;
+                ensure!(
+                    complete,
+                    "returned to title without epilogue and route-clear evidence for {route}"
+                );
                 return Ok(());
             }
+        }
+        if load_slot0 && launched && load_stage < 3 {
+            ensure!(
+                at - load_stage_at < 60_000,
+                "slot-0 load stalled at UI stage {load_stage}"
+            );
+            if load_stage == 1
+                && fields[0] == "load.ks"
+                && fields[1] == "*wait"
+                && at >= load_stage_at + 1000
+            {
+                capture(session, directory, "load-slot0.png")?;
+                click(session, 220, 180)?;
+                load_stage = 2;
+                load_stage_at = at;
+                record(
+                    output,
+                    json!({"event":"load_slot_clicked","at_ms":at,"slot":0}),
+                )?;
+            } else if load_stage == 2
+                && at >= load_stage_at + 1000
+                && session
+                    .evaluate("kag.currentDialog !== void && kag.currentDialog !== null")?
+                    .integer()?
+                    != 0
+            {
+                capture(session, directory, "load-confirmation.png")?;
+                click(session, 540, 370)?;
+                load_stage = 3;
+                record(
+                    output,
+                    json!({"event":"load_confirmed","at_ms":at,"slot":0}),
+                )?;
+            }
+            continue;
         }
         if launched && !scene.is_empty() && scenes.insert(scene.to_owned()) {
             capture(
@@ -192,6 +254,12 @@ fn run(
         control(session, false)?;
     }
     capture(session, directory, "limit.png")?;
+    record(
+        output,
+        json!({"event":"limit_reached","at_ms":limit,"route":route,
+        "reached_route":reached_route,"reached_epilogue":reached_epilogue,
+        "scenes":scenes,"outcome":"incomplete_limit"}),
+    )?;
     bail!(
         "playthrough limit reached before returning to title; visited {} scenes",
         scenes.len()
@@ -201,8 +269,8 @@ fn run(
 fn main() -> Result<()> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     ensure!(
-        (4..=5).contains(&args.len()),
-        "usage: otome_playthrough PROJECT SAVE_DIR OUTPUT_DIR kaz|yuz|hin [LIMIT_MS]"
+        (4..=6).contains(&args.len()),
+        "usage: otome_playthrough PROJECT SAVE_DIR OUTPUT_DIR kaz|yuz|hin [LIMIT_MS] [--load-slot0]"
     );
     ensure!(
         ["kaz", "yuz", "hin"].contains(&args[3].as_str()),
@@ -219,14 +287,28 @@ fn main() -> Result<()> {
         .write(true)
         .create_new(true)
         .open(directory.join("progress.jsonl"))?;
-    let limit = args
-        .get(4)
-        .map(|s| s.parse())
-        .transpose()?
-        .unwrap_or(3_600_000);
+    let mut limit = None;
+    let mut load_slot0 = false;
+    for argument in &args[4..] {
+        if argument == "--load-slot0" {
+            ensure!(!load_slot0, "duplicate --load-slot0");
+            load_slot0 = true;
+        } else {
+            ensure!(limit.is_none(), "expected one optional time limit");
+            limit = Some(argument.parse::<u64>().context("invalid LIMIT_MS")?);
+        }
+    }
+    let limit = limit.unwrap_or(3_600_000);
     let mut session = Session::open(&project, Some(Path::new(&args[1])), true, 1_000_000_000_000)?;
     session.services.trace_enabled = false;
-    let result = run(&mut session, &args[3], limit, &directory, &mut output);
+    let result = run(
+        &mut session,
+        &args[3],
+        limit,
+        load_slot0,
+        &directory,
+        &mut output,
+    );
     if let Err(error) = &result {
         record(
             &mut output,
