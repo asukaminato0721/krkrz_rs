@@ -4,8 +4,8 @@ This repository contains an initial implementation toward the Otome Domain
 playable slice. **The game is not playable yet.** Original startup now
 executes archive setup, plugin registration, `AppConfig.tjs`, `Config.tjs` and
 application locking, compatibility scripts and framework definitions through
-`StandLayer.tjs`. Execution currently stops in `TextRender.tjs` at the unsupported
-`textrender.dll` plugin. The title,
+`TextRender.tjs`. Execution currently stops in `AffineSource.tjs` at the unsupported
+`layerExDraw.dll` plugin. The title,
 New Game, first choice, scene transition, and original save/load acceptance
 criteria have not been met. Execution failures never count as checkpoints.
 
@@ -90,7 +90,7 @@ outside the installation.
 | `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5, integer WAVE/Vorbis PCM, SLI loops and labels | TLG6, font integration, MPEG/AlphaMovie |
 | `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, switch/do/while/for control flow, comma/swap operators, ordered class initializers and deferred base resolution, explicit invalidation/finalization, interpolation, default parameters, argument forwarding/rest/spread, octet values, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting, automatic object finalization/collection, original bytecode loader |
 | `krkrz_kag` | Ordered tags/attributes, labels, text/escaped brackets, multiline tags, explicit jump/call/return and restorable cursor | Macros, conditionals, parameter expansion, script-driven parser bindings, complete KAGParserEx state |
-| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
+| `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, TextRenderBase layout/timing, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, wgpu/winit/CPAL, text/transitions/effects/callback integration, SLI label expressions, original saves and replay |
 | `krkrz_cli` | Archive/script/PSB/KAG/media inspection, extraction, verification, static inventory, primitive evaluation, startup diagnostics | Deterministic interactive replay, input-driven checkpoints, frame/audio comparison, native play |
 
 The compositor, scheduler, Window state and PCM mixer are tested components, not yet a game player. Window support currently covers construction, caption, visibility, client size, position, primary-layer lookup and resize/action callbacks in headless sessions. Explicit invalidation releases its native state and cancels pending callbacks. It does not create an OS window.
@@ -163,3 +163,11 @@ community source map and differential-test command, [validation.md](docs/validat
 acceptance work, [references.json](docs/references.json) for pinned research
 sources, and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for adapted code
 notices. Proprietary scripts, scenarios, media and saves are not included.
+
+The `textrender.dll` replacement implements native layout, style and timing
+state, font-metric callbacks, basic ruby, wrapping, alignment, character snapshots
+and key-wait positions. Eighty synthetic cases match the installed DLL. The
+unchanged TextRender wrapper runs with fixed test metrics; actual font metrics,
+glyph rendering and dialogue presentation still require integration. Vertical and uneven ruby
+groups, multiple hanging punctuation characters, graphical characters and several
+layout options remain explicit unsupported operations.

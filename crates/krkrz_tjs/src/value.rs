@@ -146,6 +146,8 @@ impl Value {
     pub fn binary(&self, op: &str, b: &Self) -> Result<Self> {
         let boolean = |v| Ok(Self::Integer(i64::from(v)));
         match op {
+            "&&" => return boolean(self.truth()? && b.truth()?),
+            "||" => return boolean(self.truth()? || b.truth()?),
             "==" => return boolean(self.equal(b)),
             "!=" => return boolean(!self.equal(b)),
             "===" => return boolean(self.strict_equal(b)),

@@ -5,12 +5,14 @@ pub mod compositor;
 mod csv;
 mod get_sample;
 pub mod graphics;
+mod layer_draw;
 mod plugins;
 mod psb_file;
 mod save_storage;
 pub mod scheduler;
 mod sound;
 mod sound_stream;
+mod text_render;
 pub mod window;
 use anyhow::{Context, Result, ensure};
 use krkrz_assets::{cx::CxEncryption, storage::Storage, text};
@@ -42,6 +44,8 @@ pub struct Services {
     csv_parsers: BTreeMap<usize, csv::Parser>,
     sounds: BTreeMap<usize, sound::Sound>,
     psb_files: BTreeMap<usize, Option<psb_file::File>>,
+    text_renderers: BTreeMap<usize, text_render::Renderer>,
+    layer_draw: layer_draw::State,
     sound_global_volume: i32,
     sample_plugin: get_sample::State,
     pub arguments: BTreeMap<String, String>,
@@ -117,8 +121,14 @@ impl Host for Services {
         args: &[Value],
         budget: &mut u64,
     ) -> Result<Value> {
+        if let Some(operation) = name.strip_prefix("GdiPlus.") {
+            return self.layer_draw_call(vm, operation, context, args, budget);
+        }
         if let Some(operation) = name.strip_prefix("WaveSoundBuffer.") {
             return self.sound_call(vm, operation, context, args, budget);
+        }
+        if let Some(operation) = name.strip_prefix("TextRenderBase.") {
+            return self.text_render_call(vm, operation, context, args, budget);
         }
         if let Some(operation) = name.strip_prefix("PSBFile.") {
             return self.psb_call(vm, operation, context, args, budget);
@@ -282,6 +292,20 @@ impl Host for Services {
                         if !self.loaded_plugins.contains("savestruct.dll") {
                             vm.register_save_struct()?;
                             self.loaded_plugins.insert("savestruct.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
+                    "textrender.dll" => {
+                        if !self.loaded_plugins.contains("textrender.dll") {
+                            text_render::register(vm)?;
+                            self.loaded_plugins.insert("textrender.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
+                    "layerexdraw.dll" => {
+                        if !self.loaded_plugins.contains("layerexdraw.dll") {
+                            self.layer_draw = layer_draw::register(vm)?;
+                            self.loaded_plugins.insert("layerexdraw.dll".into());
                         }
                         Ok(Value::Void)
                     }
@@ -499,6 +523,8 @@ impl Session {
                 csv_parsers: BTreeMap::new(),
                 sounds: BTreeMap::new(),
                 psb_files: BTreeMap::new(),
+                text_renderers: BTreeMap::new(),
+                layer_draw: layer_draw::State::default(),
                 sound_global_volume: 100_000,
                 sample_plugin: get_sample::State::default(),
                 arguments: BTreeMap::from([("-debugwin".into(), "no".into())]),

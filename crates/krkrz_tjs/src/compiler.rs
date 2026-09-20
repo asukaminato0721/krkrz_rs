@@ -308,9 +308,12 @@ impl Compiler {
             }
             Expr::Dictionary(items)
         } else if self.eat(".") {
-            ensure!(self.withs > 0, "dot member outside with");
             Expr::Member(
-                Box::new(Expr::With),
+                Box::new(if self.withs > 0 {
+                    Expr::With
+                } else {
+                    Expr::Name("global".into())
+                }),
                 Box::new(Expr::Value(Value::string(&self.name()?))),
             )
         } else if self.eat("++") {
@@ -448,7 +451,7 @@ impl Compiler {
             };
             let precedence = match op.as_str() {
                 "=" | "<->" | "+=" | "-=" | "*=" | "/=" | "%=" | "\\=" | "&=" | "|=" | "^="
-                | "<<=" | ">>=" | ">>>=" => 1,
+                | "<<=" | ">>=" | ">>>=" | "&&=" | "||=" => 1,
                 "||" => 3,
                 "&&" => 4,
                 "|" => 5,
@@ -661,13 +664,15 @@ impl Compiler {
             }
             Expr::Assign(target, op, value) => {
                 ensure!(op != "<->", "cannot use the result of a swap expression");
+                // TJS evaluates the RHS before locating or reading the target.
+                // Logical compound assignments are eager as well.
+                let input = self.compile_expr(*value, at)?;
                 let target = self.target(*target, at)?;
                 let old = if op != "=" {
                     Some(self.read_target(&target, at))
                 } else {
                     None
                 };
-                let input = self.compile_expr(*value, at)?;
                 if let Some(left) = old {
                     self.emit(
                         Op::Binary {

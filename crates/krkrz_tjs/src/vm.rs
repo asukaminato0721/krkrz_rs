@@ -352,6 +352,7 @@ pub struct Vm {
     pub(crate) objects: Vec<Object>,
     pub(crate) hash_generation: u64,
     literal_objects: BTreeMap<u64, Value>,
+    native_array_class: usize,
     depth: usize,
 }
 impl Default for Vm {
@@ -363,6 +364,7 @@ impl Default for Vm {
             objects: vec![Object::new(ObjectKind::Global)],
             hash_generation: 0,
             literal_objects: BTreeMap::new(),
+            native_array_class: 0,
             depth: 0,
         };
         for name in ["Array", "Dictionary", "Exception", "RegExp"] {
@@ -370,6 +372,10 @@ impl Default for Vm {
         }
         vm.register_serialization(false)
             .expect("initial serialization members");
+        let array = vm.globals["Array"].clone();
+        let id = vm.object_id(&array).expect("Array class");
+        vm.native_array_class = vm.objects.len();
+        vm.objects.push(vm.objects[id].clone());
         vm
     }
 }
@@ -471,6 +477,20 @@ impl Vm {
     pub fn new_array(&mut self, items: Vec<Value>) -> Result<Value> {
         self.allocate(ObjectKind::Array(items))
     }
+    /// TVPCreateArrayObject uses the engine's private builtin class, not the
+    /// script-visible Array class that plugins can extend.
+    pub fn new_native_array(&mut self, items: Vec<Value>) -> Result<Value> {
+        let class = self
+            .globals
+            .insert("Array".into(), Value::object(self.native_array_class));
+        let result = self.new_array(items);
+        if let Some(class) = class {
+            self.globals.insert("Array".into(), class);
+        } else {
+            self.globals.remove("Array");
+        }
+        result
+    }
     pub fn new_dictionary(&mut self) -> Result<Value> {
         self.allocate(ObjectKind::Dictionary)
     }
@@ -495,6 +515,16 @@ impl Vm {
             !self.globals.contains_key(name),
             "class is already registered: {name}"
         );
+        let value = self.new_native_class(name, &format!("{name}.@initialize"))?;
+        self.globals.insert(name.into(), value.clone());
+        Ok(value)
+    }
+    /// Create a native class without adding a global name, for nested plugin classes.
+    pub fn new_native_class(&mut self, name: &str, initializer: &str) -> Result<Value> {
+        ensure!(
+            initializer.ends_with(".@initialize"),
+            "invalid native initializer name"
+        );
         let value = self.define_class(&crate::Class {
             name: name.into(),
             bases: vec![],
@@ -507,10 +537,19 @@ impl Vm {
             native_initializer, ..
         } = &mut self.objects[id].kind
         {
-            *native_initializer = Some(format!("{name}.@initialize"));
+            *native_initializer = Some(initializer.into());
         }
-        self.globals.insert(name.into(), value.clone());
         Ok(value)
+    }
+    /// Attach an explicitly named host operation to an object or nested class.
+    pub fn register_native_method(
+        &mut self,
+        receiver: &Value,
+        member: &str,
+        operation: &str,
+    ) -> Result<()> {
+        let value = self.allocate(ObjectKind::Native(operation.into()))?;
+        self.set_member(receiver, &Value::string(member), value)
     }
     /// Install an accessor descriptor. Host operation names are explicit to avoid
     /// confusing a method and a property with the same script-visible name.
@@ -529,6 +568,20 @@ impl Vm {
         let setter = accessor(setter)?;
         let property = self.allocate(ObjectKind::Property { getter, setter })?;
         self.set_member(receiver, &Value::string(name), property)
+    }
+    /// Register a class property that is not copied into instances.
+    pub fn register_native_static_method(
+        &mut self,
+        receiver: &Value,
+        name: &str,
+        operation: &str,
+    ) -> Result<()> {
+        self.register_native_method(receiver, name, operation)?;
+        let id = self.object_id(receiver)?;
+        self.objects[id]
+            .member_flags
+            .insert(name.encode_utf16().collect(), crate::scripts_ex::STATIC);
+        Ok(())
     }
     /// Register a class property that is not copied into instances.
     pub fn register_native_static_property(

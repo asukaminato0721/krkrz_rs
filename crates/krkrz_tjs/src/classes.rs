@@ -5,7 +5,7 @@ use anyhow::{Context, Result, bail, ensure};
 use std::sync::Arc;
 
 impl Vm {
-    pub(crate) fn instance_of(&self, value: &Value, name: &str) -> Result<Value> {
+    pub fn instance_of(&self, value: &Value, name: &str) -> Result<Value> {
         let result = if matches!(value, Value::Void) {
             false
         } else if name == "Object" {
@@ -190,9 +190,12 @@ impl Vm {
         self.objects[context].classes.push(definition.name.clone());
         if let Some(initializer) = native_initializer {
             host.call_with_context(self, &initializer, instance, &[], budget)?;
-            self.objects[context]
-                .native_finalizers
-                .push(format!("{}.@invalidate", definition.name));
+            self.objects[context].native_finalizers.push(format!(
+                "{}.@invalidate",
+                initializer
+                    .strip_suffix(".@initialize")
+                    .expect("native initializer suffix")
+            ));
         }
         for (key, mut value) in self.objects[class].members.clone() {
             let flags = self.objects[class]
@@ -216,7 +219,7 @@ impl Vm {
         }
         Ok(())
     }
-    pub(crate) fn construct(
+    pub fn construct(
         &mut self,
         callee: &Value,
         args: &[Value],
@@ -244,7 +247,7 @@ impl Vm {
             _ => bail!("TJS object is not a constructor"),
         }
     }
-    pub(crate) fn get_property(
+    pub fn get_property(
         &mut self,
         receiver: &Value,
         key: &Value,

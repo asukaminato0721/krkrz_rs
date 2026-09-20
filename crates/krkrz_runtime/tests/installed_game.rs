@@ -154,3 +154,28 @@ fn original_storage_data_reads_binary_scenario() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+#[ignore = "requires the installed Otome Domain game and KRKRZ_PROJECT_DIR"]
+fn original_text_render_wrapper_uses_native_layout() -> Result<()> {
+    use krkrz_runtime::Session;
+    use krkrz_tjs::Value;
+    let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
+    let saves = tempfile::tempdir()?;
+    let mut session = Session::open(Path::new(&project), Some(saves.path()), true, 100_000)?;
+    session.execute_storage("system/textrender.tjs")?;
+    // Fixed metrics isolate the unchanged wrapper/native interface. This does
+    // not validate fonts, glyph pixels, or presentation of the game's dialogue.
+    session.evaluate(r#"Scripts.exec('var renderer=new TextRender();var font=%[getTextWidth:function(s){return s.length*10;}];renderer.render(25,200,font,"ABC");')"#)?;
+    assert_eq!(session.evaluate("renderer.renderCount")?, Value::Integer(3));
+    assert_eq!(session.evaluate("renderer.renderLines")?, Value::Integer(2));
+    assert_eq!(
+        session.evaluate("renderer.renderText")?,
+        Value::string("AB\nC\n")
+    );
+    assert_eq!(
+        session.evaluate("renderer.getCharacters(0,0)[2].y")?,
+        Value::Real(30.0)
+    );
+    Ok(())
+}
