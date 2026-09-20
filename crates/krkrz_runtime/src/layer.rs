@@ -48,6 +48,7 @@ pub(crate) struct Layer {
     cursor: i32,
     cursor_x_work: i32,
     image_modified: bool,
+    call_on_paint: bool,
     hit_type: i32,
     hit_threshold: i32,
     neutral: [u8; 4],
@@ -98,6 +99,7 @@ impl Default for Layer {
             cursor: 0,
             cursor_x_work: 0,
             image_modified: true,
+            call_on_paint: false,
             hit_type: 0,
             hit_threshold: 16,
             neutral: [255, 255, 255, 0],
@@ -436,6 +438,7 @@ impl Layer {
                 "opacity" => self.opacity,
                 "cursor" => self.cursor,
                 "imageModified" => self.image_modified.into(),
+                "callOnPaint" => self.call_on_paint.into(),
                 "hitType" => self.hit_type,
                 "hitThreshold" => self.hit_threshold,
                 _ => return Err(unsupported(format!("unsupported Layer operation: {op}"))),
@@ -456,6 +459,14 @@ impl Layer {
             "set:enabled" => self.enabled = arg(0)?.truth()?,
             "set:opacity" => self.opacity = n(0)?.clamp(0, 255),
             "set:imageModified" => self.image_modified = arg(0)?.truth()?,
+            "set:callOnPaint" => self.call_on_paint = arg(0)?.truth()?,
+            "update" => {
+                if !args.is_empty() {
+                    ensure!(args.len() >= 4, "Layer.update requires 0 or at least 4 arguments");
+                    for value in &args[..4] { int(value)?; }
+                }
+                self.call_on_paint = true;
+            }
             "set:cursor" => {
                 if matches!(arg(0)?, Value::String(_)) {
                     return Err(unsupported("Layer cursor image loading is not implemented"));
@@ -968,4 +979,26 @@ fn straight_alpha_weight(destination: u8, source: u8) -> i32 {
         table.into_boxed_slice()
     });
     table[source as usize * 256 + destination as usize] as i32
+}
+
+impl crate::Session {
+    /// Run the layer tree's pending onPaint events before a host reads pixels.
+    /// Callbacks clear their flag before running; calling update from onPaint
+    /// requests the next completion. Invisible children also receive onPaint.
+    pub fn prepare_window_paint(&mut self, window: &Value) -> Result<()> {
+        let window = object(window)?.context("paint requires a Window")?;
+        let window = self.services.windows.get(&window).filter(|w| w.constructed).context("paint requires a constructed Window")?;
+        let mut pending: Vec<_> = object(&window.primary_layer)?.into_iter().collect();
+        let mut visited = std::collections::BTreeSet::new();
+        while let Some(id) = pending.pop() {
+            self.budget = self.budget.checked_sub(1).ok_or_else(|| unsupported("Layer paint execution budget exceeded"))?;
+            if !visited.insert(id) { continue; }
+            let Some(layer) = self.services.layers.get_mut(&id) else { continue; };
+            if std::mem::take(&mut layer.call_on_paint) {
+                self.services.layer_event(&mut self.vm, id, "onPaint", &[], &mut self.budget)?;
+            }
+            if let Some(layer) = self.services.layers.get(&id) { pending.extend(layer.children.iter().rev()); }
+        }
+        Ok(())
+    }
 }

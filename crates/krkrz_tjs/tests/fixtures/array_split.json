@@ -1,0 +1,123 @@
+[
+  {
+    "name": "array_split_set",
+    "source": "var a=[99],b=[],r=a.split(',;',';a,,b;c;',void,false);b.add(r===a);b.add(a.count);b.add(a.join('|'));a.split(',;',';a,,b;c;',123,true);b.add(a.join('|'));a.split('','ab');b.add(a.join('|'));a.split(',','');b.add(a.count);a.split(',','',void,true);b.add(a.count);return b.join('#');",
+    "expected": {
+      "String": [
+        49,
+        35,
+        54,
+        35,
+        124,
+        97,
+        124,
+        124,
+        98,
+        124,
+        99,
+        124,
+        35,
+        97,
+        124,
+        98,
+        124,
+        99,
+        35,
+        97,
+        98,
+        35,
+        49,
+        35,
+        48
+      ]
+    }
+  },
+  {
+    "name": "array_split_utf16",
+    "source": "var a=[],b=[];a.split(',', 'a\\x0000b,c');b.add(a.join('|'));a.split('\\x0000,','a,b');b.add(a.join('|'));a.split('\\xd83d','A\\xd83d\\xde00B');b.add(a.count);b.add(#a[1].charAt(0));a.split(void,12);b.add(a.join('|'));return b.join('#');",
+    "expected": {
+      "String": [
+        97,
+        98,
+        124,
+        99,
+        35,
+        97,
+        124,
+        98,
+        35,
+        50,
+        35,
+        53,
+        54,
+        56,
+        51,
+        50,
+        35,
+        49,
+        50
+      ]
+    }
+  },
+  {
+    "name": "array_split_regexp",
+    "source": "var a=[],b=[],r=new RegExp(',+');r.start=3;a.split(r,',a,,b,');b.add(a.join('|'));b.add(r.start);a.split(r,',a,,b,',void,true);b.add(a.join('|'));a.split(new RegExp(''), 'ab');b.add(a.join('|'));return b.join('#');",
+    "expected": {
+      "String": [
+        124,
+        97,
+        124,
+        98,
+        124,
+        35,
+        51,
+        35,
+        97,
+        124,
+        98,
+        35,
+        97,
+        98
+      ]
+    }
+  },
+  {
+    "name": "array_split_context",
+    "source": "var a=[9],b=[];try{a.split(',');}catch(e){b.add(a.join('|'));}a.foo=8;(Array.split incontextof a)(',', 'x,y');b.add(a.foo);b.add(a.join('|'));return b.join('#');",
+    "expected": {
+      "String": [
+        57,
+        35,
+        56,
+        35,
+        120,
+        124,
+        121
+      ]
+    }
+  },
+  {
+    "name": "string_split_empty_delimiter",
+    "source": "return ['abc'.split('').join('|'),''.split('').count,'a,,b'.split(',',void,true).join('|')].join('#');",
+    "expected": {
+      "String": [
+        97,
+        98,
+        99,
+        35,
+        49,
+        35,
+        97,
+        124,
+        98
+      ]
+    }
+  },
+  {
+    "name": "array_split_regex_empty_subject",
+    "source": "var a=[];a.split(/,/, '',void,true);return a.count;",
+    "expected": {
+      "Integer": 1
+    }
+  }
+]

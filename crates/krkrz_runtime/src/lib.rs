@@ -32,6 +32,7 @@ use anyhow::{Context, Result, ensure};
 use krkrz_assets::{cx::CxEncryption, storage::Storage, text};
 use krkrz_core::{Limits, save_directory};
 use krkrz_tjs::{Host, Instruction, ObjectRef, Value, Vm, compile_with_preprocessor, unsupported};
+pub use menu::{MenuAppearance, MenuBitmap};
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -628,6 +629,7 @@ impl Host for Services {
                     Err(_) => Ok(Value::string("")),
                 }
             }
+            "Storages.getFullPath" => Ok(Value::string(&self.storage.full_path(&arg(0)?.text())?)),
             _ => Err(unsupported(format!(
                 "unsupported Kirikiri native operation: {name}"
             ))),
@@ -726,6 +728,7 @@ impl Session {
             "Storages.addAutoPath",
             "Storages.isExistentStorage",
             "Storages.getPlacedPath",
+            "Storages.getFullPath",
             "Storages.extractStorageName",
             "Storages.extractStoragePath",
             "Storages.extractStorageExt",

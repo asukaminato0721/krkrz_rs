@@ -110,7 +110,9 @@ impl Vm {
             let mut result = String::new();
             let mut parts = vec![];
             let mut offset = 0;
+            let mut matched = false;
             while let Some(groups) = captures(&compiled, &subject[offset..], 0)? {
+                matched = true;
                 charge(budget)?;
                 let (begin, end) = groups[0];
                 let prefix = &subject[offset..offset + begin];
@@ -149,7 +151,7 @@ impl Vm {
                 result.push_str(tail);
                 return Ok(Value::string(&result));
             }
-            if !purge || !tail.is_empty() {
+            if !matched || !purge || !tail.is_empty() {
                 parts.push(Value::string(tail));
             }
             return self.allocate(ObjectKind::Array(parts));

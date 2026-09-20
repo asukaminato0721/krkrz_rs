@@ -25,5 +25,47 @@
         49
       ]
     }
+  },
+  {
+    "name": "menu_bitmaps",
+    "source": "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');var w=new Window(),m=new MenuItem(w,'m'),a=[];w.menu.add(m);a.add([m.bmpItem,m.bmpChecked,m.bmpUnchecked].join(','));m.bmpItem=MenuItem.biPopupClose;m.bmpChecked='3';m.bmpUnchecked=7;a.add([m.bmpItem,m.bmpChecked,m.bmpUnchecked].join(','));m.bmpItem=3.5;a.add(m.bmpItem);try{m.bmpItem=null;}catch(e){a.add('error');}a.add(m.bmpItem);var p=new Layer(w,null);p.setSize(2,1);p.setImageSize(2,1);m.bmpItem=p;a.add(m.bmpItem);m.bmpItem=void;a.add(m.bmpItem);w.menu.remove(m);try{m.bmpItem=5;}catch(e){a.add('error');}a.add(m.bmpItem);return a.join('|');",
+    "expected": {
+      "String": [
+        48,
+        44,
+        48,
+        44,
+        48,
+        124,
+        56,
+        44,
+        51,
+        44,
+        55,
+        124,
+        48,
+        124,
+        101,
+        114,
+        114,
+        111,
+        114,
+        124,
+        48,
+        124,
+        45,
+        49,
+        124,
+        48,
+        124,
+        101,
+        114,
+        114,
+        111,
+        114,
+        124,
+        53
+      ]
+    }
   }
 ]

@@ -49,6 +49,42 @@ fn linux_host_reports_dwm_preview_unavailable() {
 }
 
 #[test]
+fn menu_bitmap_is_an_independent_alpha_thresholded_snapshot() {
+    let project = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("case.tjs"), format!("{SETUP}global.w=new Window();global.m=new MenuItem(w,'item');w.menu.add(m);global.p=new Layer(w,null);p.setSize(2,1);p.setImageSize(2,1);p.setMainPixel(0,0,0x123456);p.setMainPixel(1,0,0xabcdef);p.setMaskPixel(0,0,63);p.setMaskPixel(1,0,64);m.bmpItem=p;m.rightJustify=true;p.setMainPixel(0,0,0);invalidate p;")).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    session.execute_storage("case.tjs").unwrap();
+    let menu = session.evaluate("m").unwrap();
+    let appearance = session.menu_appearance(&menu).unwrap();
+    assert!(appearance.right_justify);
+    let krkrz_runtime::MenuBitmap::Image(image) = &appearance.bitmaps[0] else {
+        panic!("expected bitmap");
+    };
+    assert_eq!(image.rgba, [0x12, 0x34, 0x56, 0, 0xab, 0xcd, 0xef, 255]);
+    session.evaluate("m.bmpItem=8").unwrap();
+    assert!(matches!(
+        session.menu_appearance(&menu).unwrap().bitmaps[0],
+        krkrz_runtime::MenuBitmap::System(8)
+    ));
+    session.evaluate("invalidate m").unwrap();
+    assert!(session.menu_appearance(&menu).is_err());
+}
+
+#[test]
+fn menu_extension_parent_access_preserves_budget_and_lifetime_checks() {
+    for getter in ["invalidate global.m;return null;", "while(true){}"] {
+        let source = format!(
+            "{SETUP}class M extends MenuItem{{function M(w){{super.MenuItem(w,'item');}}property parent{{getter(){{{getter}}}}}}}global.m=new M(new Window());return m.bmpItem;"
+        );
+        let error = run(&source, 2_000).unwrap_err();
+        if getter.starts_with("while") {
+            assert!(error.downcast_ref::<VmAbort>().is_some(), "{error:#}");
+        }
+    }
+}
+
+#[test]
 fn system_menu_snapshot_reset_and_selection_callback() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();

@@ -68,7 +68,7 @@ impl Services {
             }
         }
     }
-    fn layer_event(
+    pub(super) fn layer_event(
         &mut self,
         vm: &mut Vm,
         id: usize,
@@ -425,6 +425,7 @@ impl Services {
                 Value::Void
             }
             "onBeforeFocus"
+            | "onPaint"
             | "onSearchNextFocusable"
             | "onSearchPrevFocusable"
             | "onFocus"

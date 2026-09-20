@@ -2,8 +2,39 @@
 //! Native presentation and popup tracking are separate from the shared model.
 use crate::Services;
 use anyhow::{Context, Result, bail, ensure};
+use krkrz_assets::media::Image;
 use krkrz_tjs::{ObjectRef, Value, Vm, unsupported};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::sync::Arc;
+
+#[derive(Clone, Debug, Default)]
+pub enum MenuBitmap {
+    #[default]
+    None,
+    System(i32),
+    Image(Arc<Image>),
+}
+impl MenuBitmap {
+    fn value(&self) -> i64 {
+        match self {
+            Self::None => 0,
+            Self::System(id) => i64::from(*id),
+            Self::Image(_) => -1,
+        }
+    }
+    fn bytes(&self) -> usize {
+        match self {
+            Self::Image(image) => image.rgba.len(),
+            _ => 0,
+        }
+    }
+}
+#[derive(Clone, Debug)]
+pub struct MenuAppearance {
+    pub right_justify: bool,
+    /// Item, checked, unchecked bitmaps, captured when the script sets them.
+    pub bitmaps: [MenuBitmap; 3],
+}
 
 pub(crate) struct Item {
     constructed: bool,
@@ -23,6 +54,7 @@ pub(crate) struct Item {
     array: Option<Value>,
     array_dirty: bool,
     right_justify: Option<bool>,
+    bitmaps: [MenuBitmap; 3],
 }
 impl Default for Item {
     fn default() -> Self {
@@ -44,6 +76,7 @@ impl Default for Item {
             array: None,
             array_dirty: true,
             right_justify: None,
+            bitmaps: Default::default(),
         }
     }
 }
@@ -322,8 +355,15 @@ impl Services {
         budget: &mut u64,
     ) -> Result<Value> {
         let id = id(context)?;
+        let (access, property) = operation
+            .split_once(':')
+            .ok_or_else(|| unsupported(format!("windowEx MenuItem operation: {operation}")))?;
         ensure!(
-            matches!(operation, "get:rightJustify" | "set:rightJustify"),
+            matches!(access, "get" | "set")
+                && matches!(
+                    property,
+                    "rightJustify" | "bmpItem" | "bmpChecked" | "bmpUnchecked"
+                ),
             unsupported(format!("windowEx MenuItem operation: {operation}"))
         );
         // windowEx creates its extension on first access. An unattached item
@@ -336,17 +376,60 @@ impl Services {
                 .context("MenuItem invalidated during extension initialization")?
                 .right_justify = Some(false);
         }
-        if operation == "get:rightJustify" {
-            return Ok(Value::Integer(
-                self.menus.item(id)?.right_justify.unwrap().into(),
-            ));
+        let bitmap = match property {
+            "bmpItem" => 0,
+            "bmpChecked" => 1,
+            _ => 2,
+        };
+        if access == "get" {
+            let item = self.menus.item(id)?;
+            return Ok(Value::Integer(if property == "rightJustify" {
+                item.right_justify.unwrap().into()
+            } else {
+                item.bitmaps[bitmap].value()
+            }));
         }
         let value = args
             .first()
-            .context("MenuItem.rightJustify requires a value")?
-            .integer()?
-            != 0;
-        self.menus.items.get_mut(&id).unwrap().right_justify = Some(value);
+            .context("MenuItem appearance setter requires a value")?;
+        if property == "rightJustify" {
+            self.menus.items.get_mut(&id).unwrap().right_justify = Some(value.integer()? != 0);
+        } else {
+            self.menus.items.get_mut(&id).unwrap().bitmaps[bitmap] = MenuBitmap::None;
+            let value = match value {
+                Value::Void | Value::Integer(_) | Value::String(_) => {
+                    MenuBitmap::System(value.integer()? as i32)
+                }
+                Value::Object(reference) => {
+                    let layer = reference
+                        .object
+                        .and_then(|id| self.layers.get(&id))
+                        .context("no layer object.")?;
+                    let image = layer.image.as_ref().context("layer has no image")?;
+                    let used: usize = self
+                        .menus
+                        .items
+                        .values()
+                        .flat_map(|item| &item.bitmaps)
+                        .map(MenuBitmap::bytes)
+                        .sum();
+                    ensure!(
+                        image.rgba.len() <= (64usize * 1024 * 1024).saturating_sub(used),
+                        "menu bitmap memory limit exceeded"
+                    );
+                    *budget = budget
+                        .checked_sub((image.rgba.len() / 4) as u64)
+                        .ok_or_else(|| unsupported("menu bitmap copy execution budget exceeded"))?;
+                    let mut image = image.clone();
+                    for pixel in image.rgba.chunks_exact_mut(4) {
+                        pixel[3] = if pixel[3] >= 64 { 255 } else { 0 };
+                    }
+                    MenuBitmap::Image(Arc::new(image))
+                }
+                _ => MenuBitmap::None,
+            };
+            self.menus.items.get_mut(&id).unwrap().bitmaps[bitmap] = value;
+        }
         // The plugin stores the value before attempting the native menu update.
         self.menu_appearance_parent(vm, context, budget)?;
         Ok(Value::Void)
@@ -521,6 +604,7 @@ impl Services {
                     array: previous.array,
                     array_dirty: previous.array_dirty,
                     right_justify: previous.right_justify,
+                    bitmaps: previous.bitmaps,
                     ..Item::default()
                 },
             );
@@ -704,5 +788,17 @@ impl Services {
             }
         }
         Ok(Value::Void)
+    }
+}
+
+impl crate::Session {
+    /// Menu appearance for platform presentation; this does not initialize the
+    /// windowEx extension or execute script getters.
+    pub fn menu_appearance(&self, menu: &Value) -> Result<MenuAppearance> {
+        let item = self.services.menus.item(id(menu)?)?;
+        Ok(MenuAppearance {
+            right_justify: item.right_justify.unwrap_or(false),
+            bitmaps: item.bitmaps.clone(),
+        })
     }
 }

@@ -373,12 +373,12 @@ impl Default for Vm {
         vm.register_serialization(false)
             .expect("initial serialization members");
         let array = vm.globals["Array"].clone();
-        vm.register_native_method(&array, "assign", "Array.assign")
-            .expect("initial Array.assign member");
-        let array_id = vm.object_id(&array).expect("Array class");
-        vm.objects[array_id]
-            .member_flags
-            .insert("assign".encode_utf16().collect(), crate::scripts_ex::HIDDEN);
+        for method in ["assign", "split"] {
+            vm.register_native_method(&array, method, &format!("Array.{method}"))
+                .expect("initial Array member");
+            let array_id = vm.object_id(&array).expect("Array class");
+            vm.objects[array_id].member_flags.insert(method.encode_utf16().collect(), crate::scripts_ex::HIDDEN);
+        }
         let dictionary = vm.globals["Dictionary"].clone();
         for method in ["assign", "clear"] {
             vm.register_native_static_method(&dictionary, method, &format!("Dictionary.{method}"))
@@ -1212,6 +1212,10 @@ impl Vm {
                         .map(Value::object)
                         .unwrap_or_else(|| context.clone());
                     self.array_assign(&context, args, budget)
+                }
+                "Array.split" => {
+                    let context = reference.context.map(Value::object).unwrap_or_else(|| context.clone());
+                    self.array_split(&context, args, host, budget)
                 }
                 "Dictionary.assign" | "Dictionary.clear" => {
                     let context = reference

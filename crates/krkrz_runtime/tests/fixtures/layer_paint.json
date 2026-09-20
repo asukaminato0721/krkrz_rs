@@ -1,0 +1,25 @@
+[
+  {
+    "name": "layer_paint_flag",
+    "source": "var w=new Window(),p=new Layer(w,null),a=[];a.add(p.callOnPaint);p.update();a.add(p.callOnPaint);p.callOnPaint=false;try{p.update(0,0);}catch(e){a.add('error');}a.add(p.callOnPaint);p.update(1,2,0,0);a.add(p.callOnPaint);p.callOnPaint=false;p.update(0,0,1,1,9);a.add(p.callOnPaint);return a.join(',');",
+    "expected": {
+      "String": [
+        48,
+        44,
+        49,
+        44,
+        101,
+        114,
+        114,
+        111,
+        114,
+        44,
+        48,
+        44,
+        49,
+        44,
+        49
+      ]
+    }
+  }
+]

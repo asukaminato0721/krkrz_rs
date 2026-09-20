@@ -9551,5 +9551,26 @@
         49
       ]
     }
+  },
+  {
+    "name": "console_absent",
+    "source": "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');var c=Debug.console;return [c.getPlacement()===void,c.getRect()===void,c.maximize(),c.restoreMaximize(),c.setPlacement(%[]),c.setPos(1,2)===void,c.bringAfter()===void].join(',');",
+    "expected": {
+      "String": [
+        49,
+        44,
+        49,
+        44,
+        48,
+        44,
+        48,
+        44,
+        48,
+        44,
+        49,
+        44,
+        49
+      ]
+    }
   }
 ]
