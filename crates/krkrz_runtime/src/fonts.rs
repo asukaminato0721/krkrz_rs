@@ -2,6 +2,12 @@
 use anyhow::{Context, Result, ensure};
 use krkrz_tjs::unsupported;
 use sha2::{Digest, Sha256};
+use skrifa::{
+    FontRef, MetadataProvider,
+    instance::{LocationRef, Size},
+    raw::{FileRef, TableProvider},
+    string::StringId,
+};
 use std::{collections::BTreeMap, sync::Arc};
 
 mod raster;
@@ -49,8 +55,8 @@ impl FontBook {
             .find_map(|candidate| self.names.get(*candidate).copied())
             .or_else(|| {
                 self.faces.iter().position(|face| {
-                    ttf_parser::Face::parse(&face.data, face.index).is_ok_and(|font| {
-                        font.glyph_index('あ').is_some() && font.glyph_index('A').is_some()
+                    FontRef::from_index(&face.data, face.index).is_ok_and(|font| {
+                        font.charmap().map('あ').is_some() && font.charmap().map('A').is_some()
                     })
                 })
             })
@@ -75,19 +81,20 @@ impl FontBook {
             return Ok(0);
         }
         let face = self.resolve_face(name)?;
-        let font = ttf_parser::Face::parse(&face.data, face.index)
-            .context("registered font is invalid")?;
-        let scale = height as f64 / font.units_per_em() as f64;
-        let cell_height =
-            ((font.ascender() as i32 - font.descender() as i32) as f64 * scale).round() as i32;
+        let font =
+            FontRef::from_index(&face.data, face.index).context("registered font is invalid")?;
+        let metrics = font.metrics(Size::unscaled(), LocationRef::default());
+        let glyphs = font.glyph_metrics(Size::unscaled(), LocationRef::default());
+        let scale = height as f64 / metrics.units_per_em as f64;
+        let cell_height = ((metrics.ascent - metrics.descent) as f64 * scale).round() as i32;
         let extra = if bold { cell_height / 50 + 1 } else { 0 };
         let mut width = 0i32;
         for unit in text.iter().take_while(|c| **c != 0) {
             let glyph = char::from_u32((*unit).into())
-                .and_then(|c| font.glyph_index(c))
-                .unwrap_or(ttf_parser::GlyphId(0));
+                .and_then(|c| font.charmap().map(c))
+                .unwrap_or_default();
             let advance =
-                (font.glyph_hor_advance(glyph).unwrap_or(0) as f64 * scale).round() as i32;
+                (glyphs.advance_width(glyph).unwrap_or(0.0) as f64 * scale).round() as i32;
             width = width
                 .checked_add(advance + extra)
                 .context("text width overflow")?;
@@ -103,28 +110,42 @@ impl FontBook {
         if data.len() > 64 << 20 || self.bytes.saturating_add(data.len()) > 256 << 20 {
             return Err(unsupported("private font storage limit exceeded"));
         }
-        let count = ttf_parser::fonts_in_collection(&data).unwrap_or(1);
+        let Ok(file) = FileRef::new(&data) else {
+            return Ok(0);
+        };
+        let count = match &file {
+            FileRef::Font(_) => 1,
+            FileRef::Collection(c) => c.len(),
+        };
         if count > 64 || self.faces.len() + count as usize > 256 {
             return Err(unsupported("private font face limit exceeded"));
         }
         let mut names = Vec::new();
-        for index in 0..count {
-            let Ok(face) = ttf_parser::Face::parse(&data, index) else {
+        for (index, face) in file.fonts().enumerate() {
+            let Ok(face) = face else {
                 return Ok(0);
             };
-            if skrifa::FontRef::from_index(&data, index).is_err() {
+            // FontRef validates the directory lazily; require the tables used by
+            // layout now so registration still rejects incomplete font data.
+            if !face
+                .head()
+                .is_ok_and(|head| (16..=16384).contains(&head.units_per_em()))
+                || face.hhea().is_err()
+                || face.maxp().is_err()
+                || face.hmtx().is_err()
+            {
                 return Ok(0);
             }
-            for name in face.names() {
-                if matches!(
-                    name.name_id,
-                    ttf_parser::name_id::FAMILY
-                        | ttf_parser::name_id::FULL_NAME
-                        | ttf_parser::name_id::TYPOGRAPHIC_FAMILY
-                ) && let Some(name) = name.to_string()
-                    && !name.is_empty()
-                {
-                    names.push((name, self.faces.len() + index as usize));
+            for id in [
+                StringId::FAMILY_NAME,
+                StringId::FULL_NAME,
+                StringId::TYPOGRAPHIC_FAMILY_NAME,
+            ] {
+                for name in face.localized_strings(id) {
+                    let name = name.to_string();
+                    if !name.is_empty() {
+                        names.push((name, self.faces.len() + index));
+                    }
                 }
             }
         }

@@ -353,14 +353,5 @@ fn parse_entry(data: &[u8], length: u64, limits: Limits) -> Result<Entry> {
     })
 }
 pub fn adler32(bytes: &[u8]) -> u32 {
-    let (mut a, mut b) = (1u32, 0u32);
-    for chunk in bytes.chunks(5552) {
-        for v in chunk {
-            a += u32::from(*v);
-            b += a;
-        }
-        a %= 65521;
-        b %= 65521;
-    }
-    (b << 16) | a
+    adler2::adler32_slice(bytes)
 }

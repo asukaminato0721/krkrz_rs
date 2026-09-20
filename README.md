@@ -122,6 +122,8 @@ mute controls, and automatic dialogue advance through the original menus.
 It uses a fresh save directory and the installation's default settings.
 `tools/replays/otome-backlog-auto.json` checks dialogue history, Escape to
 close it, and automatic playback afterward.
+`tools/replays/otome-gallery-music.json` uses copied saves with Gallery unlocked
+to check track selection, pause/resume, next track, stop, and return to title.
 
 An unfiltered `verify` deliberately returns failure for the installation's
 malformed protection-notice entry. It verifies all other resolved resources

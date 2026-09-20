@@ -48,6 +48,7 @@ struct Compiler {
     withs: usize,
     loops: Vec<Loop>,
     unnamed_arguments: usize,
+    top_level: bool,
 }
 impl Compiler {
     fn at(&self) -> SourceLocation {
@@ -152,6 +153,7 @@ impl Compiler {
         self.handlers = 0;
         self.withs = 0;
         let parent_unnamed = std::mem::replace(&mut self.unnamed_arguments, unnamed_arguments);
+        let parent_top_level = std::mem::replace(&mut self.top_level, false);
         let result = (|| -> Result<()> {
             let mut defaults = defaults.into_iter().peekable();
             for (index, name) in parameters.iter().enumerate() {
@@ -207,6 +209,7 @@ impl Compiler {
         self.handlers = handlers;
         self.withs = withs;
         self.unnamed_arguments = parent_unnamed;
+        self.top_level = parent_top_level;
         result?;
         Ok(Function {
             name,
@@ -1122,6 +1125,7 @@ impl Compiler {
             code: vec![],
         };
         let parent = std::mem::replace(&mut self.program, initializer);
+        let parent_top_level = std::mem::replace(&mut self.top_level, false);
         let loops = std::mem::take(&mut self.loops);
         let (scopes, handlers, withs, unnamed) = (
             self.scopes,
@@ -1162,6 +1166,7 @@ impl Compiler {
         self.withs = withs;
         self.unnamed_arguments = unnamed;
         self.loops = loops;
+        self.top_level = parent_top_level;
         let initializer = std::mem::replace(&mut self.program, parent);
         result?;
         // TJS resolves `super` through the parent method/property context.
@@ -1183,6 +1188,24 @@ impl Compiler {
             at,
         );
         self.emit(Op::Declare { name, input: out }, at);
+        Ok(())
+    }
+    fn bind_top_level_declaration(&mut self, value: usize, at: &SourceLocation) -> Result<()> {
+        if self.top_level {
+            // Kirikiri emits CHGTHIS for named top-level functions/properties.
+            // Their definition context survives storage in another object;
+            // anonymous functions and class members follow their own rules.
+            let context = self.compile_expr(Expr::Name("this".into()), at)?;
+            self.emit(
+                Op::Binary {
+                    out: value,
+                    op: "incontextof".into(),
+                    left: value,
+                    right: context,
+                },
+                at,
+            );
+        }
         Ok(())
     }
     fn statement_inner(&mut self) -> Result<()> {
@@ -1213,6 +1236,7 @@ impl Compiler {
                 },
                 &at,
             );
+            self.bind_top_level_declaration(out, &at)?;
             self.emit(Op::Declare { name, input: out }, &at);
             return Ok(());
         }
@@ -1224,6 +1248,7 @@ impl Compiler {
             let name = self.name()?;
             let function = self.function(name.clone())?;
             let input = self.compile_expr(Expr::Function(Box::new(function)), &at)?;
+            self.bind_top_level_declaration(input, &at)?;
             self.emit(Op::Declare { name, input }, &at);
             return Ok(());
         }
@@ -1451,6 +1476,7 @@ pub fn compile_with_preprocessor(
         withs: 0,
         loops: vec![],
         unnamed_arguments: 0,
+        top_level: true,
     };
     let result = (|| -> Result<()> {
         if expression {

@@ -1,12 +1,13 @@
 //! Decoded-image cache. Cache limits are bytes, as in GraphicsLoaderIntf.cpp.
 use krkrz_assets::media::Image;
-use std::{collections::VecDeque, sync::Arc};
+use lru::LruCache;
+use std::sync::Arc;
 
 pub struct ImageCache {
     maximum: usize,
     limit: usize,
     bytes: usize,
-    entries: VecDeque<(String, Arc<Image>)>,
+    entries: LruCache<String, Arc<Image>>,
 }
 
 impl ImageCache {
@@ -15,7 +16,7 @@ impl ImageCache {
             maximum,
             limit: 0,
             bytes: 0,
-            entries: VecDeque::new(),
+            entries: LruCache::unbounded(),
         }
     }
 
@@ -37,27 +38,23 @@ impl ImageCache {
     }
 
     pub fn get(&mut self, name: &str) -> Option<Arc<Image>> {
-        let index = self.entries.iter().position(|(key, _)| key == name)?;
-        let entry = self.entries.remove(index)?;
-        let image = entry.1.clone();
-        self.entries.push_front(entry);
-        Some(image)
+        self.entries.get(name).cloned()
     }
 
     pub fn insert(&mut self, name: String, image: Arc<Image>) {
-        if let Some(index) = self.entries.iter().position(|(key, _)| key == &name) {
-            self.bytes -= self.entries.remove(index).unwrap().1.rgba.len();
+        if let Some(old) = self.entries.pop(&name) {
+            self.bytes -= old.rgba.len();
         }
         if image.rgba.len() <= self.limit && self.limit != 0 {
             self.bytes += image.rgba.len();
-            self.entries.push_front((name, image));
+            self.entries.put(name, image);
         }
         self.trim();
     }
 
     fn trim(&mut self) {
         while self.bytes > self.limit {
-            let (_, image) = self.entries.pop_back().unwrap();
+            let (_, image) = self.entries.pop_lru().unwrap();
             self.bytes -= image.rgba.len();
         }
         if self.limit == 0 {

@@ -61,6 +61,17 @@ compressed save and returned the same storage, label and page title.
 cases); this fixes the save confirmation message lookup.
 Dictionary-bound functions now resolve absent names to void, matching seven
 original-engine cases; this was needed to construct restored choice layers.
+Named top-level functions and properties retain their declaration context when
+stored in another object. Six additional original-engine cases verify this
+binding and explicit `incontextof null` clearing. This fixes Gallery → Music &
+Movie: its `SceneModeSwitch` property must read the global `tf` while stored in
+the dialog registry. The original title-menu interaction now opens the music
+page at `scenemode.ks*wait`, with track names and playback controls rendered.
+The music replay selects BGM16, pauses at 3,000 ms, verifies that the position
+stays fixed, resumes to 5,000 ms, advances to BGM17, stops playback, and returns
+to the title. `tools/replays/otome-gallery-music.json` checks these states through
+normal pointer input. It requires copied progress with Gallery unlocked;
+playback-device listening quality is outside this headless check.
 Unavailable font names from the old Windows settings fall back to a registered
 Japanese font consistently for layout and rasterization.
 

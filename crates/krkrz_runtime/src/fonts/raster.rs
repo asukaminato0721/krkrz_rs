@@ -37,23 +37,23 @@ impl FontBook {
             "font size is outside supported range"
         );
         let source = self.resolve_face(&style.face)?;
-        let metadata = ttf_parser::Face::parse(&source.data, source.index)?;
-        let scale = height as f64 / metadata.units_per_em() as f64;
-        let (ascender, descender) = metadata
-            .tables()
-            .os2
-            .map_or((metadata.ascender(), metadata.descender()), |os2| {
-                (os2.windows_ascender(), os2.windows_descender())
+        let font = skrifa::FontRef::from_index(&source.data, source.index)?;
+        let metadata = font.metrics(Size::unscaled(), LocationRef::default());
+        let scale = height as f64 / metadata.units_per_em as f64;
+        let (ascender, descender) = font
+            .os2()
+            .map_or((metadata.ascent as f64, metadata.descent as f64), |os2| {
+                (os2.us_win_ascent() as f64, os2.us_win_descent() as f64)
             });
-        let ascent = (ascender as f64 * scale).round() as i32;
-        let cell_height = ascent + (descender.unsigned_abs() as f64 * scale).round() as i32;
+        let ascent = (ascender * scale).round() as i32;
+        let cell_height = ascent + (descender.abs() * scale).round() as i32;
         let mut lines = Vec::new();
         for (enabled, metrics, underline) in [
-            (style.underline, metadata.underline_metrics(), true),
-            (style.strikeout, metadata.strikeout_metrics(), false),
+            (style.underline, metadata.underline, true),
+            (style.strikeout, metadata.strikeout, false),
         ] {
             if enabled && let Some(metrics) = metrics {
-                let mut y = ascent - (metrics.position as f64 * scale).round() as i32;
+                let mut y = ascent - (metrics.offset as f64 * scale).round() as i32;
                 if underline {
                     y = y.min(cell_height - 1);
                 }
@@ -63,7 +63,6 @@ impl FontBook {
                 }
             }
         }
-        let font = skrifa::FontRef::from_index(&source.data, source.index)?;
         let outlines = font.outline_glyphs();
         let size = Size::new(height as f32);
         let smooth =

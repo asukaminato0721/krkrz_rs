@@ -1610,5 +1610,43 @@
     "expected": {
       "Integer": -1
     }
+  },
+  {
+    "name": "property_normalized_this",
+    "source": "property p{getter{return (this incontextof null)===global;}}var d=%[p:&p];return d.p;",
+    "expected": {
+      "Integer": 1
+    }
+  },
+  {
+    "name": "property_bound_global",
+    "source": "var x=7;property p{getter{return x;}}var d=%[x:9,p:&p];return d.p;",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "property_cleared_context",
+    "source": "var x=7;property p{getter{return x;}}var d=%[p:(&p incontextof null)];return d.p;",
+    "expected": "Void"
+  },
+  {
+    "name": "function_bound_global",
+    "source": "var x=7;function f(){return x;}var d=%[x:9,f:f];return d.f();",
+    "expected": {
+      "Integer": 7
+    }
+  },
+  {
+    "name": "function_cleared_context",
+    "source": "var x=7;function f(){return x;}var d=%[f:(f incontextof null)];return d.f();",
+    "expected": "Void"
+  },
+  {
+    "name": "property_bound_global_tf",
+    "source": "var tf=%[x:7];property p{getter{return tf.x;}}var d=%[tf:%[x:9],p:&p];return d.p;",
+    "expected": {
+      "Integer": 7
+    }
   }
 ]

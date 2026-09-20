@@ -82,6 +82,7 @@ fn run(
     let mut reached_epilogue = false;
     let mut load_stage = 0;
     let mut load_stage_at = 0;
+    let mut unlock_clicked = false;
     let route_prefix = match route {
         "kaz" => "ra",
         "yuz" => "rb",
@@ -210,6 +211,36 @@ fn run(
             )?;
             record(output, json!({"event":"scene","at_ms":at,"scene":scene}))?;
         }
+        // The unlock notice stops its conductor and cancels skip. Dismiss only
+        // this known, visible panel through its actual close-button hit area.
+        let unlock = session.evaluate(
+            "(function(){var p=kag.panelLayer;if(!kag.panelShowing || !(p instanceof 'UnlockNotifyPanel'))return '';\
+             var b=p.names.ok;if(!b || !b.nodeVisible || !b.nodeEnabled || p.opacity<255)return 'waiting';\
+             var x=b.width-19,y=18;for(var l=b;l!==null;l=l.parent){x+=l.left;y+=l.top;}\
+             return [int(x),int(y)].join(',');})()"
+        )?.text();
+        if !unlock.is_empty() {
+            if held {
+                control(session, false)?;
+                held = false;
+            }
+            if !unlock_clicked && unlock != "waiting" {
+                let (x, y) = unlock
+                    .split_once(',')
+                    .context("unlock button coordinates")?;
+                capture(session, directory, &format!("unlock-{at}.png"))?;
+                let (x, y) = (x.parse()?, y.parse()?);
+                click(session, x, y)?;
+                unlock_clicked = true;
+                record(
+                    output,
+                    json!({"event":"unlock_notice_dismissed","at_ms":at,
+                    "scene":scene,"x":x,"y":y}),
+                )?;
+            }
+            continue;
+        }
+        unlock_clicked = false;
         if selecting && stable && scene != last_choice {
             if held {
                 control(session, false)?;

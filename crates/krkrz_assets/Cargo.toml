@@ -9,6 +9,7 @@ anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 flate2.workspace = true
+adler2 = "2"
 encoding_rs.workspace = true
 krkrz_core.workspace = true
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "ico"] }

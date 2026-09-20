@@ -505,7 +505,7 @@ impl ApplicationHandler for Host<'_> {
             let time = self.origin.elapsed().as_millis().min(u64::MAX as u128) as u64;
             let result = self.session.tick(time).and_then(|_| {
                 let samples = self.session.take_audio();
-                if let Some(audio) = &self.audio {
+                if let Some(audio) = &mut self.audio {
                     audio.submit(&samples)?;
                 }
                 self.sync_windows(event_loop)

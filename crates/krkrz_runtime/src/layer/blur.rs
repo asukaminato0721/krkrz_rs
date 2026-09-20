@@ -1,37 +1,7 @@
-//! Box blur with Kirikiri's clipped neighborhood and integer alpha arithmetic.
+//! Box blur using imageproc summed-area tables and clipped neighborhoods.
 use super::*;
-
-fn components(pixel: &[u8], alpha: bool) -> [u64; 4] {
-    let mut value = std::array::from_fn(|i| pixel[i] as u64);
-    if alpha {
-        let scale = value[3] + (value[3] >> 7);
-        for color in &mut value[..3] {
-            *color = (*color * scale) >> 8;
-        }
-    }
-    value
-}
-
-fn average(sum: [u64; 4], count: u64, small: bool, center: bool, alpha: bool) -> [u8; 4] {
-    let mut value = sum.map(|v| {
-        if small {
-            (((v + count / 2) * (65536 / count)) >> 16) as u8
-        } else if center {
-            // The original optimized center loop uses a fixed-point reciprocal;
-            // its boundary loop divides directly. Exact ties can differ by one.
-            (((v + count / 2) * ((1u64 << 32) / count)) >> 32) as u8
-        } else {
-            ((v + count / 2) / count) as u8
-        }
-    });
-    if alpha {
-        let a = value[3] as u64;
-        for color in &mut value[..3] {
-            *color = (*color as u64 * 255).checked_div(a).unwrap_or(0).min(255) as u8;
-        }
-    }
-    value
-}
+use image::{GrayImage, Luma};
+use imageproc::integral_image::{integral_image, sum_image_pixels};
 
 impl Services {
     pub(super) fn layer_box_blur(
@@ -62,67 +32,55 @@ impl Services {
         );
         let (width, height) = (source.width as usize, source.height as usize);
         let (start, end) = (left.saturating_sub(rx), (right + rx).min(width));
-        let columns = end - start;
-        let rows = bottom - top;
-        let pixels = (right - left) * rows;
+        let (first, last) = (top.saturating_sub(ry), (bottom + ry).min(height));
+        let (columns, rows) = (end - start, last - first);
+        let pixels = (right - left) * (bottom - top);
         ensure!(
-            columns * 32 + pixels * 4 <= MAX_LAYER_IMAGE_BYTES,
+            (columns + 1) * (rows + 1) * 8 + columns * rows + pixels * 4 <= MAX_LAYER_IMAGE_BYTES,
             "Layer.doBoxBlur temporary memory limit exceeded"
         );
-        let cost = columns as u64
-            * ((top + ry + 1).min(height) - top.saturating_sub(ry) + 3 * rows) as u64
-            + pixels as u64;
         *budget = budget
-            .checked_sub(cost)
+            .checked_sub((columns * rows + pixels) as u64 * 4)
             .ok_or_else(|| unsupported("Layer.doBoxBlur execution budget exceeded"))?;
         let alpha = layer.draw_face() == 0;
-        let mut vertical = vec![[0u64; 4]; columns];
-        let mut output = Vec::with_capacity(pixels * 4);
-        let update = |vertical: &mut [[u64; 4]], y: usize, add: bool| {
-            for (x, sum) in vertical.iter_mut().enumerate() {
-                let pos = (y * width + start + x) * 4;
-                let value = components(&source.rgba[pos..pos + 4], alpha);
-                for c in 0..4 {
-                    if add {
-                        sum[c] += value[c];
-                    } else {
-                        sum[c] -= value[c];
-                    }
+        let mut output = vec![0; pixels * 4];
+        // One channel at a time bounds table memory. imageproc owns the running
+        // sum algorithm; this adapter supplies alpha semantics and clipped edges.
+        for channel in 0..4 {
+            let input = GrayImage::from_fn(columns as u32, rows as u32, |x, y| {
+                let pos = (((first + y as usize) * width) + start + x as usize) * 4;
+                let mut value = source.rgba[pos + channel] as u32;
+                if alpha && channel != 3 {
+                    let a = source.rgba[pos + 3] as u32;
+                    value = (value * (a + (a >> 7))) >> 8;
+                }
+                Luma([value as u8])
+            });
+            let integral = integral_image::<_, u64>(&input);
+            for y in top..bottom {
+                for x in left..right {
+                    let l = x.saturating_sub(rx);
+                    let r = (x + rx + 1).min(width);
+                    let t = y.saturating_sub(ry);
+                    let b = (y + ry + 1).min(height);
+                    let count = ((r - l) * (b - t)) as u64;
+                    let sum = sum_image_pixels(
+                        &integral,
+                        (l - start) as u32,
+                        (t - first) as u32,
+                        (r - start - 1) as u32,
+                        (b - first - 1) as u32,
+                    )[0];
+                    output[((y - top) * (right - left) + x - left) * 4 + channel] =
+                        ((sum + count / 2) / count) as u8;
                 }
             }
-        };
-        for y in top.saturating_sub(ry)..(top + ry + 1).min(height) {
-            update(&mut vertical, y, true);
         }
-        for y in top..bottom {
-            let mut sum = [0u64; 4];
-            for column in &vertical[..(left + rx + 1).min(width) - start] {
-                for c in 0..4 {
-                    sum[c] += column[c];
-                }
-            }
-            let vertical_count = (y + ry + 1).min(height) - y.saturating_sub(ry);
-            for x in left..right {
-                let count = vertical_count * ((x + rx + 1).min(width) - x.saturating_sub(rx));
-                let center = x >= rx && x + rx + 1 < width;
-                output.extend(average(sum, count as u64, area < 256, center, alpha));
-                if x >= rx {
-                    for c in 0..4 {
-                        sum[c] -= vertical[x - rx - start][c];
-                    }
-                }
-                if x + rx + 1 < end {
-                    for c in 0..4 {
-                        sum[c] += vertical[x + rx + 1 - start][c];
-                    }
-                }
-            }
-            if y + 1 < bottom {
-                if y >= ry {
-                    update(&mut vertical, y - ry, false);
-                }
-                if y + ry + 1 < height {
-                    update(&mut vertical, y + ry + 1, true);
+        if alpha {
+            for pixel in output.as_chunks_mut::<4>().0 {
+                let a = pixel[3] as u32;
+                for color in &mut pixel[..3] {
+                    *color = (*color as u32 * 255).checked_div(a).unwrap_or(0).min(255) as u8;
                 }
             }
         }

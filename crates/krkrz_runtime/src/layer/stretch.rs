@@ -1,108 +1,42 @@
-//! Separable resampling follows Kirikiri 1.2.0.3 visual/Resampler.cpp.
-//! See THIRD_PARTY_NOTICES.md for source and license.
+//! Image resampling uses fast_image_resize; script geometry remains in the adapter.
 use super::*;
-use std::ops::Range;
+use fast_image_resize::{
+    FilterType, PixelType, ResizeAlg, ResizeOptions, Resizer,
+    images::{Image as ResizeImage, ImageRef},
+};
 
-// The 1.2.0.3 engine uses the pre-April-2016 resampler, including its
-// reflected borders, bell filter named stCubic, and horizontal-first rounding.
-struct AxisSample {
-    points: Vec<(usize, f32)>,
-}
-fn weight(mut x: f32, cubic: bool) -> f32 {
-    x = x.abs();
-    if !cubic {
-        return (1.0 - x).max(0.0);
-    }
-    if x < 0.5 {
-        (0.75f64 - (x * x) as f64) as f32
-    } else if x < 1.5 {
-        x = (x as f64 - 1.5) as f32;
-        (0.5f64 * (x * x) as f64) as f32
-    } else {
-        0.0
-    }
-}
-fn axis(
-    source: i64,
-    dest: i64,
-    range: Range<i64>,
-    cubic: bool,
-    vertical: bool,
+pub(super) fn resize(
+    source: &Image,
+    crop: [f64; 4],
+    width: u32,
+    height: u32,
+    filter: FilterType,
     budget: &mut u64,
-) -> Result<Vec<AxisSample>> {
-    let tap = if cubic { 1.5f32 } else { 1.0 };
-    let scale = dest as f32 / source as f32;
-    let radius = if scale < 1.0 { tap / scale } else { tap };
-    let mut output = Vec::new();
-    let mut allocated = 0;
-    for i in range {
-        let center = if vertical && scale < 1.0 {
-            i as f32 * (1.0f64 / scale as f64) as f32
-        } else {
-            i as f32 / scale
-        };
-        let left = (center - radius).ceil() as i64;
-        let right = (center + radius).floor() as i64;
-        let count = (right - left + 1) as usize;
-        allocated += count;
-        ensure!(
-            allocated <= (8 << 20),
-            "stretchCopy filter memory limit exceeded"
-        );
-        *budget = budget
-            .checked_sub(count as u64)
-            .ok_or_else(|| unsupported("stretchCopy execution budget exceeded"))?;
-        let mut points = Vec::with_capacity(count);
-        let mut sum = 0.0f32;
-        for j in left..=right {
-            let distance = center - j as f32;
-            let w = weight(
-                if scale < 1.0 {
-                    distance * scale
-                } else {
-                    distance
-                },
-                cubic,
-            );
-            sum += w;
-            let n = if j < 0 {
-                -j
-            } else if j >= source {
-                source * 2 - j - 1
-            } else {
-                j
-            };
-            points.push((n.clamp(0, source - 1) as usize, w));
-        }
-        if scale < 1.0 && sum != 0.0 {
-            let reciprocal = (1.0f64 / sum as f64) as f32;
-            for (_, w) in &mut points {
-                *w *= reciprocal;
-            }
-        }
-        output.push(AxisSample { points });
-    }
-    Ok(output)
+) -> Result<Vec<u8>> {
+    // Bound the destination, the separable intermediate and coefficient tables.
+    let source_pixels = crop[2].ceil() as u64 * crop[3].ceil() as u64;
+    let pixels = width as u64 * height as u64;
+    let intermediate = source.width as u64 * height as u64;
+    let tables = (source.width as u64 + source.height as u64 + width as u64 + height as u64) * 128;
+    ensure!(
+        (pixels + intermediate) * 4 + tables <= MAX_LAYER_IMAGE_BYTES as u64,
+        "resize temporary memory limit exceeded"
+    );
+    *budget = budget
+        .checked_sub((source_pixels + intermediate + pixels) * 8)
+        .ok_or_else(|| unsupported("resize execution budget exceeded"))?;
+    let input = ImageRef::new(source.width, source.height, &source.rgba, PixelType::U8x4)?;
+    let mut output = ResizeImage::new(width, height, PixelType::U8x4);
+    // copy operations sample all four stored channels independently. Premultiplying
+    // here would erase RGB that scripts can read from fully transparent pixels.
+    let options = ResizeOptions::new()
+        .resize_alg(ResizeAlg::Convolution(filter))
+        .crop(crop[0], crop[1], crop[2], crop[3])
+        .use_alpha(false);
+    Resizer::new().resize(&input, &mut output, &options)?;
+    Ok(output.into_vec())
 }
-fn sample(sample: &AxisSample, mut read: impl FnMut(usize) -> [u8; 4]) -> [u8; 4] {
-    let first = read(sample.points[0].0);
-    let mut changed = [false; 4];
-    let mut channels = [0.0f32; 4];
-    for &(pos, w) in sample.points.iter().rev() {
-        let pixel = read(pos);
-        for c in 0..4 {
-            changed[c] |= pixel[c] != first[c];
-            channels[c] += pixel[c] as f32 * w;
-        }
-    }
-    std::array::from_fn(|c| {
-        if changed[c] {
-            channels[c].round().clamp(0.0, 255.0) as u8
-        } else {
-            first[c]
-        }
-    })
-}
+
 impl Services {
     pub(super) fn layer_stretch_copy(
         &mut self,
@@ -218,39 +152,24 @@ impl Services {
                 && sy + sh <= src.height as i64,
             "stretchCopy source rectangle outside image"
         );
-        let cubic = filter == 3;
-        let left = dx.max(clip[0]);
-        let right = (dx + dw).min(clip[2]);
-        let top = dy.max(clip[1]);
-        let bottom = (dy + dh).min(clip[3]);
-        let x_axis = axis(sw, dw, left - dx..right - dx, cubic, false, budget)?;
-        let y_axis = axis(sh, dh, top - dy..bottom - dy, cubic, true, budget)?;
-        let cost = x_axis
-            .iter()
-            .map(|s| s.points.len() as u64 * sh as u64)
-            .sum::<u64>()
-            + (right - left) as u64 * y_axis.iter().map(|s| s.points.len() as u64).sum::<u64>();
-        *budget = budget
-            .checked_sub(cost)
-            .ok_or_else(|| unsupported("stretchCopy execution budget exceeded"))?;
-        let mut output = vec![[0u8; 4]; (right - left) as usize * (bottom - top) as usize];
-        let mut column = vec![[0u8; 4]; sh as usize];
-        for (x, xs) in x_axis.iter().enumerate() {
-            for (y, pixel) in column.iter_mut().enumerate() {
-                *pixel = sample(xs, |i| {
-                    let pos = ((sy as usize + y) * src.width as usize + sx as usize + i) * 4;
-                    src.rgba[pos..pos + 4].try_into().unwrap()
-                });
-            }
-            for (y, ys) in y_axis.iter().enumerate() {
-                output[y * (right - left) as usize + x] = sample(ys, |i| column[i]);
-            }
-        }
+        let (left, top, right, bottom) = (dx, dy, dx + dw, dy + dh);
+        let output = resize(
+            src,
+            [sx as f64, sy as f64, sw as f64, sh as f64],
+            dw as u32,
+            dh as u32,
+            if filter == 3 {
+                FilterType::CatmullRom
+            } else {
+                FilterType::Bilinear
+            },
+            budget,
+        )?;
         let available = image_available(&self.layers, id);
         let dst = self.layers.get_mut(&id).unwrap();
         dst.prepare_image_write(available)?;
         let image = Arc::make_mut(dst.image.as_mut().unwrap());
-        let mut pixels = output.iter();
+        let mut pixels = output.as_chunks::<4>().0.iter();
         for y in top..bottom {
             for x in left..right {
                 let i = (y as usize * image.width as usize + x as usize) * 4;

@@ -1,4 +1,4 @@
-//! Bounded image, integer WAVE PCM, and Vorbis decoding. TLG5 is adapted from GARbro ImageTLG.cs.
+//! Bounded image, integer WAVE PCM, and Vorbis decoding.
 use crate::binary::Reader;
 use anyhow::{Result, ensure};
 use serde::Serialize;
@@ -95,58 +95,32 @@ fn tlg(bytes: &[u8]) -> Result<Image> {
     );
     let blocks = (height as usize).div_ceil(block_height);
     r.take(blocks * 4)?;
-    let mut rgba = vec![0; width as usize * height as usize * 4];
-    let mut window = [0u8; 4096];
-    let mut cursor = 0;
+    // libtlg allocates its plane buffers using the declared block height.
+    ensure!(
+        block_height * width as usize * (channels + 1) <= MAX_PIXELS * 4,
+        "TLG5 block buffers exceed memory limit"
+    );
     for top in (0..height as usize).step_by(block_height) {
-        let rows = block_height.min(height as usize - top);
-        let size = rows * width as usize;
-        let mut planes = Vec::new();
+        let size = block_height.min(height as usize - top) * width as usize;
         for _ in 0..channels {
             let mode = r.take(1)?[0];
             let packed = r.u32()? as usize;
-            let bytes = r.take(packed)?;
-            let plane = match mode {
-                0 => slide(bytes, size, &mut window, &mut cursor)?,
-                1 => {
-                    ensure!(bytes.len() == size, "TLG5 raw plane length mismatch");
-                    bytes.to_vec()
+            let plane = r.take(packed)?;
+            match mode {
+                0 => {
+                    ensure!(
+                        packed <= block_height * width as usize + 10,
+                        "TLG5 compressed plane exceeds decoder buffer"
+                    );
+                    validate_slide(plane, size)?;
                 }
+                1 => ensure!(packed == size, "TLG5 raw plane length mismatch"),
                 _ => anyhow::bail!("unsupported TLG5 plane encoding {mode}"),
-            };
-            planes.push(plane);
-        }
-        for y in 0..rows {
-            let mut previous = [0u8; 4];
-            for x in 0..width as usize {
-                let i = y * width as usize + x;
-                let mut delta = [
-                    planes[2][i].wrapping_add(planes[1][i]),
-                    planes[1][i],
-                    planes[0][i].wrapping_add(planes[1][i]),
-                    if channels == 4 { planes[3][i] } else { 0 },
-                ];
-                let out = ((top + y) * width as usize + x) * 4;
-                for c in 0..channels {
-                    previous[c] = previous[c].wrapping_add(delta[c]);
-                    delta[c] = previous[c];
-                    if top + y > 0 {
-                        delta[c] = delta[c].wrapping_add(rgba[out - width as usize * 4 + c]);
-                    }
-                }
-                if channels == 3 {
-                    delta[3] = 255;
-                }
-                rgba[out..out + 4].copy_from_slice(&delta);
             }
         }
     }
     ensure!(r.done(), "trailing TLG5 raw data");
-    Ok(Image {
-        width,
-        height,
-        rgba,
-    })
+    decode_tlg(bytes, width, height, channels)
 }
 
 fn tlg6(bytes: &[u8]) -> Result<Image> {
@@ -185,10 +159,14 @@ fn tlg6(bytes: &[u8]) -> Result<Image> {
         }
     }
     ensure!(r.done(), "trailing TLG6 raw data");
+    decode_tlg(bytes, width, height, colors as usize)
+}
+
+fn decode_tlg(bytes: &[u8], width: u32, height: u32, colors: usize) -> Result<Image> {
     let decoded = std::panic::catch_unwind(|| libtlg_rs::load_tlg(Cursor::new(bytes)))
-        .map_err(|_| anyhow::anyhow!("malformed TLG6 compressed data"))??;
+        .map_err(|_| anyhow::anyhow!("malformed TLG compressed data"))??;
     let mut rgba = Vec::with_capacity(width as usize * height as usize * 4);
-    for p in decoded.data.chunks_exact(colors as usize) {
+    for p in decoded.data.chunks_exact(colors) {
         if colors == 1 {
             rgba.extend_from_slice(&[p[0], p[0], p[0], 255]);
         } else {
@@ -197,7 +175,7 @@ fn tlg6(bytes: &[u8]) -> Result<Image> {
     }
     ensure!(
         rgba.len() == width as usize * height as usize * 4,
-        "invalid TLG6 output size"
+        "invalid TLG output size"
     );
     Ok(Image {
         width,
@@ -205,45 +183,34 @@ fn tlg6(bytes: &[u8]) -> Result<Image> {
         rgba,
     })
 }
-fn slide(
-    bytes: &[u8],
-    size: usize,
-    window: &mut [u8; 4096],
-    cursor: &mut usize,
-) -> Result<Vec<u8>> {
+// Validate token lengths without maintaining a dictionary or decoding pixels.
+// The upstream decoder does not reject incomplete or overlong planes itself.
+fn validate_slide(bytes: &[u8], size: usize) -> Result<()> {
     let mut r = Reader::new(bytes);
     let mut flags = 0u16;
-    let mut out = Vec::with_capacity(size);
+    let mut produced = 0usize;
     while !r.done() {
         flags >>= 1;
         if flags & 256 == 0 {
             flags = u16::from(r.take(1)?[0]) | 0xff00;
         }
-        if flags & 1 != 0 {
+        let count = if flags & 1 != 0 {
             let pair = r.take(2)?;
-            let mut pos = pair[0] as usize | ((pair[1] as usize & 15) << 8);
-            let mut len = (pair[1] as usize >> 4) + 3;
-            if len == 18 {
-                len += r.take(1)?[0] as usize;
-            }
-            ensure!(out.len() + len <= size, "TLG5 LZSS output exceeds plane");
-            for _ in 0..len {
-                let b = window[pos];
-                out.push(b);
-                window[*cursor] = b;
-                *cursor = (*cursor + 1) & 4095;
-                pos = (pos + 1) & 4095;
+            let length = (pair[1] as usize >> 4) + 3;
+            if length == 18 {
+                length + r.take(1)?[0] as usize
+            } else {
+                length
             }
         } else {
-            let b = r.take(1)?[0];
-            ensure!(out.len() < size, "TLG5 literal exceeds plane");
-            out.push(b);
-            window[*cursor] = b;
-            *cursor = (*cursor + 1) & 4095;
-        }
+            r.take(1)?;
+            1
+        };
+        produced += count;
+        ensure!(produced <= size, "TLG5 LZSS output exceeds plane");
     }
-    ensure!(out.len() == size, "incomplete TLG5 plane");
-    Ok(out)
+    ensure!(produced == size, "incomplete TLG5 plane");
+    Ok(())
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct Audio {
@@ -454,13 +421,24 @@ mod tests {
         }
     }
     #[test]
-    fn slide_overlap_and_bounds() {
-        let mut window = [0; 4096];
-        let mut cursor = 0;
+    fn compressed_tlg5_overlap_and_bounds() {
+        let mut bytes = b"TLG5.0\0raw\x1a\x03".to_vec();
+        for n in [4u32, 1, 1, 0] {
+            bytes.extend(n.to_le_bytes());
+        }
+        for _ in 0..3 {
+            bytes.push(0);
+            bytes.extend(4u32.to_le_bytes());
+            bytes.extend([2, 1, 0, 0]); // literal 1, then overlapping three-byte copy
+        }
         assert_eq!(
-            slide(&[2, b'a', 0, 0], 4, &mut window, &mut cursor).unwrap(),
-            b"aaaa"
+            Image::decode(&bytes).unwrap().rgba,
+            [2, 1, 2, 255, 4, 2, 4, 255, 6, 3, 6, 255, 8, 4, 8, 255]
         );
-        assert!(slide(&[1, 0, 0xf0, 255], 10, &mut window, &mut cursor).is_err());
+        assert!(validate_slide(&[1, 0, 0xf0, 255], 10).is_err());
+        assert!(validate_slide(&[0, 1], 4).is_err());
+        for end in 0..bytes.len() {
+            assert!(Image::decode(&bytes[..end]).is_err());
+        }
     }
 }
