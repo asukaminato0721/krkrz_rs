@@ -114,3 +114,12 @@ follows `src/plugins/ncbind/ncbind.hpp` in the pinned Kirikiroid2 checkout.
 The binding is independently written in Rust and verified with synthetic
 original-plugin observations. No GDI+, C++, Wine or Windows binary is included
 or required by the Rust engine. Drawing algorithms have not been ported yet.
+
+## MenuItem
+
+The Rust MenuItem model is adapted from `krkrz/menu`, revision
+`6818626cd4df71fa318412e2148e1d731b7d6662`, by W.Dee and contributors.
+Sources: `MenuItemIntf.cpp`, `MenuItemIntf.h`, `WindowMenu.cpp`, `WindowMenu.h`,
+`Main.cpp` and `ObjectList.h`. Copyright (C) 2000 W.Dee <dee@kikyou.info> and
+contributors. The Kirikiri license reproduced above applies. No Windows native
+menu code or original plugin binary is linked into the Rust engine.

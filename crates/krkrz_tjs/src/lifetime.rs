@@ -13,7 +13,7 @@ impl Vm {
         Ok(Value::Integer(i64::from(valid)))
     }
 
-    pub(crate) fn invalidate(
+    pub fn invalidate(
         &mut self,
         value: &Value,
         host: &mut impl Host,

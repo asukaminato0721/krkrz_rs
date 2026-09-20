@@ -7,6 +7,7 @@ mod csv;
 mod get_sample;
 pub mod graphics;
 mod layer_draw;
+mod menu;
 mod plugins;
 mod psb_file;
 mod save_storage;
@@ -18,7 +19,7 @@ pub mod window;
 use anyhow::{Context, Result, ensure};
 use krkrz_assets::{cx::CxEncryption, storage::Storage, text};
 use krkrz_core::{Limits, save_directory};
-use krkrz_tjs::{Host, Instruction, Value, Vm, compile_with_preprocessor, unsupported};
+use krkrz_tjs::{Host, Instruction, ObjectRef, Value, Vm, compile_with_preprocessor, unsupported};
 use serde::Serialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -47,6 +48,7 @@ pub struct Services {
     psb_files: BTreeMap<usize, Option<psb_file::File>>,
     text_renderers: BTreeMap<usize, text_render::Renderer>,
     layer_draw: layer_draw::State,
+    menus: menu::State,
     alpha_movies: BTreeMap<usize, alpha_movie::Player>,
     alpha_movie_links: BTreeSet<String>,
     sound_global_volume: i32,
@@ -124,6 +126,12 @@ impl Host for Services {
         args: &[Value],
         budget: &mut u64,
     ) -> Result<Value> {
+        if name == "Window.get:menu" {
+            return self.window_menu(vm, context, budget);
+        }
+        if let Some(operation) = name.strip_prefix("MenuItem.") {
+            return self.menu_call(vm, operation, context, args, budget);
+        }
         if let Some(operation) = name.strip_prefix("AlphaMovie.") {
             return self.alpha_movie_call(operation, context, args, budget);
         }
@@ -188,7 +196,14 @@ impl Host for Services {
                 if !matches!(action, Value::Void) {
                     let event = vm.new_dictionary()?;
                     vm.set_member(&event, &Value::string("type"), Value::string("onResize"))?;
-                    vm.set_member(&event, &Value::string("target"), context.clone())?;
+                    vm.set_member(
+                        &event,
+                        &Value::string("target"),
+                        Value::Object(ObjectRef {
+                            object: Some(id),
+                            context: Some(id),
+                        }),
+                    )?;
                     return vm.call_function(&action, context, &[event], self, budget);
                 }
                 return Ok(Value::Void);
@@ -306,6 +321,11 @@ impl Host for Services {
                             text_render::register(vm)?;
                             self.loaded_plugins.insert("textrender.dll".into());
                         }
+                        Ok(Value::Void)
+                    }
+                    "menu.dll" => {
+                        self.menus
+                            .relink(vm, path.rsplit('/').next().unwrap_or(""))?;
                         Ok(Value::Void)
                     }
                     "alphamovie.dll" => {
@@ -545,6 +565,7 @@ impl Session {
                 psb_files: BTreeMap::new(),
                 text_renderers: BTreeMap::new(),
                 layer_draw: layer_draw::State::default(),
+                menus: menu::State::default(),
                 alpha_movies: BTreeMap::new(),
                 alpha_movie_links: BTreeSet::new(),
                 sound_global_volume: 100_000,
@@ -586,6 +607,7 @@ impl Session {
     /// Deliver one pending batch. Events posted by callbacks wait for the next
     /// batch, preventing native recursion and preserving the shared VM budget.
     pub fn dispatch_events(&mut self) -> Result<()> {
+        let pending_menus = std::mem::take(&mut self.services.menus.pending);
         let pending_audio = self
             .services
             .sounds
@@ -620,6 +642,21 @@ impl Session {
                 &mut self.services,
                 &mut self.budget,
             )?;
+        }
+        for id in pending_menus {
+            if self.services.menus.is_live(id) {
+                let item = Value::object(id);
+                let callback = self
+                    .vm
+                    .get_member(&item, &Value::string("onClick"), false)?;
+                self.vm.call_function(
+                    &callback,
+                    &item,
+                    &[],
+                    &mut self.services,
+                    &mut self.budget,
+                )?;
+            }
         }
         for (id, events) in pending_audio {
             for (generation, name, argument) in events {

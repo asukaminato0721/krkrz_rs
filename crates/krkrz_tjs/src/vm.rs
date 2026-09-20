@@ -660,7 +660,10 @@ impl Vm {
             return Ok(Value::object(0));
         }
         if name == "this" {
-            return Ok(Value::object(frame.context));
+            return Ok(Value::Object(ObjectRef {
+                object: Some(frame.context),
+                context: Some(frame.context),
+            }));
         }
         if name == "super" {
             let owner = frame.owner.context("super outside class method")?;

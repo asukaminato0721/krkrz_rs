@@ -35,7 +35,7 @@ impl Lexer<'_> {
         let ch = self
             .bump()
             .ok_or_else(|| anyhow::anyhow!("truncated string escape"))?;
-        if ch == 'x' {
+        if ch == 'x' || ch == 'X' {
             let (mut n, mut count) = (0, 0);
             while count < 4 {
                 let Some(d) = self.peek().and_then(|c| c.to_digit(16)) else {
@@ -45,8 +45,14 @@ impl Lexer<'_> {
                 n = n * 16 + d;
                 count += 1;
             }
-            ensure!(count > 0, "empty TJS hex escape");
-            Ok(vec![n as u16])
+            Ok(if n == 0 { vec![] } else { vec![n as u16] })
+        } else if ch == '0' {
+            let mut n = 0u16;
+            while let Some(d) = self.peek().and_then(|c| c.to_digit(8)) {
+                self.bump();
+                n = n.wrapping_mul(8).wrapping_add(d as u16);
+            }
+            Ok(if n == 0 { vec![] } else { vec![n] })
         } else {
             let ch = match ch {
                 'n' => '\n',
@@ -56,7 +62,6 @@ impl Lexer<'_> {
                 'f' => '\u{c}',
                 'v' => '\u{b}',
                 'a' => '\u{7}',
-                '0' => '\0',
                 v => v,
             };
             Ok(ch.encode_utf16(&mut [0; 2]).to_vec())
@@ -501,36 +506,7 @@ impl Lexer<'_> {
                         break;
                     }
                     if ch == '\\' {
-                        let ch = self
-                            .bump()
-                            .ok_or_else(|| anyhow::anyhow!("truncated string escape"))?;
-                        if ch == 'x' {
-                            let mut n = 0;
-                            let mut count = 0;
-                            while count < 4 {
-                                let Some(d) = self.peek().and_then(|c| c.to_digit(16)) else {
-                                    break;
-                                };
-                                self.bump();
-                                n = n * 16 + d;
-                                count += 1;
-                            }
-                            ensure!(count > 0, "empty TJS hex escape");
-                            units.push(n as u16);
-                        } else {
-                            let ch = match ch {
-                                'n' => '\n',
-                                'r' => '\r',
-                                't' => '\t',
-                                'b' => '\u{8}',
-                                'f' => '\u{c}',
-                                'v' => '\u{b}',
-                                'a' => '\u{7}',
-                                '0' => '\0',
-                                v => v,
-                            };
-                            units.extend(ch.encode_utf16(&mut [0; 2]).iter().copied());
-                        }
+                        units.extend(self.escape()?);
                     } else {
                         units.extend(ch.encode_utf16(&mut [0; 2]).iter().copied());
                     }
@@ -624,7 +600,7 @@ mod tests {
     }
     #[test]
     fn malformed() {
-        for s in ["'bad", "/* missing", "'\\x'"] {
+        for s in ["'bad", "/* missing"] {
             assert!(lex("t", s).is_err());
         }
     }

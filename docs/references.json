@@ -73,5 +73,10 @@
     "name": "menu",
     "url": "https://github.com/krkrz/menu",
     "revision": "6818626cd4df71fa318412e2148e1d731b7d6662"
+  },
+  {
+    "name": "win32dialog",
+    "url": "https://github.com/wtnbgo/win32dialog",
+    "revision": "9658169f6af0159adb2739d22d9a6ebb8cec4981"
   }
 ]

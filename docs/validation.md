@@ -4,17 +4,17 @@ Recorded on 2026-09-20 against the installation at
 `/home/w/.wine/drive_c/otome_domain`. Installation files and Windows saves were
 read only. Research and decoded samples are outside the repository.
 
-Workspace build, formatting, and Clippy with warnings denied passed. All 90
+Workspace build, formatting, and Clippy with warnings denied passed. All 95
 synthetic tests passed, including 151 TJS cases, 37 ScriptsEx plugin cases,
 25 serialization cases, 27 CSVParser cases, 15 System cases, 22 sound-control cases, 13 getSample cases,
-11 decoded-WAV cases, 36 PSBFile cases, 80 TextRender cases, 39 layerExDraw/reached-language cases, 18 AlphaMovie API cases and one plugin-alias case.
+11 decoded-WAV cases, 36 PSBFile cases, 80 TextRender cases, 39 layerExDraw/reached-language cases, 18 AlphaMovie API cases, 24 menu/reached-language cases and one plugin-alias case.
 All 151 TJS cases matched
 the installed Kirikiri Z 1.2.0.3 executable in separate isolated processes.
 Habakiri matched 137 cases; fourteen interpolation/RegExp, real formatting and
 octet differences are explicitly excluded from that Java comparison and covered
 by the original-engine run.
 All nine opt-in installed-game tests passed; they remain ignored by default.
-The real startup run reaches the missing `menu.dll` plugin documented below.
+The real startup run reaches the missing `win32dialog.dll` plugin documented below.
 
 All 37 ScriptsEx cases match the installed PackinOne component in isolated
 original-engine runs. They cover object contexts, dictionary key/count reflection,
@@ -103,11 +103,11 @@ system/Initialize.tjs:465:1 at VM instruction 990
 system/Initialize.tjs:275:2 at VM instruction 11
 MainWindow.tjs:16:7 at VM instruction 22
 ... k2compat plugin dispatch ...
-unsupported Kirikiri native operation: Plugins.link(menu.dll)
+unsupported Kirikiri native operation: Plugins.link(win32dialog.dll)
 ```
 
 No startup guard or original script was removed or replaced. The next reached
-missing feature is the menu plugin interface. Plugin loading registers
+missing feature is the native dialog plugin interface. Plugin loading registers
 implemented ScriptsEx/saveStruct/CSVParser components and declarations for the
 observed remaining exports. Layer, Process, TemporaryFiles and KAGParser native
 construction and unfinished methods still raise explicit uncatchable engine
@@ -521,3 +521,41 @@ An original `play()` call without an open movie timed out in the isolated
 process. Rust rejects it safely; this behavior is not counted as a match.
 `play`/`stop` currently change transport intent only. No rendered frame,
 decoding completion, movie timing or game checkpoint is claimed.
+
+## MenuItem model and shared TJS fixes
+
+Twenty-four synthetic cases match the installed menu DLL and Kirikiri Z 1.2.0.3
+with zero differences. They cover default properties, the cached private window
+root class, insertion-history child order versus display indices, reparenting,
+mutable cached child arrays, radio groups, direct action dispatch, recursive
+invalidation, repeated construction, and case-sensitive repeated plugin links.
+Controlled shortcut maps test modifier ordering and key conversion without
+assuming that Wine/X11 key names match a Linux host keyboard layout.
+
+These probes also verified bound `this` identity in class and native callbacks,
+hex/octal string escapes, and omission of zero-valued escaped characters in
+ordinary and interpolated literals. Both menu and Window event dictionaries now
+return bound target handles. The corpus includes those regressions.
+
+Five Rust integration tests run the corpus and check deferred event batches,
+invalidation during delivery, disabled ancestors, unattached items, callback
+budget exhaustion, safe rejection of invalid indices/cycles, and explicit errors
+for missing native menu presentation. A rebuilt installed-game startup gets past
+menu loading and reaches `Plugins.link(win32dialog.dll)` through
+`k2compat_modeless.tjs`. This is not a title or gameplay checkpoint.
+
+Fixture: `crates/krkrz_runtime/tests/fixtures/menu.json` (24 cases), SHA-256
+`b873ba9ec7b30874ab029e5321dfe4df1e927aad15e754b276142e99f8382761`.
+Installed menu DLL SHA-256:
+`ecc8eba384e2dd2bb7ada8655e63bd9a3962b899dbe4fd8efdf6e1734603a49a`.
+
+```sh
+xvfb-run -a python3 tools/check_original_tjs.py /path/to/otomedomain.exe \
+  --fixtures crates/krkrz_runtime/tests/fixtures/menu.json --runtime \
+  --plugin menu.dll=/path/to/plugin/menu.dll
+```
+
+Menu bars, popups, HMENU access, keyboard accelerator delivery, host-specific
+key-name tables, HWND proxy objects and automatic collection remain unfinished.
+Native menu presentation calls fail explicitly; no title/playthrough, frame/audio
+comparison or original save/load acceptance has passed.
