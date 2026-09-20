@@ -23,6 +23,15 @@ fn original_startup_completes_framework_initialization() -> Result<()> {
         session.evaluate("kag.fore.base instanceof 'Layer'")?,
         Value::Integer(1)
     );
+    for time in (0..=1000).step_by(16) {
+        session.tick(time)?;
+    }
+    session.tick(1000)?;
+    assert_eq!(
+        session.evaluate("kag.currentStorage")?,
+        Value::string("custom.ks")
+    );
+    assert!(session.budget > 0);
     Ok(())
 }
 

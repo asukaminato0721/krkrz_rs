@@ -508,5 +508,79 @@
         49
       ]
     }
+  },
+  {
+    "name": "neutral_color",
+    "source": "var w=new Window(),p=new Layer(w,null),l=new Layer(w,p);var a=[p.neutralColor,l.neutralColor];l.neutralColor=0x89123456;l.type=l.type;a.add(l.neutralColor);l.setImageSize(40,40);a.add(l.getMainPixel(39,39));a.add(l.getMaskPixel(39,39));l.type=ltAddAlpha;a.add(l.neutralColor);return a.join('|');",
+    "expected": {
+      "String": [
+        52,
+        50,
+        57,
+        52,
+        57,
+        54,
+        55,
+        50,
+        57,
+        53,
+        124,
+        49,
+        54,
+        55,
+        55,
+        55,
+        50,
+        49,
+        53,
+        124,
+        50,
+        50,
+        57,
+        57,
+        54,
+        55,
+        49,
+        54,
+        51,
+        56,
+        124,
+        49,
+        49,
+        57,
+        51,
+        48,
+        52,
+        54,
+        124,
+        49,
+        51,
+        55,
+        124,
+        48
+      ]
+    }
+  },
+  {
+    "name": "stop_idle_transition",
+    "source": "var w=new Window(),l=new Layer(w,null),calls=0;l.onTransitionCompleted=function(){global.calls++;};l.setMainPixel(0,0,0x123456);var v=l.stopTransition();return typeof v+'|'+calls+'|'+l.getMainPixel(0,0);",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100,
+        124,
+        48,
+        124,
+        49,
+        49,
+        57,
+        51,
+        48,
+        52,
+        54
+      ]
+    }
   }
 ]

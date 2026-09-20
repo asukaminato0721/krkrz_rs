@@ -3,12 +3,21 @@
 use anyhow::{Context, Result, bail, ensure};
 use krkrz_tjs::{Value, Vm, unsupported};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ShowCommand {
+    Minimize,
+    Maximize,
+    Restore,
+}
+
 #[derive(Clone, Debug)]
 pub struct WindowState {
     pub constructed: bool,
     pub visible: bool,
     pub minimized: bool,
     pub maximized: bool,
+    normal_bounds: Option<[i32; 4]>,
+    restore_maximized: bool,
     pub caption: String,
     pub border_style: i32,
     pub inner_width: i32,
@@ -44,6 +53,8 @@ impl Default for WindowState {
             visible: false,
             minimized: false,
             maximized: false,
+            normal_bounds: None,
+            restore_maximized: false,
             caption: String::new(),
             border_style: 2,
             inner_width: 10,
@@ -142,6 +153,52 @@ impl WindowState {
                 .saturating_add(insets[1])
                 .saturating_add(insets[3]),
         ]
+    }
+    pub fn normal_rect(&self) -> [i32; 4] {
+        self.normal_bounds.unwrap_or_else(|| self.window_rect())
+    }
+    pub(crate) fn apply_show_command(&mut self, command: ShowCommand, work: [i32; 4]) {
+        match command {
+            ShowCommand::Maximize => {
+                if !self.maximized {
+                    if self.normal_bounds.is_none() {
+                        self.normal_bounds = Some(self.window_rect());
+                    }
+                    self.left = work[0];
+                    self.top = work[1];
+                    self.set_outer_size(work[2], work[3]);
+                }
+                self.minimized = false;
+                self.maximized = true;
+                self.visible = true;
+            }
+            ShowCommand::Minimize => {
+                if !self.minimized {
+                    if self.normal_bounds.is_none() {
+                        self.normal_bounds = Some(self.window_rect());
+                    }
+                    self.restore_maximized = self.maximized;
+                    self.minimized = true;
+                    self.maximized = false;
+                    self.visible = true;
+                }
+            }
+            ShowCommand::Restore => {
+                if self.minimized && self.restore_maximized {
+                    self.apply_show_command(ShowCommand::Maximize, work);
+                } else {
+                    if let Some([x, y, w, h]) = self.normal_bounds.take() {
+                        self.left = x;
+                        self.top = y;
+                        self.set_outer_size(w, h);
+                    }
+                    self.minimized = false;
+                    self.maximized = false;
+                    self.visible = true;
+                }
+                self.restore_maximized = false;
+            }
+        }
     }
     fn effective_insets(&self) -> [i32; 4] {
         if self.is_full_screen() || self.border_style == 0 {

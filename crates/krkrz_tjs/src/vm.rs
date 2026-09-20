@@ -680,26 +680,17 @@ impl Vm {
     ) -> Result<bool> {
         // Native event delivery ignores invalid/non-callable dispatches, but
         // propagates exceptions from valid handlers. Return values are unused.
-        let mut function = function.clone();
-        for _ in 0..128 {
-            let Ok(id) = self.object_id(&function) else {
-                return Ok(false);
-            };
-            match &self.objects[id].kind {
-                ObjectKind::Function(_) | ObjectKind::Native(_) | ObjectKind::Method { .. } => {
-                    self.invoke_result(&function, context, args, host, budget, false)?;
-                    return Ok(true);
-                }
-                ObjectKind::Property {
-                    getter: Some(_), ..
-                }
-                | ObjectKind::VariantProperty(_) => {
-                    function = self.read_property(&function, context, host, budget)?;
-                }
-                _ => return Ok(false),
-            }
+        let Ok(id) = self.object_id(function) else {
+            return Ok(false);
+        };
+        if !matches!(
+            self.objects[id].kind,
+            ObjectKind::Function(_) | ObjectKind::Native(_) | ObjectKind::Method { .. }
+        ) {
+            return Ok(false);
         }
-        Err(unsupported("event handler property recursion exceeded"))
+        self.invoke_result(function, context, args, host, budget, false)?;
+        Ok(true)
     }
     /// Invoke a script callback and return its result using the same budget.
     pub fn call_function(

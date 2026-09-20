@@ -410,6 +410,10 @@ impl Layer {
             let v = match key {
                 "name" => return Ok(Value::string(&self.name)),
                 "hint" => return Ok(self.hint.clone()),
+                "neutralColor" => {
+                    let [r, g, b, a] = self.neutral;
+                    return Ok(Value::Integer(u32::from_be_bytes([a, r, g, b]).into()));
+                }
                 "showParentHint" => self.show_parent_hint.into(),
                 "ignoreHintSensing" => self.ignore_hint_sensing.into(),
                 "left" => self.left,
@@ -448,7 +452,14 @@ impl Layer {
         }
         match op {
             "finalize" => {}
+            // No transition can be active until beginTransition is implemented.
+            // Upstream StopTransition leaves an idle layer untouched.
+            "stopTransition" => {}
             "set:name" => self.name = arg(0)?.text(),
+            "set:neutralColor" => {
+                let [a, r, g, b] = (arg(0)?.integer()? as u32).to_be_bytes();
+                self.neutral = [r, g, b, a];
+            }
             "set:showParentHint" => self.show_parent_hint = arg(0)?.truth()?,
             "set:ignoreHintSensing" => self.ignore_hint_sensing = arg(0)?.truth()?,
             "set:hint" => {

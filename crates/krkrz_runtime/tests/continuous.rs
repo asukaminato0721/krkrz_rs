@@ -11,14 +11,17 @@ fn execute(session: &mut Session, source: &str) -> Value {
 
 #[test]
 fn original_continuous_corpus() {
-    let cases: serde_json::Value =
+    let mut cases: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/continuous.json")).unwrap();
+    let extra: Vec<serde_json::Value> =
+        serde_json::from_str(include_str!("fixtures/window_show.json")).unwrap();
+    cases.as_array_mut().unwrap().extend(extra);
     for case in cases.as_array().unwrap() {
         let project = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
         let mut s = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
         execute(&mut s, case["source"].as_str().unwrap());
-        for t in 0..4 {
+        for t in 0..7 {
             s.tick(t * 16).unwrap();
         }
         assert_eq!(

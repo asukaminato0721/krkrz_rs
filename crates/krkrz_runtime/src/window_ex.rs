@@ -22,6 +22,69 @@ pub struct SystemMenuItem {
 }
 
 impl crate::Session {
+    pub(crate) fn dispatch_window_commands(&mut self) -> Result<()> {
+        use crate::window::ShowCommand;
+        let commands = std::mem::take(&mut self.services.window_ex.pending_show);
+        for (id, command) in commands {
+            charge(&mut self.budget)?;
+            let Some(window) = self.services.windows.get(&id) else {
+                continue;
+            };
+            let work = self
+                .services
+                .display_for_rect(window.window_rect(), true)
+                .unwrap_or_else(|| self.services.application_display())
+                .work;
+            let was_minimized = window.minimized;
+            let was_maximized = window.maximized;
+            let target = Value::object(id);
+            if command == ShowCommand::Maximize
+                && self
+                    .window_command_callback(&target, "onMaximizeQuery")?
+                    .integer()?
+                    != 0
+            {
+                continue;
+            }
+            if command == ShowCommand::Restore && was_minimized {
+                self.window_command_callback(&target, "onShow")?;
+            }
+            let Some(window) = self.services.windows.get_mut(&id) else {
+                continue;
+            };
+            window.apply_show_command(command, work);
+            let event = if window.minimized && !was_minimized {
+                Some("onMinimize")
+            } else if window.maximized && !was_maximized {
+                Some("onMaximize")
+            } else {
+                None
+            };
+            if let Some(event) = event {
+                self.window_command_callback(&target, event)?;
+            }
+        }
+        Ok(())
+    }
+    fn window_command_callback(&mut self, target: &Value, name: &str) -> Result<Value> {
+        let id = id(target)?;
+        if !self.services.window_ex.windows.contains_key(&id) {
+            return Ok(Value::Void);
+        }
+        let callback = self.vm.get_property(
+            target,
+            &Value::string(name),
+            true,
+            false,
+            &mut self.services,
+            &mut self.budget,
+        )?;
+        if callback == Value::Void {
+            return Ok(Value::Void);
+        }
+        self.vm
+            .call_function(&callback, target, &[], &mut self.services, &mut self.budget)
+    }
     pub fn system_menu(&self, window: &Value) -> Result<&[SystemMenuItem]> {
         Ok(&self
             .services
@@ -101,6 +164,7 @@ pub(crate) struct State {
     spelling: Option<String>,
     pub(crate) windows: BTreeMap<usize, Window>,
     eval_error_log: bool,
+    pending_show: Vec<(usize, crate::window::ShowCommand)>,
 }
 impl Default for State {
     fn default() -> Self {
@@ -108,6 +172,7 @@ impl Default for State {
             spelling: None,
             windows: BTreeMap::new(),
             eval_error_log: true,
+            pending_show: Vec::new(),
         }
     }
 }
@@ -479,6 +544,41 @@ impl Services {
                 self.windows.get(&id).is_some_and(|w| w.constructed),
                 "context has no constructed Window native instance"
             );
+            if matches!(
+                name,
+                "maximize" | "minimize" | "showRestore" | "set:maximized" | "set:minimized"
+            ) {
+                use crate::window::ShowCommand::*;
+                let command = match name {
+                    "maximize" => Maximize,
+                    "minimize" => Minimize,
+                    "showRestore" => Restore,
+                    setter => {
+                        let value = arg(0)?.integer()? as i32 != 0;
+                        let current = if setter == "set:maximized" {
+                            self.windows[&id].maximized
+                        } else {
+                            self.windows[&id].minimized
+                        };
+                        if current == value {
+                            return Ok(Value::Void);
+                        }
+                        if !value {
+                            Restore
+                        } else if setter == "set:maximized" {
+                            Maximize
+                        } else {
+                            Minimize
+                        }
+                    }
+                };
+                ensure!(
+                    self.window_ex.pending_show.len() < 100_000,
+                    "window command queue limit exceeded"
+                );
+                self.window_ex.pending_show.push((id, command));
+                return Ok(Value::Void);
+            }
             if matches!(name, "getWindowRect" | "getClientRect" | "getNormalRect") {
                 if name == "getNormalRect"
                     && let Some(value) = args.first()
@@ -488,6 +588,8 @@ impl Services {
                 let window = &self.windows[&id];
                 let bounds = if name == "getClientRect" {
                     window.client_rect()
+                } else if name == "getNormalRect" {
+                    window.normal_rect()
                 } else {
                     window.window_rect()
                 };

@@ -4,7 +4,9 @@ This repository contains an initial implementation toward the Otome Domain
 playable slice. **The game is not playable yet.** The original `startup.tjs`
 now completes framework initialization, including game menus, embedded fonts,
 message layers and audio objects. Deterministic ticks deliver timer, asynchronous
-and paint callbacks. Post-startup execution currently stops at `extNagano.dll`.
+continuous and paint callbacks. The original scripts reach `custom.ks` after
+one second of deterministic ticks; further execution reaches the first
+`Layer.beginTransition` call, whose rendering is still unimplemented.
 Native presentation, required movies/effects, title interaction, New Game,
 first choice and original save/load acceptance remain incomplete.
 
@@ -101,8 +103,8 @@ support pause, seek, looping, labels and deferred EOF callbacks. Volume/pan/fade
 controls exist, but device mixing, gain, resampling and audio-clock integration
 are still required. This source-rate API returns unscaled PCM, not device output.
 The getSample replacement adds lazy sample settings and peak-square/legacy
-measurements through scoped visualization buffers. Negative look-ahead, filters,
-script-visible loop flags, 3D controls and hardware playback remain open.
+measurements through scoped visualization buffers. Script-visible SLI flags and cached label dictionaries are connected to the
+source streams. Negative look-ahead, 3D controls and hardware playback remain open.
 The interpreter deliberately rejects unsupported constructs; it does
 not replace TJS with JavaScript. KAG cursor restoration is not a game save.
 

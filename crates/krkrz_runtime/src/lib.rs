@@ -924,6 +924,7 @@ impl Session {
         self.services.advance_timers(time_ms)?;
         self.services.sound_advance(time_ms);
         self.services.time_ms = time_ms;
+        self.dispatch_window_commands()?;
         self.dispatch_events()?;
         Ok(())
     }

@@ -37,6 +37,48 @@ const SETUP: &str =
     "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');";
 
 #[test]
+fn deferred_maximize_minimize_restore_and_query_veto() {
+    let project = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    std::fs::write(project.path().join("startup.tjs"),format!("{SETUP}var w=new Window();w.setPos(40,50);w.setSize(320,240);w.registerExEvent();var events=[],veto=true;w.onMaximizeQuery=function(){{global.events.add('query');return global.veto;}};w.onMaximize=function(){{global.events.add('max');}};w.onMinimize=function(){{global.events.add('min');}};w.onShow=function(){{global.events.add('show');}};")).unwrap();
+    let mut s = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    s.startup().unwrap();
+    s.evaluate("w.maximize()").unwrap();
+    assert_eq!(s.evaluate("w.maximized").unwrap(), Value::Integer(0));
+    s.tick(1).unwrap();
+    assert_eq!(s.evaluate("w.maximized").unwrap(), Value::Integer(0));
+    s.evaluate("veto=false").unwrap();
+    s.evaluate("w.maximized=true").unwrap();
+    s.tick(2).unwrap();
+    assert_eq!(s.evaluate("w.maximized").unwrap(), Value::Integer(1));
+    assert_eq!(
+        s.evaluate("w.getNormalRect().w").unwrap(),
+        Value::Integer(320)
+    );
+    assert_eq!(
+        s.evaluate("w.width==System.desktopWidth").unwrap(),
+        Value::Integer(1)
+    );
+    s.evaluate("w.minimize()").unwrap();
+    s.tick(3).unwrap();
+    assert_eq!(s.evaluate("w.minimized").unwrap(), Value::Integer(1));
+    s.evaluate("w.showRestore()").unwrap();
+    s.tick(4).unwrap();
+    assert_eq!(s.evaluate("w.maximized").unwrap(), Value::Integer(1));
+    s.evaluate("w.maximized=false").unwrap();
+    s.tick(5).unwrap();
+    assert_eq!(
+        s.evaluate("[w.left,w.top,w.width,w.height].join(',')")
+            .unwrap(),
+        Value::string("40,50,320,240")
+    );
+    assert_eq!(
+        s.evaluate("events.join(',')").unwrap(),
+        Value::string("query,query,max,min,show,max")
+    );
+}
+
+#[test]
 fn linux_host_reports_dwm_preview_unavailable() {
     assert_eq!(
         run(
@@ -158,7 +200,7 @@ fn callbacks_share_budget_and_handle_reentrant_invalidation() {
 }
 #[test]
 fn native_window_operations_are_explicit_until_host_support_exists() {
-    for operation in ["w.maximize()", "w.setOverlayBitmap(null)"] {
+    for operation in ["w.focusMenuByKey(0)", "w.setOverlayBitmap(null)"] {
         let error = run(
             &format!("{SETUP}var w=new Window();try{{{operation};}}catch(e){{return 99;}}"),
             100_000,
