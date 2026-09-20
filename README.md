@@ -3,9 +3,11 @@
 This repository contains an experimental native Linux port of Otome Domain.
 The unchanged game archives now reach the title menu and playable opening
 dialogue: native-order mouse clicks advance the first five text entries. The
-original Load menu displays copied Windows saves and thumbnails. **Full-game
-compatibility is not established yet:** choices, complete scene traversal,
-in-game movies, and save/restart/load acceptance are still being verified.
+original Load menu restores copied Windows saves, including a choice that
+advances into its selected branch. Native X11 input also reaches and advances
+opening dialogue. **Full-game compatibility is not established yet:** complete
+scene traversal and in-game movies are still being verified. Saving from the
+original UI, restarting, restoring and advancing the saved dialogue also pass.
 
 The Rust TJS interpreter and Kirikiri services run the original scripts. Native
 winit/wgpu presentation, mouse/keyboard input and CPAL audio share the same
@@ -106,6 +108,16 @@ TJS `expression` and fails the command if false. Checkpoints preserve evidence
 before a later failure; stdout retains the usual result or `--inspect` output.
 Replay syntax, timestamp order, and frame destinations are checked before startup.
 
+The checked-in Otome Domain replays cover opening dialogue and saved games.
+Run `tools/replays/otome-save-opening.json` with a fresh, separate `--save-dir`,
+then run `tools/replays/otome-load-opening.json` in a new process with that same
+directory. Both use `--epoch-ms 0 --step-ms 16 --budget 100000000000` and the
+release build. The first writes slot zero through the Save menu; the second
+restores it through Load and advances one dialogue entry. To test the supplied
+Windows choice save instead, copy its saves into a separate directory and use
+`tools/replays/otome-load-existing-save0.json`. These replays write to their
+selected save directory, so keep it separate from original saves.
+
 An unfiltered `verify` deliberately returns failure for the installation's
 malformed protection-notice entry. It verifies all other resolved resources
 before reporting the failure. The entry is not hidden or treated as valid.
@@ -122,6 +134,12 @@ cargo run --release -p krkrz_cli --bin krkrz_engine -- \
 `--project-dir` defaults to the current directory. The executor selects the
 Otome Domain Cx profile when `otomedomain.exe` is present; `--otome-domain`
 selects it explicitly. It never executes the Windows executable or DLLs.
+
+`--icon /path/to/icon.ico` sets the native window icon (PNG, JPEG, BMP and TLG
+also work). On Wayland this uses `xdg_toplevel_icon_v1` when the compositor
+supports it. The frontend uses winit **0.31.0-beta.3**, the latest prerelease,
+because stable 0.30.13 does not include that protocol. See
+[dependency validation](docs/dependency-upgrade.md) for compatibility checks.
 
 The save directory defaults to `$XDG_DATA_HOME/krkrz_rs/<project-path-hash>`
 (or `$HOME/.local/share/krkrz_rs/<project-path-hash>`). Save paths within the

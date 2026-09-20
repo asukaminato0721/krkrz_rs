@@ -4,6 +4,12 @@ use anyhow::{Context, Result, ensure};
 use krkrz_assets::media::Image;
 use krkrz_tjs::{ObjectRef, Value, Vm, unsupported};
 
+// A restored 1280x720 scene retains 208 MB of live background, portrait and
+// transition layers; changing pose reaches 260 MB before the next PSD buffer.
+// Full GC does not reclaim these script-owned caches. Keep a bounded session
+// allowance large enough for this working set, while retaining the 16 MP limit.
+const MAX_LAYER_IMAGE_BYTES: usize = 512 << 20;
+
 #[derive(Clone)]
 struct Province {
     width: usize,
@@ -20,6 +26,8 @@ pub(crate) struct Layer {
     focused_layer: Option<usize>,
     modal_layers: Vec<usize>,
     modal_removing: Vec<usize>,
+    enabled_notify_depth: usize,
+    enabled_snapshot: Vec<(usize, bool)>,
     focus_lock: bool,
     action_owner: Value,
     primary: bool,
@@ -70,6 +78,8 @@ impl Default for Layer {
             focused_layer: None,
             modal_layers: Vec::new(),
             modal_removing: Vec::new(),
+            enabled_notify_depth: 0,
+            enabled_snapshot: Vec::new(),
             focus_lock: false,
             action_owner: Value::NULL,
             primary: false,
@@ -1024,10 +1034,11 @@ impl Services {
                     + l.province.as_ref().map_or(0, |p| p.pixels.len())
             })
             .sum();
-        self.layers
-            .get_mut(&id)
-            .unwrap()
-            .call(op, args, (256usize << 20).saturating_sub(bytes))
+        self.layers.get_mut(&id).unwrap().call(
+            op,
+            args,
+            MAX_LAYER_IMAGE_BYTES.saturating_sub(bytes),
+        )
     }
 }
 
@@ -1112,7 +1123,11 @@ impl Layer {
 
 impl Layer {
     pub(crate) fn set_movie_image(&mut self, image: &Image) -> Result<()> {
-        self.image_size(image.width as i32, image.height as i32, 256usize << 20)?;
+        self.image_size(
+            image.width as i32,
+            image.height as i32,
+            MAX_LAYER_IMAGE_BYTES,
+        )?;
         self.image = Some(image.clone());
         self.image_modified = true;
         Ok(())
@@ -1126,9 +1141,40 @@ impl Layer {
             "cannot move primary layer"
         );
         self.set_movie_image(image)?;
-        self.size(image.width as i32, image.height as i32, 256usize << 20)?;
+        self.size(
+            image.width as i32,
+            image.height as i32,
+            MAX_LAYER_IMAGE_BYTES,
+        )?;
         self.left = left;
         self.top = top;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod memory_tests {
+    use super::*;
+
+    #[test]
+    fn rejected_image_growth_keeps_pixels_dimensions_and_clip() {
+        let mut layer = Layer {
+            clip: [1, 2, 3, 4],
+            ..Layer::default()
+        };
+        let before = layer.image.clone().unwrap();
+        assert!(layer.resize_image(64, 64, 4096).is_err());
+        let after = layer.image.as_ref().unwrap();
+        assert_eq!((after.width, after.height), (before.width, before.height));
+        assert_eq!(after.rgba, before.rgba);
+        assert_eq!(layer.clip, [1, 2, 3, 4]);
+        assert!(
+            layer
+                .resize_image(8192, 8192, MAX_LAYER_IMAGE_BYTES)
+                .is_err()
+        );
+        assert_eq!(layer.image.as_ref().unwrap().rgba, before.rgba);
+        assert!(layer.allocate_province(4096).is_err());
+        assert!(layer.province.is_none());
     }
 }

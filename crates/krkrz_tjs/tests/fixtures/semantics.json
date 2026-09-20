@@ -1575,5 +1575,40 @@
     "expected": {
       "Integer": 12
     }
+  },
+  {
+    "name": "empty_needle_void",
+    "source": "return \"AskSave\".indexOf(void);",
+    "expected": {
+      "Integer": -1
+    }
+  },
+  {
+    "name": "empty_needle_empty",
+    "source": "return \"AskSave\".indexOf(\"\");",
+    "expected": {
+      "Integer": -1
+    }
+  },
+  {
+    "name": "empty_needle_empty_source",
+    "source": "return \"\".indexOf(\"\");",
+    "expected": {
+      "Integer": -1
+    }
+  },
+  {
+    "name": "empty_needle_void_start",
+    "source": "return \"AskSave\".indexOf(void,2);",
+    "expected": {
+      "Integer": -1
+    }
+  },
+  {
+    "name": "empty_needle_empty_start",
+    "source": "return \"AskSave\".indexOf(\"\",2);",
+    "expected": {
+      "Integer": -1
+    }
   }
 ]

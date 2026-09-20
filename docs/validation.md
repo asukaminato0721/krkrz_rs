@@ -28,12 +28,29 @@ roots and finalizers are covered by focused VM/runtime tests. Native and replay
 hosts collect between ticks; Session embedders explicitly provide retained Values.
 Finalizer timing is deferred, rather than immediate reference counting.
 
+A native Xvfb run also displayed the title, accepted X11 New Game input and
+advanced from the first dialogue to the next character with a second click.
+The software GL run needed more wall-clock time than the headless replay.
+A short CPAL run opened a stereo 48 kHz PipeWire stream without an audio error;
+audio quality has not yet been assessed.
+
 The original Load Game button also opens `load.ks:*wait` and renders all five
 copied Windows slots, including thumbnails. Eight original save files round-trip
-22,412 typed values; bitmap prefixes remain byte-identical. A staged slot restore
-enters the scene player and passes background blur. Restored choice construction
-is the next integration checkpoint. This does not yet
-establish a successful restored choice or a game-UI save/restart/load cycle.
+22,412 typed values; bitmap prefixes remain byte-identical. Actual title Load → slot zero → confirmation restores the original
+`ky02_2.txt*dummyselect1` choice. Clicking its first option enters
+`ky02_2.txt*ky02_2_a` at text ID 1 with a stable dialogue wait. The checked-in
+`tools/replays/otome-load-existing-save0.json` reproduces this with a copied
+original slot zero. A separate fresh-save run clicked Save → slot zero → Yes, wrote `data0.bmp`
+with its thumbnail, and returned to the opening dialogue. After that process
+exited, a new process clicked Load → slot zero → Yes and restored
+`ky01_1.txt*start`, text ID 1; another click advanced to stable, saveable text ID 2.
+`otome-save-opening.json` and `otome-load-opening.json` record this two-process
+cycle. The Windows original also decoded this generated bitmap-prefixed
+compressed save and returned the same storage, label and page title.
+`String.indexOf` now returns -1 for empty/void needles (five original
+cases); this fixes the save confirmation message lookup.
+Dictionary-bound functions now resolve absent names to void, matching seven
+original-engine cases; this was needed to construct restored choice layers.
 Unavailable font names from the old Windows settings fall back to a registered
 Japanese font consistently for layout and rasterization.
 

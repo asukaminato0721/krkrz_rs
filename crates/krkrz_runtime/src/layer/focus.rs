@@ -5,6 +5,34 @@ fn value(id: Option<usize>) -> Value {
     id.map_or(Value::NULL, bound)
 }
 impl Services {
+    fn layer_begin_enabled(&mut self, root: usize) {
+        let first = self
+            .layers
+            .get(&root)
+            .is_some_and(|l| l.enabled_notify_depth == 0);
+        let snapshot = if first {
+            self.layer_enabled_snapshot(root)
+        } else {
+            Vec::new()
+        };
+        if let Some(manager) = self.layers.get_mut(&root) {
+            if first {
+                manager.enabled_snapshot = snapshot;
+            }
+            manager.enabled_notify_depth += 1;
+        }
+    }
+    fn layer_end_enabled(&mut self, vm: &mut Vm, root: usize, budget: &mut u64) -> Result<()> {
+        let Some(manager) = self.layers.get_mut(&root) else {
+            return Ok(());
+        };
+        manager.enabled_notify_depth = manager.enabled_notify_depth.saturating_sub(1);
+        if manager.enabled_notify_depth != 0 {
+            return Ok(());
+        }
+        let snapshot = std::mem::take(&mut manager.enabled_snapshot);
+        self.layer_notify_enabled(vm, snapshot, budget)
+    }
     fn layer_enabled_snapshot(&self, root: usize) -> Vec<(usize, bool)> {
         self.layer_nodes(root)
             .into_iter()
@@ -43,7 +71,7 @@ impl Services {
             return Ok(());
         }
         let root = layer.root;
-        let before = self.layer_enabled_snapshot(root);
+        self.layer_begin_enabled(root);
         let result = (|| -> Result<()> {
             if let Some(&current) = self.layers.get(&root).and_then(|l| l.modal_layers.last()) {
                 ensure!(
@@ -81,7 +109,7 @@ impl Services {
             }
             Ok(())
         })();
-        self.layer_notify_enabled(vm, before, budget)?;
+        self.layer_end_enabled(vm, root, budget)?;
         result
     }
     pub(super) fn layer_remove_modes(
@@ -99,24 +127,29 @@ impl Services {
             .layers
             .get(&root)
             .into_iter()
-            .flat_map(|l| l.modal_layers.iter().copied().filter(|id| !l.modal_removing.contains(id)))
+            .flat_map(|l| {
+                l.modal_layers
+                    .iter()
+                    .copied()
+                    .filter(|id| !l.modal_removing.contains(id))
+            })
             .filter(|&mode| mode == id || tree && self.layer_descendant(mode, id))
             .collect();
         if modes.is_empty() {
             return Ok(());
         }
-        let before = self.layer_enabled_snapshot(root);
+        self.layer_begin_enabled(root);
         let result = (|| -> Result<()> {
             for mode in modes {
                 if let Some(manager) = self.layers.get_mut(&root) {
                     manager.modal_removing.push(mode);
                 }
                 let focus = (|| -> Result<()> {
-                  if self.layers.contains_key(&id) {
-                    let next = self.layer_search_focus(vm, id, true, budget)?;
-                    self.layer_set_focus(vm, root, next, true, budget)?;
-                  }
-                  Ok(())
+                    if self.layers.contains_key(&id) {
+                        let next = self.layer_search_focus(vm, id, true, budget)?;
+                        self.layer_set_focus(vm, root, next, true, budget)?;
+                    }
+                    Ok(())
                 })();
                 let removed = !self.layers.contains_key(&mode);
                 if let Some(manager) = self.layers.get_mut(&root) {
@@ -129,7 +162,7 @@ impl Services {
             }
             Ok(())
         })();
-        self.layer_notify_enabled(vm, before, budget)?;
+        self.layer_end_enabled(vm, root, budget)?;
         result
     }
     pub(super) fn layer_node_enabled(&self, id: usize, visible: bool) -> bool {
@@ -520,14 +553,9 @@ impl Services {
                     op != "set:visible" || enabled || !layer.primary,
                     "cannot hide primary Layer"
                 );
-                let before = if op == "set:enabled" {
-                    self.layer_nodes(root)
-                        .into_iter()
-                        .map(|id| (id, self.layer_node_enabled(id, false)))
-                        .collect::<Vec<_>>()
-                } else {
-                    Vec::new()
-                };
+                if op == "set:enabled" {
+                    self.layer_begin_enabled(root);
+                }
                 let previously_focusable = self.layer_node_focusable(id);
                 let layer = self.layers.get_mut(&id).unwrap();
                 match op {
@@ -555,23 +583,8 @@ impl Services {
                     }
                     Ok(())
                 })();
-                for (node, old) in before {
-                    if self.layers.contains_key(&node) {
-                        let new = self.layer_node_enabled(node, false);
-                        if old != new {
-                            self.layer_event(
-                                vm,
-                                node,
-                                if new {
-                                    "onNodeEnabled"
-                                } else {
-                                    "onNodeDisabled"
-                                },
-                                &[],
-                                budget,
-                            )?;
-                        }
-                    }
+                if op == "set:enabled" {
+                    self.layer_end_enabled(vm, root, budget)?;
                 }
                 result?;
                 Value::Void

@@ -78,7 +78,7 @@ under the Kirikiri notice below. Visualization downmix follows Kirikiri Z
 `sound/WaveIntf.cpp`. No original plugin binary is bundled or executed by Rust.
 Date parsing and calendar behavior follow Kirikiri Z `tjs2/tjsDate.cpp`,
 `tjsDateParser.cpp`, `syntax/tjsdate.y` and `syntax/dp_wordtable.txt`.
-The chrono crate supplies calendar and platform timezone conversion.
+The jiff crate (MIT OR Unlicense) supplies calendar and platform timezone conversion.
 Layer shrinkCopy follows miahmie's shrinkCopy plugin, revision
 `007fbba3b3531b476d6b97e7ee80553868f31b2d` from wtnbgo/shrinkCopy.
 Its readme specifies the Kirikiri license reproduced below. BMP serialization

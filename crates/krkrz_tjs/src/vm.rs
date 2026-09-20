@@ -321,7 +321,7 @@ pub trait Host {
     }
     /// Unix wall time for Date. Replay hosts supply an epoch plus session time.
     fn unix_time_ms(&self) -> i64 {
-        chrono::Utc::now().timestamp_millis()
+        jiff::Timestamp::now().as_millisecond()
     }
     fn call(&mut self, vm: &mut Vm, name: &str, args: &[Value], budget: &mut u64) -> Result<Value>;
     /// Called with the resolved receiver, including an explicitly bound context.

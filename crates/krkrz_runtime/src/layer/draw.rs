@@ -36,7 +36,7 @@ impl Services {
         ensure!(depth < 128, "layer composition nesting limit exceeded");
         let n = pixel_count(rect.w as i32, rect.h as i32)?;
         ensure!(
-            live_bytes + n * 4 <= 256 << 20,
+            live_bytes + n * 4 <= MAX_LAYER_IMAGE_BYTES,
             "layer composition memory limit exceeded"
         );
         charge(budget, n as u64)?;
@@ -172,7 +172,7 @@ impl Services {
                 // Their bounds clip children, but nonzero opacity is ignored.
                 let bytes = piece_bytes(clipped);
                 ensure!(
-                    live_bytes + bytes <= 256 << 20,
+                    live_bytes + bytes <= MAX_LAYER_IMAGE_BYTES,
                     "layer composition memory limit exceeded"
                 );
                 charge(budget, bytes as u64 / 4)?;

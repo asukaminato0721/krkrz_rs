@@ -26,6 +26,9 @@ struct Args {
     /// Disable the audio device while continuing the script audio clock.
     #[arg(long)]
     no_audio: bool,
+    /// Window icon image (ICO, PNG, JPEG, BMP or TLG); Wayland requires compositor support.
+    #[arg(long)]
+    icon: Option<PathBuf>,
 }
 fn main() -> Result<()> {
     env_logger::init();
@@ -40,7 +43,12 @@ fn main() -> Result<()> {
     if let Some(epoch) = args.epoch_ms {
         session.services.epoch_ms = epoch;
     }
-    let result = native_host::run(&mut session, !args.no_audio);
+    let icon = args
+        .icon
+        .as_deref()
+        .map(native_host::load_icon)
+        .transpose()?;
+    let result = native_host::run(&mut session, !args.no_audio, icon);
     if let Some(path) = args.trace {
         let path = krkrz_core::save_directory(&args.project_dir, Some(&path))?;
         let mut output = std::fs::OpenOptions::new()

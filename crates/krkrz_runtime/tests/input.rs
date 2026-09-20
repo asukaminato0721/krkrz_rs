@@ -19,6 +19,81 @@ var w=new TestWindow(),p=new Layer(w,null);p.setSize(100,50);p.visible=true;w.se
 var owner=%[action:function(e){if(e.type!="onPaint" && e.type!="onHitTest") global.log.add(e.type+":"+e.x+":"+e.y);}];
 var a=new Layer(w,p,owner);a.setSize(20,20);a.setPos(10,5);a.visible=true;a.hitThreshold=0;a.focusable=true;
 "#;
+
+#[test]
+fn modal_layers_isolate_clicks_and_preserve_original_capture_and_focus_dispatch() {
+    let (_project, _saves, mut s, w) = session(
+        r#"
+        var log=[], w=new Window(), p=new Layer(w,null), a=new Layer(w,p), b=new Layer(w,p);
+        w.visible=true;w.setInnerSize(100,100);p.setSize(100,100);
+        a.setSize(50,100);b.setSize(50,100);b.setPos(50,0);
+        a.visible=b.visible=a.focusable=b.focusable=true;a.hitThreshold=b.hitThreshold=0;
+        a.onClick=function(){log.add('a-click');};b.onClick=function(){log.add('b-click');};
+        a.onKeyDown=function(){log.add('a-key');};b.onKeyDown=function(){log.add('b-key');};
+        b.onMouseMove=function(){log.add('b-move');};
+    "#,
+    );
+    let down = |x| InputEvent::PointerDown {
+        x,
+        y: 20,
+        button: 0,
+        shift: 8,
+    };
+    s.input(&w, down(60)).unwrap(); // Establish capture before opening the dialog.
+    s.evaluate("(a.setMode(),log.clear())").unwrap();
+    s.input(
+        &w,
+        InputEvent::PointerMove {
+            x: 80,
+            y: 20,
+            shift: 8,
+        },
+    )
+    .unwrap();
+    s.input(&w, InputEvent::Click { x: 60, y: 20 }).unwrap();
+    s.input(&w, InputEvent::KeyDown { key: 65, shift: 0 })
+        .unwrap();
+    s.input(
+        &w,
+        InputEvent::PointerUp {
+            x: 80,
+            y: 20,
+            button: 0,
+            shift: 0,
+        },
+    )
+    .unwrap();
+    s.input(&w, down(20)).unwrap();
+    s.input(&w, InputEvent::Click { x: 20, y: 20 }).unwrap();
+    assert_eq!(
+        s.evaluate("log.join('|')").unwrap(),
+        Value::string("b-move|a-key|a-click")
+    );
+
+    s.evaluate("(b.setMode(),b.focus(),log.clear())").unwrap();
+    s.input(&w, down(20)).unwrap();
+    s.input(&w, InputEvent::Click { x: 20, y: 20 }).unwrap();
+    s.input(&w, InputEvent::KeyDown { key: 65, shift: 0 })
+        .unwrap();
+    assert_eq!(s.evaluate("log.join('|')").unwrap(), Value::string("b-key"));
+    s.evaluate("(b.removeMode(),log.clear())").unwrap();
+    // Original dispatch retains focus after pop even when that layer becomes
+    // node-disabled. Do not redirect or drop its key events.
+    assert_eq!(
+        s.evaluate("b.focused && !b.nodeEnabled").unwrap(),
+        Value::Integer(1)
+    );
+    s.input(&w, InputEvent::KeyDown { key: 65, shift: 0 })
+        .unwrap();
+    assert_eq!(s.evaluate("log.join('|')").unwrap(), Value::string("b-key"));
+    s.evaluate("invalidate a").unwrap();
+    s.input(&w, down(60)).unwrap();
+    s.input(&w, InputEvent::Click { x: 60, y: 20 }).unwrap();
+    assert_eq!(
+        s.evaluate("log[log.count-1]").unwrap(),
+        Value::string("b-click")
+    );
+}
 #[test]
 fn pointer_capture_click_coordinates_and_disabled_occlusion() {
     let (_p, _s, mut s, w) = session(SETUP);

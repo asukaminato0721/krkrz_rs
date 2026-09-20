@@ -2,16 +2,15 @@
 //! date-string grammar. Based on upstream tjsDate.cpp and syntax/tjsdate.y.
 use crate::{Host, Value, Vm};
 use anyhow::{Context, Result, bail, ensure};
-use chrono::{Datelike, Duration, Local, NaiveDate, NaiveDateTime, TimeZone, Timelike};
+use jiff::{SignedDuration, Timestamp, Zoned, civil::DateTime, tz::TimeZone};
 
-fn calendar(parts: [i32; 6]) -> Result<NaiveDateTime> {
+fn calendar(parts: [i32; 6]) -> Result<DateTime> {
     let [year, month, day, hour, minute, second] = parts.map(i64::from);
     let year = year + month.div_euclid(12);
     let month = month.rem_euclid(12) + 1;
-    let date = NaiveDate::from_ymd_opt(year.try_into()?, month as u32, 1)
-        .and_then(|d| d.and_hms_opt(0, 0, 0))
+    let date = DateTime::new(year.try_into()?, month as i8, 1, 0, 0, 0, 0)
         .context("invalid Date timestamp")?;
-    date.checked_add_signed(Duration::seconds(
+    date.checked_add(SignedDuration::from_secs(
         (day - 1) * 86400 + hour * 3600 + minute * 60 + second,
     ))
     .context("invalid Date timestamp")
@@ -19,27 +18,28 @@ fn calendar(parts: [i32; 6]) -> Result<NaiveDateTime> {
 
 // tjsDate's constructor supplies tm_isdst=0. Setters preserve the old DST
 // adjustment when normalizing changed components, including seasonal crossings.
-fn standard_offset(year: i32) -> Result<i32> {
+fn standard_offset(year: i16) -> Result<i32> {
+    standard_offset_in(&TimeZone::system(), year)
+}
+fn standard_offset_in(zone: &TimeZone, year: i16) -> Result<i32> {
     let mut offsets = Vec::new();
     for month in [1, 7] {
-        let date = Local
-            .with_ymd_and_hms(year, month, 15, 12, 0, 0)
-            .earliest()
-            .context("invalid Date timezone")?;
-        offsets.push(date.offset().local_minus_utc());
+        let date = DateTime::new(year, month, 15, 12, 0, 0, 0)?;
+        offsets.push(zone.to_zoned(date)?.offset().seconds());
     }
     Ok(*offsets.iter().min().unwrap())
 }
-fn local(seconds: i64) -> Result<chrono::DateTime<Local>> {
-    Local
-        .timestamp_opt(seconds, 0)
-        .single()
-        .context("invalid Date timestamp")
+fn local(seconds: i64) -> Result<Zoned> {
+    Ok(Timestamp::from_second(seconds)
+        .context("invalid Date timestamp")?
+        .to_zoned(TimeZone::system()))
+}
+fn utc_seconds(date: DateTime) -> Result<i64> {
+    Ok(TimeZone::UTC.to_timestamp(date)?.as_second())
 }
 fn normalize(parts: [i32; 6], daylight: i32) -> Result<i64> {
     let date = calendar(parts)?;
-    let seconds =
-        date.and_utc().timestamp() - standard_offset(date.year())? as i64 - daylight as i64;
+    let seconds = utc_seconds(date)? - standard_offset(date.year())? as i64 - daylight as i64;
     ensure!(seconds >= 0, "invalid Date timestamp");
     Ok(seconds)
 }
@@ -116,8 +116,8 @@ impl Vm {
                 let value = arg()?.integer()? as i32;
                 let old = local(old)?;
                 let mut parts = [
-                    old.year(),
-                    old.month0() as i32,
+                    old.year() as i32,
+                    old.month() as i32 - 1,
                     old.day() as i32,
                     old.hour() as i32,
                     old.minute() as i32,
@@ -132,10 +132,7 @@ impl Vm {
                     _ => 5,
                 };
                 parts[index] = value;
-                match normalize(
-                    parts,
-                    old.offset().local_minus_utc() - standard_offset(old.year())?,
-                ) {
+                match normalize(parts, old.offset().seconds() - standard_offset(old.year())?) {
                     Ok(time) => time,
                     Err(error) => {
                         self.objects[id].date = Some(-1);
@@ -158,9 +155,9 @@ impl Vm {
                 let time = local(old)?;
                 return Ok(Value::Integer(match name {
                     "getYear" => time.year() as i64,
-                    "getMonth" => time.month0() as i64,
+                    "getMonth" => time.month() as i64 - 1,
                     "getDate" => time.day() as i64,
-                    "getDay" => time.weekday().num_days_from_sunday() as i64,
+                    "getDay" => time.weekday().to_sunday_zero_offset() as i64,
                     "getHours" => time.hour() as i64,
                     "getMinutes" => time.minute() as i64,
                     _ => time.second() as i64,
@@ -369,11 +366,11 @@ fn parse(input: &str, now_ms: i64) -> Result<i64> {
     ensure!(p.0.is_empty(), "cannot parse Date string");
     let date = calendar([year, month, day, time[0], time[1], time[2]])?;
     ensure!(
-        date.and_utc().timestamp() - standard_offset(date.year())? as i64 >= 0,
+        utc_seconds(date)? - standard_offset(date.year())? as i64 >= 0,
         "invalid Date timestamp"
     );
     let offset = zone.unwrap_or(standard_offset(local(now_ms / 1000)?.year())? as i64);
-    Ok(date.and_utc().timestamp() - offset)
+    Ok(utc_seconds(date)? - offset)
 }
 fn zone_seconds(zone: i32) -> i64 {
     (zone as i64 / 100) * 3600 + (zone as i64 % 100) * 60

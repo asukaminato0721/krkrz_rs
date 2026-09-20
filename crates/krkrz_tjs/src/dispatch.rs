@@ -718,7 +718,7 @@ impl Vm {
                         .integer()?
                         .clamp(0, s.len() as i64) as usize;
                     let found = if needle.is_empty() {
-                        Some(start)
+                        None
                     } else {
                         s[start..]
                             .windows(needle.len())

@@ -11,7 +11,7 @@ serde_json.workspace = true
 flate2.workspace = true
 encoding_rs.workspace = true
 krkrz_core.workspace = true
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "ico"] }
 libtlg-rs = "0.2.4"
 png = "0.18"
 lewton = "0.10"

@@ -131,7 +131,7 @@ impl Services {
             })
             .sum();
         ensure!(
-            used + bytes <= 256 << 20,
+            used + bytes <= MAX_LAYER_IMAGE_BYTES,
             "session layer image memory limit exceeded"
         );
         *budget = budget
@@ -294,7 +294,8 @@ impl Services {
             })
             .sum();
         ensure!(
-            used + image.rgba.len() + province.as_ref().map_or(0, |p| p.pixels.len()) <= 256 << 20,
+            used + image.rgba.len() + province.as_ref().map_or(0, |p| p.pixels.len())
+                <= MAX_LAYER_IMAGE_BYTES,
             "session layer image memory limit exceeded"
         );
         let layer = self.layers.get_mut(&id).unwrap();
@@ -385,7 +386,7 @@ impl Services {
             })
             .sum();
         ensure!(
-            used + width as usize * height as usize <= 256 << 20,
+            used + width as usize * height as usize <= MAX_LAYER_IMAGE_BYTES,
             "session layer image memory limit exceeded"
         );
         let province = self.read_province(&name, width, height, budget)?;

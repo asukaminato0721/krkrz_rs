@@ -66,7 +66,7 @@ impl Services {
         let rows = bottom - top;
         let pixels = (right - left) * rows;
         ensure!(
-            columns * 32 + pixels * 4 <= 256 << 20,
+            columns * 32 + pixels * 4 <= MAX_LAYER_IMAGE_BYTES,
             "Layer.doBoxBlur temporary memory limit exceeded"
         );
         let cost = columns as u64

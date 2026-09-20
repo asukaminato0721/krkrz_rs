@@ -37,6 +37,46 @@ fn original_layer_focus_corpus() {
 }
 
 #[test]
+fn original_modal_layer_corpus() {
+    let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/layer_modal.json")).unwrap();
+    for case in cases {
+        let (project, _saves, mut session) = session("", 100_000);
+        std::fs::write(project.path().join("test.tjs"), &case.source).unwrap();
+        assert_eq!(
+            session
+                .execute_storage("test.tjs")
+                .unwrap_or_else(|e| panic!("{}: {e:#}", case.name)),
+            case.expected,
+            "{}",
+            case.name,
+        );
+    }
+}
+
+#[test]
+fn modal_focus_callbacks_can_invalidate_the_dialog() {
+    for action in [
+        "a.onBeforeFocus=function(){invalidate a;};a.setMode();",
+        "a.setMode();a.onSearchNextFocusable=function(){invalidate a;};a.removeMode();",
+    ] {
+        let (_project, _saves, mut session) = session(
+            "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p);a.visible=b.visible=a.focusable=b.focusable=true;",
+            100_000,
+        );
+        session
+            .evaluate(&format!("Scripts.exec('{}')", action))
+            .unwrap();
+        assert_eq!(
+            session
+                .evaluate("p.nodeEnabled && b.nodeEnabled && w.focusedLayer===null")
+                .unwrap(),
+            Value::Integer(1)
+        );
+        session.collect_garbage(&[]).unwrap();
+    }
+}
+
+#[test]
 fn invalidation_during_focus_callbacks_does_not_leave_stale_focus() {
     for event in ["onBeforeFocus", "onFocus"] {
         let (_project, _saves, mut session) = session(

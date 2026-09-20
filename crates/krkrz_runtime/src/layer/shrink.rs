@@ -112,7 +112,8 @@ impl Services {
         let columns = (d[2].ceil() as usize + 1).min(dest.width as usize);
         let rows = (d[3].ceil() as usize + 1).min(dest.height as usize);
         ensure!(
-            (columns + rows) * std::mem::size_of::<Sample>() + columns * rows * 4 <= 256 << 20,
+            (columns + rows) * std::mem::size_of::<Sample>() + columns * rows * 4
+                <= MAX_LAYER_IMAGE_BYTES,
             "shrinkCopy temporary memory limit exceeded"
         );
         *budget = budget

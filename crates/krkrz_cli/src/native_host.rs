@@ -11,13 +11,18 @@ use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent},
-    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop, run_on_demand::EventLoopExtRunOnDemand},
+    icon::{Icon, RgbaIcon},
     keyboard::{KeyCode, ModifiersState, PhysicalKey},
-    window::{Fullscreen, Window, WindowId},
+    monitor::Fullscreen,
+    window::{
+        ImeCapabilities, ImeEnableRequest, ImeRequest, ImeRequestData, Window, WindowAttributes,
+        WindowId,
+    },
 };
 
 struct NativeWindow {
-    window: Arc<Window>,
+    window: Arc<dyn Window>,
     presenter: Presenter,
     state: WindowState,
     pointer: [i32; 2],
@@ -28,8 +33,21 @@ struct NativeWindow {
     last_click: Option<(Instant, [i32; 2])>,
     suspended: bool,
 }
-pub fn run(session: &mut Session, audio_enabled: bool) -> Result<()> {
-    let event_loop = EventLoop::new()?;
+pub fn load_icon(path: &std::path::Path) -> Result<Icon> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take(16 * 1024 * 1024 + 1)
+        .read_to_end(&mut bytes)?;
+    anyhow::ensure!(
+        bytes.len() <= 16 * 1024 * 1024,
+        "window icon exceeds 16 MiB"
+    );
+    let image = krkrz_assets::media::Image::decode(&bytes).context("decode window icon")?;
+    Ok(RgbaIcon::new(image.rgba, image.width, image.height)?.into())
+}
+pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Result<()> {
+    let mut event_loop = EventLoop::new()?;
     let mut host = Host {
         session,
         audio: if audio_enabled {
@@ -38,13 +56,14 @@ pub fn run(session: &mut Session, audio_enabled: bool) -> Result<()> {
             None
         },
         windows: BTreeMap::new(),
+        icon,
         started: false,
         origin: Instant::now(),
         next_tick: Instant::now(),
         error: None,
         messages: 0,
     };
-    event_loop.run_app(&mut host)?;
+    event_loop.run_app_on_demand(&mut host)?;
     host.flush_messages();
     host.error.map_or(Ok(()), Err)
 }
@@ -52,6 +71,7 @@ struct Host<'a> {
     session: &'a mut Session,
     audio: Option<AudioOutput>,
     windows: BTreeMap<usize, NativeWindow>,
+    icon: Option<Icon>,
     started: bool,
     origin: Instant,
     next_tick: Instant,
@@ -65,29 +85,32 @@ impl Host<'_> {
         }
         self.messages = self.session.services.messages.len();
     }
-    fn fail(&mut self, event_loop: &ActiveEventLoop, error: anyhow::Error) {
+    fn fail(&mut self, event_loop: &dyn ActiveEventLoop, error: anyhow::Error) {
         self.error = Some(error.context(format!(
             "native host at {} ms",
             self.session.services.time_ms
         )));
         event_loop.exit();
     }
-    fn start(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
+    fn start(&mut self, event_loop: &dyn ActiveEventLoop) -> Result<()> {
         let primary = event_loop.primary_monitor();
         let monitors: Vec<_> = event_loop.available_monitors().collect();
         let displays = monitors
             .iter()
             .enumerate()
-            .map(|(i, m)| {
-                let p = m.position();
-                let size = m.size();
+            .filter_map(|(i, m)| {
+                let p = m.position().unwrap_or_default();
+                let size = m.current_video_mode()?.size();
                 let bounds = [p.x, p.y, size.width as i32, size.height as i32];
-                Monitor {
-                    name: m.name().unwrap_or_else(|| format!("Monitor {i}")),
+                Some(Monitor {
+                    name: m
+                        .name()
+                        .map(|name| name.into_owned())
+                        .unwrap_or_else(|| format!("Monitor {i}")),
                     primary: primary.as_ref().map_or(i == 0, |p| p == m),
                     bounds,
                     work: bounds,
-                }
+                })
             })
             .collect::<Vec<_>>();
         if let Some(primary) = displays.iter().find(|m| m.primary) {
@@ -102,7 +125,7 @@ impl Host<'_> {
         self.origin = Instant::now();
         self.sync_windows(event_loop)
     }
-    fn sync_windows(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
+    fn sync_windows(&mut self, event_loop: &dyn ActiveEventLoop) -> Result<()> {
         self.windows
             .retain(|id, _| self.session.services.windows.contains_key(id));
         for (&id, state) in &self.session.services.windows {
@@ -110,19 +133,23 @@ impl Host<'_> {
                 continue;
             }
             if let std::collections::btree_map::Entry::Vacant(entry) = self.windows.entry(id) {
-                let attributes = Window::default_attributes()
+                let attributes = WindowAttributes::default()
+                    .with_window_icon(self.icon.clone())
                     .with_title(&state.caption)
                     .with_visible(false)
-                    .with_inner_size(PhysicalSize::new(
+                    .with_surface_size(PhysicalSize::new(
                         state.inner_width.max(1) as u32,
                         state.inner_height.max(1) as u32,
                     ))
                     .with_position(PhysicalPosition::new(state.left, state.top))
                     .with_decorations(state.border_style != 0)
                     .with_resizable(matches!(state.border_style, 2 | 5));
-                let window = Arc::new(event_loop.create_window(attributes)?);
+                let window: Arc<dyn Window> = Arc::from(event_loop.create_window(attributes)?);
                 let presenter = Presenter::new(window.clone())?;
-                window.set_ime_allowed(true);
+                let request =
+                    ImeEnableRequest::new(ImeCapabilities::new(), ImeRequestData::default())
+                        .expect("empty IME capabilities match empty request data");
+                let _ = window.request_ime_update(ImeRequest::Enable(request));
                 window.set_visible(state.visible);
                 window.set_maximized(state.maximized);
                 window.set_minimized(state.minimized);
@@ -172,23 +199,26 @@ impl Host<'_> {
                 != (native.state.inner_width, native.state.inner_height)
                 && !state.is_full_screen()
             {
-                let _ = native.window.request_inner_size(PhysicalSize::new(
-                    state.inner_width.max(1) as u32,
-                    state.inner_height.max(1) as u32,
-                ));
+                let _ = native.window.request_surface_size(
+                    PhysicalSize::new(
+                        state.inner_width.max(1) as u32,
+                        state.inner_height.max(1) as u32,
+                    )
+                    .into(),
+                );
             }
             if (state.left, state.top) != (native.state.left, native.state.top)
                 && !state.is_full_screen()
             {
                 native
                     .window
-                    .set_outer_position(PhysicalPosition::new(state.left, state.top));
+                    .set_outer_position(PhysicalPosition::new(state.left, state.top).into());
             }
             let cursor = self.session.window_cursor(&Value::object(id))?;
             native
                 .window
                 .set_cursor_visible(state.mouse_cursor_state == 0 && cursor != -1);
-            native.window.set_cursor(cursor_icon(cursor));
+            native.window.set_cursor(cursor_icon(cursor).into());
             native.state = state.clone();
         }
         if self.started && self.windows.is_empty() {
@@ -205,7 +235,7 @@ impl Host<'_> {
         let mut input = Vec::new();
         match event {
             WindowEvent::CloseRequested => self.session.request_window_close(&target)?,
-            WindowEvent::Resized(size) => {
+            WindowEvent::SurfaceResized(size) => {
                 native.suspended = size.width == 0 || size.height == 0;
                 if !native.suspended {
                     native.presenter.resize(size.width, size.height)?;
@@ -224,7 +254,11 @@ impl Host<'_> {
                 }
             }
             WindowEvent::ModifiersChanged(modifiers) => native.modifiers = modifiers.state(),
-            WindowEvent::CursorMoved { position, .. } => {
+            WindowEvent::PointerMoved {
+                position,
+                primary: true,
+                ..
+            } => {
                 native.pointer = [position.x as i32, position.y as i32];
                 input.push(InputEvent::PointerMove {
                     x: native.pointer[0],
@@ -232,8 +266,18 @@ impl Host<'_> {
                     shift: shift(native),
                 });
             }
-            WindowEvent::CursorLeft { .. } => input.push(InputEvent::PointerLeave),
-            WindowEvent::MouseInput { state, button, .. } => {
+            WindowEvent::PointerLeft { primary: true, .. } => input.push(InputEvent::PointerLeave),
+            WindowEvent::PointerButton {
+                state,
+                button,
+                position,
+                primary: true,
+                ..
+            } => {
+                native.pointer = [position.x as i32, position.y as i32];
+                let Some(button) = button.mouse_button() else {
+                    return Ok(());
+                };
                 let (button, bit) = match button {
                     MouseButton::Left => (0, 8),
                     MouseButton::Right => (1, 16),
@@ -285,6 +329,7 @@ impl Host<'_> {
                 let delta = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y * 120.,
                     MouseScrollDelta::PixelDelta(p) => p.y as f32,
+                    _ => return Ok(()),
                 };
                 input.push(InputEvent::Wheel {
                     x: native.pointer[0],
@@ -352,14 +397,19 @@ impl Host<'_> {
     }
 }
 impl ApplicationHandler for Host<'_> {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+    fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
         if !self.started
             && let Err(error) = self.start(event_loop)
         {
             self.fail(event_loop, error);
         }
     }
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, window: WindowId, event: WindowEvent) {
+    fn window_event(
+        &mut self,
+        event_loop: &dyn ActiveEventLoop,
+        window: WindowId,
+        event: WindowEvent,
+    ) {
         if let Some(id) = self
             .windows
             .iter()
@@ -369,7 +419,7 @@ impl ApplicationHandler for Host<'_> {
             self.fail(event_loop, error);
         }
     }
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+    fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {
         if self.error.is_some() || !self.started {
             return;
         }
@@ -483,8 +533,8 @@ fn virtual_key(code: KeyCode) -> Option<u32> {
         ShiftLeft | ShiftRight => 16,
         ControlLeft | ControlRight => 17,
         AltLeft | AltRight => 18,
-        SuperLeft => 91,
-        SuperRight => 92,
+        MetaLeft => 91,
+        MetaRight => 92,
         ContextMenu => 93,
         CapsLock => 20,
         NumLock => 144,
@@ -522,8 +572,8 @@ fn virtual_key(code: KeyCode) -> Option<u32> {
     })
 }
 
-fn cursor_icon(cursor: i32) -> winit::window::CursorIcon {
-    use winit::window::CursorIcon::*;
+fn cursor_icon(cursor: i32) -> winit::cursor::CursorIcon {
+    use winit::cursor::CursorIcon::*;
     match cursor {
         -3 => Crosshair,
         -4 => Text,

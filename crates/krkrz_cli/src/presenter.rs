@@ -16,10 +16,10 @@ pub struct Presenter {
     texture: Option<(wgpu::Texture, wgpu::BindGroup, u32, u32)>,
 }
 impl Presenter {
-    pub fn new(window: Arc<Window>) -> Result<Self> {
+    pub fn new(window: Arc<dyn Window>) -> Result<Self> {
         pollster::block_on(Self::create(window))
     }
-    async fn create(window: Arc<Window>) -> Result<Self> {
+    async fn create(window: Arc<dyn Window>) -> Result<Self> {
         let requested = wgpu::util::backend_bits_from_env();
         let result =
             Self::create_backend(window.clone(), requested.unwrap_or(wgpu::Backends::all())).await;
@@ -38,8 +38,8 @@ impl Presenter {
             result => result,
         }
     }
-    async fn create_backend(window: Arc<Window>, backends: wgpu::Backends) -> Result<Self> {
-        let size = window.inner_size();
+    async fn create_backend(window: Arc<dyn Window>, backends: wgpu::Backends) -> Result<Self> {
+        let size = window.surface_size();
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends,
             ..Default::default()

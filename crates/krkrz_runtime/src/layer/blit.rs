@@ -105,7 +105,7 @@ impl Services {
             .sum();
         let dst = self.layers.get_mut(&id).unwrap();
         if op == "copyRect" && face == 3 && has_province {
-            dst.allocate_province((256usize << 20).saturating_sub(used))?;
+            dst.allocate_province(MAX_LAYER_IMAGE_BYTES.saturating_sub(used))?;
         }
         let hold = dst.hold_alpha;
         let image = dst.image.as_mut().unwrap();

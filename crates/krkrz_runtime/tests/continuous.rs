@@ -47,7 +47,7 @@ fn live_handler_order_context_and_paint() {
         &mut s,
         r#"
         var events=[];var owner=%[name:'c'];
-        var c=function(t){events.add(name+t);} incontextof owner;
+        var c=function(t){global.events.add(name+t);} incontextof owner;
         function a(t){events.add('a'+t);System.removeContinuousHandler(a);System.removeContinuousHandler(b);System.addContinuousHandler(c);}
         function b(t){events.add('b'+t);}
         System.addContinuousHandler(a);System.addContinuousHandler(a);System.addContinuousHandler(b);
