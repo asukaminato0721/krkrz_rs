@@ -257,6 +257,14 @@ impl Host for Services {
             if matches!(operation, "get:focusedLayer" | "set:focusedLayer") {
                 return self.window_focus(vm, id, operation == "set:focusedLayer", args, budget);
             }
+            if operation == "set:fullScreen" {
+                let enabled = args
+                    .first()
+                    .context("Window.fullScreen: missing value")?
+                    .truth()?;
+                self.window_full_screen(id, enabled)?;
+                return Ok(Value::Void);
+            }
             if operation == "set:drawDevice" {
                 let value = args
                     .first()

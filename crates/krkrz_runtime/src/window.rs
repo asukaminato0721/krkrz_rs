@@ -15,6 +15,7 @@ pub struct WindowState {
     pub inner_height: i32,
     pub zoom_numer: i32,
     pub zoom_denom: i32,
+    full_screen: Option<WindowedBounds>,
     pub left: i32,
     pub top: i32,
     pub primary_layer: Value,
@@ -23,6 +24,15 @@ pub struct WindowState {
     pub(crate) registered_objects: Vec<Value>,
     pub(crate) invalidating: bool,
     pub(crate) resize_pending: bool,
+}
+#[derive(Clone, Debug)]
+struct WindowedBounds {
+    left: i32,
+    top: i32,
+    width: i32,
+    height: i32,
+    scale: [i32; 2],
+    origin: [i32; 2],
 }
 impl Default for WindowState {
     fn default() -> Self {
@@ -37,6 +47,7 @@ impl Default for WindowState {
             inner_height: 10,
             zoom_numer: 1,
             zoom_denom: 1,
+            full_screen: None,
             left: 0,
             top: 0,
             primary_layer: Value::NULL,
@@ -65,6 +76,7 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
     }
     for name in [
         "focusedLayer",
+        "fullScreen",
         "visible",
         "caption",
         "borderStyle",
@@ -102,6 +114,72 @@ fn dimension(value: &Value) -> Result<i32> {
     Ok(value)
 }
 impl WindowState {
+    pub fn is_full_screen(&self) -> bool {
+        self.full_screen.is_some()
+    }
+
+    /// Destination rectangle for the primary layer in physical client pixels.
+    /// A native presenter uses this same layout as a headless frame capture.
+    pub fn draw_rect(&self, width: i32, height: i32) -> [i32; 4] {
+        let (scale, origin) = self
+            .full_screen
+            .as_ref()
+            .map_or(([self.zoom_numer, self.zoom_denom], [0, 0]), |saved| {
+                (saved.scale, saved.origin)
+            });
+        [
+            origin[0],
+            origin[1],
+            mul_div(width, scale[0], scale[1]).max(1),
+            mul_div(height, scale[0], scale[1]).max(1),
+        ]
+    }
+
+    pub(crate) fn leave_full_screen(&mut self) {
+        if let Some(saved) = self.full_screen.take() {
+            self.left = saved.left;
+            self.top = saved.top;
+            self.set_size(saved.width, saved.height);
+            self.visible = true;
+        }
+    }
+    pub(crate) fn enter_full_screen(&mut self, screen: (u32, u32)) -> Result<()> {
+        if self.is_full_screen() {
+            return Ok(());
+        }
+        ensure!(
+            screen.0 > 0 && screen.1 > 0 && screen.0 <= 32768 && screen.1 <= 32768,
+            "invalid full-screen display size"
+        );
+        let (width, height) = (self.inner_width.max(1), self.inner_height.max(1));
+        let (sw, sh) = (screen.0 as i32, screen.1 as i32);
+        let mut scale = if i64::from(sw) * i64::from(height) < i64::from(sh) * i64::from(width) {
+            [sw, width]
+        } else {
+            [sh, height]
+        };
+        let ratio = scale[0] as f64 / scale[1] as f64;
+        // Kirikiri avoids stretching for a negligible increase in size.
+        if ratio > 1.0 && ratio < 1.034 {
+            scale = [1, 1];
+        }
+        let target_width = (i64::from(width) * i64::from(scale[0]) / i64::from(scale[1])) as i32;
+        let target_height = (i64::from(height) * i64::from(scale[0]) / i64::from(scale[1])) as i32;
+        self.full_screen = Some(WindowedBounds {
+            left: self.left,
+            top: self.top,
+            width: self.inner_width,
+            height: self.inner_height,
+            scale,
+            origin: [(sw - target_width) / 2, (sh - target_height) / 2],
+        });
+        self.left = 0;
+        self.top = 0;
+        self.set_size(sw, sh);
+        self.visible = true;
+        self.minimized = false;
+        Ok(())
+    }
     fn set_zoom(&mut self, numer: i32, denom: i32) -> Result<()> {
         // Preserve the sign chosen by the original signed Euclidean algorithm.
         // Widen intermediates to avoid i32::MIN / -1 overflow.
@@ -124,6 +202,7 @@ impl WindowState {
         if let Some(key) = name.strip_prefix("get:") {
             return Ok(match key {
                 "visible" => Value::Integer(i64::from(self.visible)),
+                "fullScreen" => Value::Integer(self.is_full_screen().into()),
                 "caption" => Value::string(&self.caption),
                 "borderStyle" => Value::Integer(self.border_style.into()),
                 "innerWidth" => Value::Integer(self.inner_width.into()),
@@ -182,5 +261,51 @@ impl WindowState {
             self.inner_height = height;
             self.resize_pending = true;
         }
+    }
+}
+
+fn mul_div(value: i32, numer: i32, denom: i32) -> i32 {
+    // Win32 MulDiv rounds to the nearest integer and returns -1 on failure.
+    if denom == 0 {
+        return -1;
+    }
+    let product = i64::from(value) * i64::from(numer);
+    let denominator = i64::from(denom).abs();
+    let rounded = (product.abs() + denominator / 2) / denominator;
+    let rounded = if (product < 0) != (denom < 0) {
+        -rounded
+    } else {
+        rounded
+    };
+    i32::try_from(rounded).unwrap_or(-1)
+}
+
+impl crate::Services {
+    pub(crate) fn window_full_screen(&mut self, id: usize, enabled: bool) -> Result<()> {
+        ensure!(
+            self.windows.get(&id).is_some_and(|w| w.constructed),
+            "context has no constructed Window native instance"
+        );
+        if enabled {
+            ensure!(
+                self.screen_size.0 > 0
+                    && self.screen_size.1 > 0
+                    && self.screen_size.0 <= 32768
+                    && self.screen_size.1 <= 32768,
+                "invalid full-screen display size"
+            );
+            for (&other, window) in &mut self.windows {
+                if other != id {
+                    window.leave_full_screen();
+                }
+            }
+            self.windows
+                .get_mut(&id)
+                .unwrap()
+                .enter_full_screen(self.screen_size)?;
+        } else {
+            self.windows.get_mut(&id).unwrap().leave_full_screen();
+        }
+        Ok(())
     }
 }

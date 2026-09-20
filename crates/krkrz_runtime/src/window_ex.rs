@@ -407,6 +407,9 @@ impl Services {
         budget: &mut u64,
     ) -> Result<Value> {
         charge(budget)?;
+        if let Some(name) = operation.strip_prefix("MenuItem.") {
+            return self.menu_appearance_call(vm, name, context, args, budget);
+        }
         let arg = |i: usize| {
             args.get(i)
                 .with_context(|| format!("windowEx {operation}: missing argument {i}"))

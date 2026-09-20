@@ -59,5 +59,28 @@
         49
       ]
     }
+  },
+  {
+    "name": "draw_device_recreate",
+    "source": "var w=new Window(),d=w.drawDevice;var n=d.interface;d.recreate();d.recreate(1,2);return [typeof n,n!=0,n==d.interface,d.recreate()===void,w.drawDevice===d].join(',');",
+    "expected": {
+      "String": [
+        73,
+        110,
+        116,
+        101,
+        103,
+        101,
+        114,
+        44,
+        49,
+        44,
+        49,
+        44,
+        49,
+        44,
+        49
+      ]
+    }
   }
 ]

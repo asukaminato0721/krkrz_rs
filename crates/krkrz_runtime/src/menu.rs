@@ -22,6 +22,7 @@ pub(crate) struct Item {
     display_children: Vec<usize>,
     array: Option<Value>,
     array_dirty: bool,
+    right_justify: Option<bool>,
 }
 impl Default for Item {
     fn default() -> Self {
@@ -42,6 +43,7 @@ impl Default for Item {
             display_children: Vec::new(),
             array: None,
             array_dirty: true,
+            right_justify: None,
         }
     }
 }
@@ -311,6 +313,63 @@ impl State {
     }
 }
 impl Services {
+    pub(crate) fn menu_appearance_call(
+        &mut self,
+        vm: &mut Vm,
+        operation: &str,
+        context: &Value,
+        args: &[Value],
+        budget: &mut u64,
+    ) -> Result<Value> {
+        let id = id(context)?;
+        ensure!(
+            matches!(operation, "get:rightJustify" | "set:rightJustify"),
+            unsupported(format!("windowEx MenuItem operation: {operation}"))
+        );
+        // windowEx creates its extension on first access. An unattached item
+        // cannot initialize it; detaching an initialized item retains its state.
+        if self.menus.item(id)?.right_justify.is_none() {
+            self.menu_appearance_parent(vm, context, budget)?;
+            self.menus
+                .items
+                .get_mut(&id)
+                .context("MenuItem invalidated during extension initialization")?
+                .right_justify = Some(false);
+        }
+        if operation == "get:rightJustify" {
+            return Ok(Value::Integer(
+                self.menus.item(id)?.right_justify.unwrap().into(),
+            ));
+        }
+        let value = args
+            .first()
+            .context("MenuItem.rightJustify requires a value")?
+            .integer()?
+            != 0;
+        self.menus.items.get_mut(&id).unwrap().right_justify = Some(value);
+        // The plugin stores the value before attempting the native menu update.
+        self.menu_appearance_parent(vm, context, budget)?;
+        Ok(Value::Void)
+    }
+    fn menu_appearance_parent(
+        &mut self,
+        vm: &mut Vm,
+        context: &Value,
+        budget: &mut u64,
+    ) -> Result<()> {
+        let parent = vm.get_property(
+            context,
+            &Value::string("parent"),
+            false,
+            false,
+            self,
+            budget,
+        )?;
+        let parent = id(&parent).context("Cannot get parent menu.")?;
+        self.menus.item(parent).context("Cannot get parent menu.")?;
+        self.menus.item(id(context)?)?;
+        Ok(())
+    }
     pub(crate) fn window_menu(
         &mut self,
         vm: &mut Vm,
@@ -461,6 +520,7 @@ impl Services {
                     children: previous.children,
                     array: previous.array,
                     array_dirty: previous.array_dirty,
+                    right_justify: previous.right_justify,
                     ..Item::default()
                 },
             );

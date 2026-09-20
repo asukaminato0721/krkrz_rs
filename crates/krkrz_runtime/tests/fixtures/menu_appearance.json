@@ -1,0 +1,29 @@
+[
+  {
+    "name": "menu_right_justify",
+    "source": "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');var w=new Window(),m=new MenuItem(w,'m'),a=[];try{a.add(m.rightJustify);}catch(e){a.add('error');}w.menu.add(m);a.add(m.rightJustify);m.rightJustify=true;a.add(m.rightJustify);m.visible=false;m.rightJustify=false;a.add(m.rightJustify);w.menu.remove(m);try{m.rightJustify=true;a.add('set');}catch(e){a.add('error');}try{a.add(m.rightJustify);}catch(e){a.add('error');}return a.join(',');",
+    "expected": {
+      "String": [
+        101,
+        114,
+        114,
+        111,
+        114,
+        44,
+        48,
+        44,
+        49,
+        44,
+        48,
+        44,
+        101,
+        114,
+        114,
+        111,
+        114,
+        44,
+        49
+      ]
+    }
+  }
+]

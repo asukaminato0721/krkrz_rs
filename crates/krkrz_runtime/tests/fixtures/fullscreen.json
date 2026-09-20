@@ -1,0 +1,43 @@
+[
+  {
+    "name": "fullscreen_control",
+    "source": "var w=new Window(),b=new Window(),p=new Layer(w,null),q=new Layer(b,null),a=[];p.setSize(320,240);q.setSize(320,240);w.setInnerSize(320,240);b.setInnerSize(320,240);w.setZoom(3,2);a.add([w.fullScreen,w.visible,w.borderStyle].join(','));w.fullScreen=true;a.add([w.fullScreen,w.visible,w.borderStyle,w.zoomNumer,w.zoomDenom].join(','));w.setZoom(2,3);w.fullScreen=true;a.add([w.fullScreen,w.zoomNumer,w.zoomDenom].join(','));b.fullScreen=true;a.add([w.fullScreen,b.fullScreen,w.zoomNumer,w.zoomDenom].join(','));b.fullScreen=false;a.add([b.fullScreen,b.visible].join(','));return a.join('|');",
+    "expected": {
+      "String": [
+        48,
+        44,
+        48,
+        44,
+        50,
+        124,
+        49,
+        44,
+        49,
+        44,
+        50,
+        44,
+        51,
+        44,
+        50,
+        124,
+        49,
+        44,
+        50,
+        44,
+        51,
+        124,
+        48,
+        44,
+        49,
+        44,
+        50,
+        44,
+        51,
+        124,
+        48,
+        44,
+        49
+      ]
+    }
+  }
+]
