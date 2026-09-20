@@ -7,6 +7,8 @@ struct Case {
     name: String,
     source: String,
     expected: Value,
+    #[serde(default)]
+    budget: Option<u64>,
 }
 fn session(source: &str, budget: u64) -> (tempfile::TempDir, tempfile::TempDir, Session) {
     let project = tempfile::tempdir().unwrap();
@@ -20,7 +22,7 @@ fn session(source: &str, budget: u64) -> (tempfile::TempDir, tempfile::TempDir, 
 fn original_layer_focus_corpus() {
     let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/layer_focus.json")).unwrap();
     for case in cases {
-        let (project, saves, mut session) = session("", 100_000);
+        let (project, saves, mut session) = session("", case.budget.unwrap_or(100_000));
         std::fs::write(project.path().join("test.tjs"), &case.source).unwrap();
         assert_eq!(
             session

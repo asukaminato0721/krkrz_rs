@@ -371,7 +371,7 @@ impl Layer {
                             + (((color[k] as i32 - pixel[k] as i32) * weight) >> 8))
                             as u8;
                     }
-                    pixel[3] = (255 - (((255 - pixel[3] as i32) * (255 - strength)) >> 8)) as u8;
+                    pixel[3] = (255 - ((255 - pixel[3] as i32) * (255 - strength) / 255)) as u8;
                 } else if face == 1 {
                     for k in 0..3 {
                         pixel[k] = ((pixel[k] as i32 * (255 - strength)
@@ -379,13 +379,15 @@ impl Layer {
                             >> 8) as u8;
                     }
                 } else {
+                    // Kirikiri's SSE2 path adjusts 128..254 upward by one.
+                    let alpha = strength + (strength >> 7);
                     for k in 0..3 {
-                        pixel[k] = (((pixel[k] as i32 * (255 - strength)) >> 8)
-                            + ((color[k] as i32 * strength) >> 8))
+                        pixel[k] = (pixel[k] as i32 - ((pixel[k] as i32 * alpha) >> 8)
+                            + ((color[k] as i32 * alpha) >> 8))
                             .min(255) as u8;
                     }
-                    let alpha = pixel[3] as i32 + strength - ((pixel[3] as i32 * strength) >> 8);
-                    pixel[3] = (alpha - (alpha >> 8)) as u8;
+                    pixel[3] =
+                        (pixel[3] as i32 - ((pixel[3] as i32 * alpha) >> 8) + alpha).min(255) as u8;
                 }
             }
         }
