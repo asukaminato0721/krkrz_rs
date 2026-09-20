@@ -19,6 +19,7 @@ impl Services {
         let face = dst.draw_face();
         let mode = match args
             .get(7)
+            .filter(|_| op == "operateRect")
             .filter(|v| !matches!(v, Value::Void))
             .map(int)
             .transpose()?
@@ -32,6 +33,7 @@ impl Services {
         };
         let opacity = args
             .get(8)
+            .filter(|_| op == "operateRect")
             .filter(|v| !matches!(v, Value::Void))
             .map(int)
             .transpose()?
@@ -108,6 +110,24 @@ impl Services {
         let hold = dst.hold_alpha;
         let image = dst.image.as_mut().unwrap();
         let mut sample = 0;
+        // The original IA32 routines process pairs differently from scalar tails.
+        // AlphaBlend_d pairs start at the row origin. AdditiveAlphaBlend[_a]
+        // aligns the destination to eight bytes and leaves one or two tail pixels.
+        let row_len = (right - left) as usize;
+        let alpha_pairs = mode == 2 && face == 0 && opacity == 255;
+        let add_pairs = mode == 12 && (face == 4 || (face == 1 && !hold)) && opacity == 255;
+        let pair_start = if add_pairs {
+            ((dx + left) & 1) as usize
+        } else {
+            0
+        };
+        let pair_end = if alpha_pairs {
+            row_len / 2 * 2
+        } else if add_pairs {
+            pair_start + row_len.saturating_sub(pair_start + 1) / 2 * 2
+        } else {
+            0
+        };
         for y in top..bottom {
             for x in left..right {
                 let i = ((dy + y) * image.width as i64 + dx + x) as usize;
@@ -127,7 +147,24 @@ impl Services {
                         }
                     }
                 } else {
-                    blend(p, s, face, mode, opacity, hold);
+                    let column = (x - left) as usize;
+                    let paired = column >= pair_start && column < pair_end;
+                    let partner = if column.wrapping_sub(pair_start) & 1 == 0 {
+                        sample + 1
+                    } else {
+                        sample.saturating_sub(1)
+                    };
+                    if paired && s[3] == 255 && pixels[partner * 4 + 3] == 255 {
+                        p.copy_from_slice(&s);
+                    } else if !(paired && alpha_pairs && s[3] == 0 && pixels[partner * 4 + 3] == 0)
+                    {
+                        let dest_alpha = p[3];
+                        blend(p, s, face, mode, opacity, hold);
+                        if paired && alpha_pairs {
+                            p[3] = (255 - (((255 - dest_alpha as i32) * (255 - s[3] as i32)) >> 8))
+                                as u8;
+                        }
+                    }
                 }
                 sample += 1;
             }
@@ -138,7 +175,11 @@ impl Services {
 }
 
 fn blend(d: &mut [u8], mut s: [u8; 4], face: i32, mode: i32, opacity: i32, hold: bool) {
-    let opacity = if mode == 12 && face == 1 && !hold && opacity != 255 { opacity + (opacity >> 7) } else { opacity };
+    let opacity = if mode == 12 && face == 1 && !hold && opacity != 255 {
+        opacity + (opacity >> 7)
+    } else {
+        opacity
+    };
     let alpha = if mode == 1 {
         opacity
     } else if opacity == 255 {
@@ -147,7 +188,9 @@ fn blend(d: &mut [u8], mut s: [u8; 4], face: i32, mode: i32, opacity: i32, hold:
         (s[3] as i32 * opacity) >> 8
     };
     // Kirikiri 1.2.0.3's bmAddAlphaOnAlpha branch leaves pixels unchanged.
-    if mode == 12 && face == 0 { return; }
+    if mode == 12 && face == 0 {
+        return;
+    }
     if mode == 1 && opacity == 255 {
         d[..3].copy_from_slice(&s[..3]);
         if face != 1 {
@@ -175,8 +218,11 @@ fn blend(d: &mut [u8], mut s: [u8; 4], face: i32, mode: i32, opacity: i32, hold:
             }
         }
         for c in 0..3 {
-            let remaining = if mode == 12 && (opacity == 255 || (face == 1 && !hold)) { d[c] as i32 - ((d[c] as i32 * alpha) >> 8) }
-                else { (d[c] as i32 * (255-alpha)) >> 8 };
+            let remaining = if mode == 12 && (opacity == 255 || (face == 1 && !hold)) {
+                d[c] as i32 - ((d[c] as i32 * alpha) >> 8)
+            } else {
+                (d[c] as i32 * (255 - alpha)) >> 8
+            };
             d[c] = (remaining + s[c] as i32).min(255) as u8;
         }
         if face == 4 || !hold {

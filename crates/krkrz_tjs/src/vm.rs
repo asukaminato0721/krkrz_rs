@@ -733,7 +733,20 @@ impl Vm {
                 );
             }
         }
-        if self.globals.contains_key(name) {
+        if frame.context != 0 && self.objects[frame.context].call_missing {
+            let (value, found) = self.get_property_presence(
+                &Value::object(frame.context),
+                &Value::string(name),
+                true,
+                raw,
+                host,
+                budget,
+            )?;
+            if found {
+                return Ok(value);
+            }
+        }
+        if self.globals.contains_key(name) || self.objects[0].call_missing {
             return self.get_property(
                 &Value::object(0),
                 &Value::string(name),
@@ -858,6 +871,21 @@ impl Vm {
                             self.store_name(&mut frame, name, registers[*input].clone(), false)?;
                         } else {
                             self.object_id(&Value::object(frame.context))?;
+                            let receiver = Value::object(frame.context);
+                            let key = Value::string(name);
+                            if self.missing_candidate(&receiver, &key, host, budget)?
+                                && self
+                                    .call_missing(
+                                        &receiver,
+                                        &key,
+                                        Some(registers[*input].clone()),
+                                        host,
+                                        budget,
+                                    )?
+                                    .is_some()
+                            {
+                                return Ok(None);
+                            }
                             let context = if self.objects[frame.context]
                                 .members
                                 .contains_key(&name.encode_utf16().collect::<Vec<_>>())
@@ -925,7 +953,7 @@ impl Vm {
                         )?
                     }
                     Op::TypeOfMember { out, object, key } => {
-                        let value = self.get_property(
+                        let (value, found) = self.get_property_presence(
                             &registers[*object],
                             &registers[*key],
                             true,
@@ -933,9 +961,7 @@ impl Vm {
                             host,
                             budget,
                         )?;
-                        registers[*out] = if matches!(value, Value::Void)
-                            && !self.has_member(&registers[*object], &registers[*key])?
-                        {
+                        registers[*out] = if !found {
                             Value::string("undefined")
                         } else {
                             value.unary("typeof")?

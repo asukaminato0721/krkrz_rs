@@ -8,7 +8,7 @@ fn units(value: &Value) -> Result<Vec<u16>> {
         _ => unreachable!(),
     }
 }
-fn index(key: &Value) -> Option<i64> {
+pub(crate) fn index(key: &Value) -> Option<i64> {
     match key {
         Value::Integer(n) => Some(*n),
         Value::String(s) => String::from_utf16(s).ok()?.parse().ok(),
@@ -321,6 +321,7 @@ impl Vm {
                 ));
             }
             if [
+                "sprintf",
                 "replace",
                 "match",
                 "reverse",
@@ -484,6 +485,12 @@ impl Vm {
                 return self.regexp_method(&args[0], name, &forwarded, host, budget);
             }
             return match name {
+                "sprintf" => {
+                    if !result_needed {
+                        return Ok(Value::Void);
+                    }
+                    crate::string_format::sprintf(s, args, budget)
+                }
                 "trim" => {
                     ensure!(args.is_empty(), "trim expects no arguments");
                     if !result_needed {

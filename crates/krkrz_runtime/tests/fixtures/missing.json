@@ -1,0 +1,193 @@
+[
+  {
+    "name": "missing_read_write",
+    "source": "class C { var log=[],saved=0; function missing(set,name,value) {log.add(set+\":\"+name);if(name!=\"x\")return false;if(set)saved=*value;else *value=saved;return true;} } var o=new C(); Scripts.setCallMissing(o);o.x=42;var a=o.x;var b=typeof o.no;return [a,b,o.log.join(\",\")].join(\"|\");",
+    "expected": {
+      "String": [
+        52,
+        50,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        124,
+        49,
+        58,
+        120,
+        44,
+        48,
+        58,
+        120,
+        44,
+        48,
+        58,
+        110,
+        111
+      ]
+    }
+  },
+  {
+    "name": "missing_existing",
+    "source": "class C {var x=void;var count=0;function missing(set,name,value){count++;*value=7;return true;}}var o=new C();Scripts.setCallMissing(o);var a=o.x;o.x=3;return [typeof a,o.x,o.y,o.count].join(\"|\");",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100,
+        124,
+        51,
+        124,
+        55,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "missing_raw_property",
+    "source": "class C {var x=3;property p {getter{return x;}setter(v){x=v;}}function missing(set,name,value){if(name==\"alias\"){*value=&this.p;return true;}return false;}}var o=new C();Scripts.setCallMissing(o);var stage=0;try {var p=&o.alias;stage=1;*p=9;stage=2;return [o.alias,*p,o.p].join(\"|\");}catch(e){return \"error:\"+stage;}",
+    "expected": {
+      "String": [
+        57,
+        124,
+        57,
+        124,
+        57
+      ]
+    }
+  },
+  {
+    "name": "missing_reentrant",
+    "source": "class C {var n=0;function missing(set,name,value){n++;*value=typeof this.inner;this.newMember=8;return true;}}var o=new C();Scripts.setCallMissing(o);return [o.test,o.newMember,o.n].join(\"|\");",
+    "expected": {
+      "String": [
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        124,
+        56,
+        124,
+        49
+      ]
+    }
+  },
+  {
+    "name": "missing_exception_recovery",
+    "source": "class C {var n=0;function missing(set,name,value){n++;if(n==1)throw \"first\";*value=n;return true;}}var o=new C();Scripts.setCallMissing(o);var caught=0;try{o.x;}catch(e){caught=1;}return [caught,o.x,o.n].join(\"|\");",
+    "expected": {
+      "String": [
+        49,
+        124,
+        50,
+        124,
+        50
+      ]
+    }
+  },
+  {
+    "name": "missing_unqualified",
+    "source": "class C {function read(){return x;}function write(){x=6;}var saved=3;function missing(set,name,value){if(name!=\"x\")return false;if(set)saved=*value;else *value=saved;return true;}}var o=new C();Scripts.setCallMissing(o);var a=o.read();o.write();return [a,o.read(),o.saved].join(\"|\");",
+    "expected": {
+      "String": [
+        51,
+        124,
+        54,
+        124,
+        54
+      ]
+    }
+  },
+  {
+    "name": "missing_void_type",
+    "source": "class C {function missing(set,name,value){return name==\"x\";}}var o=new C();Scripts.setCallMissing(o);return [typeof o.x,typeof o.y,typeof o.missing].join(\"|\");",
+    "expected": {
+      "String": [
+        118,
+        111,
+        105,
+        100,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        124,
+        79,
+        98,
+        106,
+        101,
+        99,
+        116
+      ]
+    }
+  },
+  {
+    "name": "missing_method",
+    "source": "class C {var n=11;function missing(set,name,value){if(name!=\"f\")return false;*value=function(a){return n+a;};return true;}}var o=new C();Scripts.setCallMissing(o);return o.f(4);",
+    "expected": {
+      "Integer": 15
+    }
+  },
+  {
+    "name": "missing_dict_array",
+    "source": "var d=%[],a=[];d.missing=function(set,name,value){if(name==\"x\"){*value=8;return true;}return false;};a.missing=d.missing;Scripts.setCallMissing(d);Scripts.setCallMissing(a);return [d.x,a.x,a.count,typeof d.y,typeof a[9]].join(\"|\");",
+    "expected": {
+      "String": [
+        56,
+        124,
+        56,
+        124,
+        48,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100,
+        124,
+        117,
+        110,
+        100,
+        101,
+        102,
+        105,
+        110,
+        101,
+        100
+      ]
+    }
+  },
+  {
+    "name": "missing_declined_set",
+    "source": "class C {var n=0;function missing(set,name,value){n++;return false;}}var o=new C();Scripts.setCallMissing(o);o.x=7;Scripts.setCallMissing(null);return [o.x,o.n].join(\"|\");",
+    "expected": {
+      "String": [
+        55,
+        124,
+        49
+      ]
+    }
+  }
+]

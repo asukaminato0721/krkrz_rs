@@ -77,7 +77,13 @@ impl Services {
                 || (bytes.starts_with(b"\x89PNG") && bytes.get(25) == Some(&3))
             {
                 let indices = IndexedImage::decode(&bytes)?;
-                for (p, index) in image.rgba.as_chunks_mut::<4>().0.iter_mut().zip(indices.pixels) {
+                for (p, index) in image
+                    .rgba
+                    .as_chunks_mut::<4>()
+                    .0
+                    .iter_mut()
+                    .zip(indices.pixels)
+                {
                     p[3] = if index == key as u8 { 0 } else { 255 };
                 }
             }
@@ -102,7 +108,9 @@ impl Services {
             );
             for (p, m) in image
                 .rgba
-                .as_chunks_mut::<4>().0.iter_mut()
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
                 .zip(mask.rgba.as_chunks::<4>().0.iter())
             {
                 // libpng's RGB-to-gray call in Kirikiri uses zero red/green
@@ -118,8 +126,8 @@ impl Services {
             let mat = [(key >> 16) as u8, (key >> 8) as u8, key as u8];
             for p in image.rgba.as_chunks_mut::<4>().0.iter_mut() {
                 for c in 0..3 {
-                    p[c] =
-                        (mat[c] as i32 + (((p[c] as i32 - mat[c] as i32) * p[3] as i32) >> 8)) as u8;
+                    p[c] = (mat[c] as i32 + (((p[c] as i32 - mat[c] as i32) * p[3] as i32) >> 8))
+                        as u8;
                 }
                 p[3] = 255;
             }
@@ -245,7 +253,9 @@ fn apply_key(image: &mut Image, key: u32) -> Result<()> {
         // Preserve the original adaptive algorithm, including its unusual
         // accumulated run count when a run does not beat the current maximum.
         let mut colors: Vec<_> = image.rgba[..image.width as usize * 4]
-            .as_chunks::<4>().0.iter()
+            .as_chunks::<4>()
+            .0
+            .iter()
             .map(|p| color(p))
             .collect();
         colors.sort_unstable();

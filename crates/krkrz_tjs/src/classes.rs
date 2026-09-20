@@ -138,7 +138,7 @@ impl Vm {
         }
         Ok(None)
     }
-    fn resolve_member(
+    pub(crate) fn resolve_member(
         &mut self,
         receiver: &Value,
         key: &Value,
@@ -278,30 +278,50 @@ impl Vm {
         host: &mut impl Host,
         budget: &mut u64,
     ) -> Result<Value> {
-        let mut value = self.resolve_member(receiver, key, optional, host, budget)?;
-        // IGNOREPROP returns the stored closure unchanged. Binding the receiver
-        // here would turn an unbound property reference into a bound property.
-        if raw {
-            return Ok(value);
-        }
-        if let Value::Object(object) = &mut value
-            && let Some(id) = object.object
-            && self
-                .objects
-                .get(id)
-                .is_some_and(|o| matches!(o.kind, ObjectKind::Property { .. }))
-        {
-            if object.context.is_none() {
-                object.context = Some(match receiver {
-                    Value::Object(reference) => {
-                        reference.context.unwrap_or(self.object_id(receiver)?)
-                    }
-                    _ => self.object_id(receiver)?,
-                });
+        Ok(self
+            .get_property_presence(receiver, key, optional, raw, host, budget)?
+            .0)
+    }
+    pub(crate) fn get_property_presence(
+        &mut self,
+        receiver: &Value,
+        key: &Value,
+        optional: bool,
+        raw: bool,
+        host: &mut impl Host,
+        budget: &mut u64,
+    ) -> Result<(Value, bool)> {
+        let missing = self.missing_get(receiver, key, host, budget)?;
+        let handled = missing.is_some();
+        let mut value = if let Some(value) = missing {
+            value
+        } else {
+            self.resolve_member(receiver, key, optional, host, budget)?
+        };
+        let found = handled || !matches!(value, Value::Void) || self.has_member(receiver, key)?;
+        // IGNOREPROP preserves the stored closure and its original context.
+        if !raw {
+            if let Value::Object(object) = &mut value
+                && let Some(id) = object.object
+                && self.objects.get(id).is_some_and(|o| {
+                    matches!(
+                        o.kind,
+                        ObjectKind::Property { .. } | ObjectKind::VariantProperty(_)
+                    )
+                })
+            {
+                if object.context.is_none() {
+                    object.context = Some(match receiver {
+                        Value::Object(reference) => {
+                            reference.context.unwrap_or(self.object_id(receiver)?)
+                        }
+                        _ => self.object_id(receiver)?,
+                    });
+                }
+                value = self.read_property(&value, receiver, host, budget)?;
             }
-            return self.read_property(&value, receiver, host, budget);
         }
-        Ok(value)
+        Ok((value, found))
     }
     pub fn set_property(
         &mut self,
@@ -330,15 +350,24 @@ impl Vm {
             Value::String(s) => s.clone(),
             _ => key.text().encode_utf16().collect(),
         };
+        if self.missing_candidate(receiver, key, host, budget)?
+            && self
+                .call_missing(receiver, key, Some(value.clone()), host, budget)?
+                .is_some()
+        {
+            return Ok(());
+        }
         self.objects[id].member_flags.insert(units.clone(), flags);
         if !raw {
             let existing = self.resolve_member(receiver, key, true, host, budget)?;
             if let Value::Object(object) = &existing
                 && let Some(id) = object.object
-                && self
-                    .objects
-                    .get(id)
-                    .is_some_and(|o| matches!(o.kind, ObjectKind::Property { .. }))
+                && self.objects.get(id).is_some_and(|o| {
+                    matches!(
+                        o.kind,
+                        ObjectKind::Property { .. } | ObjectKind::VariantProperty(_)
+                    )
+                })
             {
                 return self.write_property(&existing, receiver, value, host, budget);
             }
@@ -355,6 +384,9 @@ impl Vm {
         budget: &mut u64,
     ) -> Result<Value> {
         let id = self.object_id(value)?;
+        if let ObjectKind::VariantProperty(value) = &self.objects[id].kind {
+            return Ok(value.clone());
+        }
         let ObjectKind::Property { getter, .. } = self.objects[id].kind.clone() else {
             bail!("TJS object is not a property")
         };
@@ -382,6 +414,10 @@ impl Vm {
         budget: &mut u64,
     ) -> Result<()> {
         let id = self.object_id(property)?;
+        if let ObjectKind::VariantProperty(current) = &mut self.objects[id].kind {
+            *current = value;
+            return Ok(());
+        }
         let ObjectKind::Property { setter, .. } = self.objects[id].kind.clone() else {
             bail!("TJS object is not a property")
         };

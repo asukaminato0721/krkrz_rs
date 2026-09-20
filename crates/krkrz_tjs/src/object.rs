@@ -44,6 +44,7 @@ pub(crate) enum ObjectKind {
         getter: Option<Value>,
         setter: Option<Value>,
     },
+    VariantProperty(Value),
     Super {
         bases: Vec<usize>,
         context: usize,
@@ -63,6 +64,8 @@ pub(crate) struct Object {
     pub member_flags: BTreeMap<Vec<u16>, u32>,
     // Native static methods receive the script caller's this, not their namespace.
     pub native_static: bool,
+    pub call_missing: bool,
+    pub processing_missing: bool,
     pub member_layout: crate::member_layout::MemberLayout,
     pub hash_generation: u64,
     pub valid: bool,
@@ -78,6 +81,8 @@ impl Object {
             classes: vec![],
             member_flags: BTreeMap::new(),
             native_static: false,
+            call_missing: false,
+            processing_missing: false,
             member_layout: Default::default(),
             hash_generation: 0,
             valid: true,

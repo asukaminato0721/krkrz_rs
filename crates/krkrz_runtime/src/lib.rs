@@ -549,6 +549,10 @@ impl Host for Services {
                 .get(&arg(0)?.text())
                 .map(|v| Value::string(v))
                 .unwrap_or(Value::Void)),
+            "Scripts.setCallMissing" => {
+                vm.set_call_missing(arg(0)?)?;
+                Ok(Value::Void)
+            }
             "Scripts.getClassNames" => vm.class_names(arg(0)?),
             "Scripts.execStorage" | "Scripts.evalStorage" => {
                 let context = script_context(args.get(2));
@@ -725,6 +729,7 @@ impl Session {
             "Scripts.exec",
             "Scripts.eval",
             "Scripts.getClassNames",
+            "Scripts.setCallMissing",
             "Storages.addAutoPath",
             "Storages.isExistentStorage",
             "Storages.getPlacedPath",

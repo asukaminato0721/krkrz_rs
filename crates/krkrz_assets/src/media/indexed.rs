@@ -47,10 +47,7 @@ impl IndexedImage {
         );
         let depth = info.bit_depth as usize;
         ensure!(depth <= 8, "province PNG depth exceeds 8 bits");
-        let palette = info
-            .palette
-            .as_ref()
-            .map(|p| p.as_chunks::<3>().0.to_vec());
+        let palette = info.palette.as_ref().map(|p| p.as_chunks::<3>().0.to_vec());
         let size = reader
             .output_buffer_size()
             .ok_or_else(|| anyhow::anyhow!("PNG buffer size overflow"))?;

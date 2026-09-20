@@ -1,0 +1,57 @@
+[
+  {
+    "name": "sprintf_integer",
+    "source": "return '%d|%i|%u|%x|%X|%o|%#x|%#o|%+d'.sprintf(-1,-2,-1,-1,255,17,16,8,7);",
+    "expected": "Void"
+  },
+  {
+    "name": "sprintf_integer_precision",
+    "source": "return '[%08d][%-08d][%+08d][%08.4d][%.0d][%#.0o][%#x][%#06x]'.sprintf(-32,-32,32,32,0,0,0,16);",
+    "expected": "Void"
+  },
+  {
+    "name": "sprintf_integer_min",
+    "source": "var n=-9223372036854775807-1;return '%d|%x|%u'.sprintf(n,n,n);",
+    "expected": "Void"
+  },
+  {
+    "name": "sprintf_indirect",
+    "source": "return '[%*d][%.*f][%*.*d]'.sprintf(7,32,3,1.25,8,4,27);",
+    "expected": "Void"
+  },
+  {
+    "name": "sprintf_string",
+    "source": "return '[%s][%c][%c][%5s][%-5s][%.0s][%.2s]'.sprintf('\u65e5\u672c','\u65e5\u672c',65,'\u65e5\u672c','\u65e5\u672c','\u65e5\u672c','\u65e5\u672c\u8a9e');",
+    "expected": "Void"
+  },
+  {
+    "name": "sprintf_string_edges",
+    "source": "return '[%5s][%.5s]tail'.sprintf('','ab');",
+    "expected": "Void"
+  },
+  {
+    "name": "sprintf_surrogates",
+    "source": "var s=\"\\xd83d\\xde00\";return \"%.1s|%c\".sprintf(s,s);",
+    "expected": "Void"
+  },
+  {
+    "name": "sprintf_float",
+    "source": "return '%f|%+.2f|%08.2f|%.0f|%.0f|%#.0f|%.2e|%.2E'.sprintf(1.25,-2.25,3.5,2.5,3.5,4,12345,0.00125);",
+    "expected": "Void"
+  },
+  {
+    "name": "sprintf_general",
+    "source": "return '%g|%g|%g|%g|%G|%#.4g|%.2g|%.0g'.sprintf(0,1.25,0.0000123,1234567,1234567,1.25,9.999,1.25);",
+    "expected": "Void"
+  },
+  {
+    "name": "sprintf_special",
+    "source": "return '%f|%f|%g|%g|%.2e'.sprintf(Infinity,-Infinity,NaN,-0.0,0);",
+    "expected": "Void"
+  },
+  {
+    "name": "sprintf_errors",
+    "source": "var r=[];try{var x='%d'.sprintf();}catch(e){r.add('missing');}try{var x='%901d'.sprintf(2);}catch(e){r.add('large');}try{var x='%'.sprintf();}catch(e){r.add('partial');}'%d'.sprintf();return r.join(',')+'|'+'%d'.sprintf(3,4)+'|'+'%05%'.sprintf();",
+    "expected": "Void"
+  }
+]
