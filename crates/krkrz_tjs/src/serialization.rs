@@ -27,12 +27,11 @@ impl Vm {
                 let id = self.object_id(&receiver)?;
                 self.objects[id].member_flags.insert(
                     method.encode_utf16().collect(),
-                    0x1000
-                        | if class == "Dictionary" {
-                            crate::scripts_ex::STATIC
-                        } else {
-                            0
-                        },
+                    if class == "Dictionary" {
+                        crate::scripts_ex::HIDDEN | crate::scripts_ex::STATIC
+                    } else {
+                        0
+                    },
                 );
             }
         }

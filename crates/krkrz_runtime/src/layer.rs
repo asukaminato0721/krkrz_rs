@@ -1021,7 +1021,7 @@ impl Services {
                 }
                 let array = layer.children_array.clone().unwrap();
                 if layer.children_dirty {
-                    vm.set_member(&array, &Value::string("count"), Value::Integer(0))?;
+                    vm.clear_array(&array)?;
                     for (i, child) in layer.children.iter().enumerate() {
                         vm.set_member(&array, &Value::Integer(i as i64), bound(*child))?;
                     }

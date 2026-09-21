@@ -125,9 +125,7 @@ impl Vm {
             }
             "getObjectKeys" => {
                 let keys = self.reflection_keys(arg(0)?, true)?;
-                self.allocate(ObjectKind::Array(
-                    keys.into_iter().map(Value::String).collect(),
-                ))
+                self.new_native_array(keys.into_iter().map(Value::String).collect())
             }
             "getObjectCount" => Ok(Value::Integer(
                 self.reflection_keys(arg(0)?, false)?.len() as i64

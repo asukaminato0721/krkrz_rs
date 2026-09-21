@@ -20,7 +20,7 @@ impl Args {
     }
     fn clear(&mut self, vm: &mut Vm, budget: &mut u64) -> Result<()> {
         vm.dictionary_assign(&self.dict, &[], true, budget)?;
-        vm.set_member(&self.list, &Value::string("count"), Value::Integer(0))?;
+        vm.clear_array(&self.list)?;
         self.names.clear();
         Ok(())
     }

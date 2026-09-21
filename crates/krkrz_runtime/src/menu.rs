@@ -633,7 +633,7 @@ impl Services {
                     let children = item.children.clone();
                     // Clear native elements without invoking a script replacement
                     // for Array.clear on the published array.
-                    vm.set_member(&array, &Value::string("count"), Value::Integer(0))?;
+                    vm.clear_array(&array)?;
                     for (index, child) in children.iter().enumerate() {
                         charge(budget)?;
                         vm.set_member(&array, &Value::Integer(index as i64), bound(*child))?;

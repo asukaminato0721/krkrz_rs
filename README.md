@@ -227,11 +227,12 @@ points; it does not reproduce immediate reference-counted finalization timing.
 The interpreter deliberately rejects unsupported constructs; it does
 not replace TJS with JavaScript. KAG cursor restoration is not a game save.
 
-The standalone `ScriptsEx.dll` replacement now provides dictionary reflection,
+The standalone `ScriptsEx.dll` replacement now provides dictionary and Array reflection,
 object-context inspection, flagged property access, structural comparison,
 recursive cloning, array/dictionary callbacks and deferred rehashing. It follows
-the community source and the installed PackinOne component's behavior. Array
-member reflection and octet MD5 remain explicit unsupported operations, as do
+the community source and the installed PackinOne component's behavior. Array key
+enumeration returns an empty list, while member counts include native and added
+members, independently of element count. Octet MD5 remains unsupported, as do
 some object kinds in `foreach`. PackinOne registration now combines the three
 implemented components and declares observed exports for unfinished operations.
 Process/TemporaryFiles construction and unfinished methods fail explicitly.
@@ -320,7 +321,15 @@ bars, popups and OS shortcut delivery are not implemented. Shortcut name tables
 use stable English defaults until a platform keyboard adapter is available.
 
 The WIN32Dialog binding registers the installed plugin's observed constants and
-interfaces. It supports closed-dialog state, Header/Items storage and copied
-binary templates, and bounded Blob byte/word/dword access. Native dialogs,
-controls, OS handles, drawing, message boxes and pointer-based buffer operations
-remain explicit unsupported operations.
+interfaces. It supports Header/Items storage, copied binary templates, bounded
+Blob byte/word/dword access, and modal text forms. The native host opens a separate
+egui window with labels, single-line edits, editable combo boxes, multiline edits
+and OK/Cancel buttons. Initial text, combo suggestions, text limits, selection and
+focus come from the script's control definitions and initialization callbacks.
+The form uses system CJK fonts when available. Enter accepts a single-line edit;
+multiline edits use Enter for newlines and Ctrl+Enter to accept. Escape cancels.
+Dialog errors propagate separately from cancellation, and the game clock pauses
+while the dialog is open. This backend requires neither kdialog nor zenity.
+Modeless dialogs, other control types, live control notifications, native handles,
+drawing, message boxes and pointer-based buffer operations remain unsupported.
+Layout and positioning are approximate rather than Win32 dialog-unit rendering.

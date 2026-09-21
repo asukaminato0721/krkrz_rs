@@ -16,11 +16,17 @@ fn number(vm: &mut Vm, dict: &Value, key: &str, limit: usize) -> Result<usize> {
     Ok(n as usize)
 }
 fn array(vm: &mut Vm, value: &Value, limit: usize, budget: &mut u64) -> Result<Vec<Value>> {
-    let count = number(vm, value, "count", limit)?;
-    (0..count)
-        .map(|i| {
+    let items = vm.array_items(value)?;
+    ensure!(
+        items.len() <= limit,
+        "invalid KAG saved array count: {}",
+        items.len()
+    );
+    items
+        .iter()
+        .map(|item| {
             charge(budget)?;
-            vm.get_member(value, &Value::Integer(i as i64), false)
+            Ok(item.clone())
         })
         .collect()
 }

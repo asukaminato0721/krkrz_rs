@@ -535,25 +535,11 @@ impl Vm {
                 name,
             });
         }
-        if let ObjectKind::Array(items) = &object.kind {
-            if name == "count" || name == "length" {
-                return Ok(Value::Integer(items.len() as i64));
-            }
-            if let Some(i) = index(key) {
-                ensure!(i >= 0, "negative array index");
-                return Ok(items.get(i as usize).cloned().unwrap_or(Value::Void));
-            }
-            if [
-                "add", "push", "pop", "shift", "unshift", "erase", "remove", "insert", "clear",
-                "reverse", "join", "find",
-            ]
-            .contains(&name.as_str())
-            {
-                return self.allocate(ObjectKind::Method {
-                    receiver: receiver.clone(),
-                    name,
-                });
-            }
+        if let ObjectKind::Array(items) = &object.kind
+            && let Some(i) = index(key)
+        {
+            ensure!(i >= 0, "negative array index");
+            return Ok(items.get(i as usize).cloned().unwrap_or(Value::Void));
         }
         if matches!(object.kind, ObjectKind::Dictionary) || optional {
             return Ok(Value::Void);
@@ -571,23 +557,16 @@ impl Vm {
             self.globals.insert(key.unary("string")?.text(), value);
             return Ok(());
         }
-        if let ObjectKind::Array(items) = &mut self.objects[id].kind {
-            let name = key.unary("string")?.text();
-            if name == "count" || name == "length" {
-                let len = value.integer()?;
-                ensure!((0..=1_000_000).contains(&len), "array length exceeds limit");
-                items.resize(len as usize, Value::Void);
-                return Ok(());
+        if let ObjectKind::Array(items) = &mut self.objects[id].kind
+            && let Some(index) = index(key)
+        {
+            ensure!((0..1_000_000).contains(&index), "array index exceeds limit");
+            let index = index as usize;
+            if items.len() <= index {
+                items.resize(index + 1, Value::Void);
             }
-            if let Some(index) = index(key) {
-                ensure!((0..1_000_000).contains(&index), "array index exceeds limit");
-                let index = index as usize;
-                if items.len() <= index {
-                    items.resize(index + 1, Value::Void);
-                }
-                items[index] = value;
-                return Ok(());
-            }
+            items[index] = value;
+            return Ok(());
         }
         ensure!(
             self.objects[id].members.len() < 100_000,
@@ -742,6 +721,14 @@ impl Vm {
             bail!("array method on non-array object")
         };
         match name {
+            "Array" => Ok(Value::Void),
+            "get:count" => Ok(Value::Integer(items.len() as i64)),
+            "set:count" => {
+                let len = arg(0)?.integer()?;
+                ensure!((0..=1_000_000).contains(&len), "array length exceeds limit");
+                items.resize(len as usize, Value::Void);
+                Ok(Value::Void)
+            }
             "remove" => {
                 let value = arg(0)?;
                 let all = args.get(1).map(Value::truth).transpose()?.unwrap_or(true);

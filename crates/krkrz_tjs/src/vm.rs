@@ -405,13 +405,37 @@ impl Default for Vm {
         vm.register_serialization(false)
             .expect("initial serialization members");
         let array = vm.globals["Array"].clone();
-        for method in ["assign", "assignStruct", "split", "sort"] {
+        for method in [
+            "Array",
+            "pack",
+            "assign",
+            "assignStruct",
+            "split",
+            "sort",
+            "add",
+            "push",
+            "pop",
+            "shift",
+            "unshift",
+            "erase",
+            "remove",
+            "insert",
+            "clear",
+            "reverse",
+            "join",
+            "find",
+        ] {
             vm.register_native_method(&array, method, &format!("Array.{method}"))
                 .expect("initial Array member");
-            let array_id = vm.object_id(&array).expect("Array class");
-            vm.objects[array_id]
-                .member_flags
-                .insert(method.encode_utf16().collect(), crate::scripts_ex::HIDDEN);
+        }
+        for property in ["count", "length"] {
+            vm.register_native_property(
+                &array,
+                property,
+                Some("Array.get:count"),
+                Some("Array.set:count"),
+            )
+            .expect("initial Array property");
         }
         let dictionary = vm.globals["Dictionary"].clone();
         for method in ["assign", "assignStruct", "clear"] {
@@ -507,7 +531,9 @@ impl Vm {
                 if let Value::Object(reference) = &mut member {
                     reference.context = Some(id);
                 }
-                self.set_member(&value, &Value::String(key.clone()), member)?;
+                // Copy descriptors without invoking Array's count/length setters.
+                self.objects[id].member_layout.insert(&key);
+                self.objects[id].members.insert(key.clone(), member);
                 self.objects[id].member_flags.insert(key, flags);
             }
         }
@@ -539,6 +565,23 @@ impl Vm {
     }
     pub fn new_array(&mut self, items: Vec<Value>) -> Result<Value> {
         self.allocate(ObjectKind::Array(items))
+    }
+    /// Read native elements without invoking replaceable script properties.
+    pub fn array_items(&self, array: &Value) -> Result<&[Value]> {
+        let id = self.object_id(array)?;
+        let ObjectKind::Array(items) = &self.objects[id].kind else {
+            bail!("Array native instance required");
+        };
+        Ok(items)
+    }
+    /// Clear native elements without invoking replaceable script properties.
+    pub fn clear_array(&mut self, array: &Value) -> Result<()> {
+        let id = self.object_id(array)?;
+        let ObjectKind::Array(items) = &mut self.objects[id].kind else {
+            bail!("Array native instance required");
+        };
+        items.clear();
+        Ok(())
     }
     /// TVPCreateArrayObject uses the engine's private builtin class, not the
     /// script-visible Array class that plugins can extend.
@@ -1343,6 +1386,13 @@ impl Vm {
                         .map(Value::object)
                         .unwrap_or_else(|| context.clone());
                     self.array_split(&context, args, host, budget)
+                }
+                _ if name.starts_with("Array.") => {
+                    let context = reference
+                        .context
+                        .map(Value::object)
+                        .unwrap_or_else(|| context.clone());
+                    self.method(&context, &name[6..], args, host, budget, result_needed)
                 }
                 "Dictionary.assign" | "Dictionary.clear" => {
                     let context = reference
