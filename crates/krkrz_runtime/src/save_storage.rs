@@ -1,4 +1,4 @@
-//! Writable storage overlay. Installed resources are never write targets.
+//! Writable storage overlay, rooted in savedata by default or an explicit override.
 use anyhow::{Context, Result, ensure};
 use std::{
     io::Write,
@@ -39,7 +39,8 @@ pub(crate) fn path(project: &Path, root: &Path, name: &str) -> Result<PathBuf> {
         resolved.push(part);
     }
     ensure!(
-        resolved.starts_with(root) && !resolved.starts_with(project),
+        resolved.starts_with(root)
+            && (!resolved.starts_with(project) || resolved.starts_with(project.join("savedata"))),
         "save storage symlink escapes the save directory"
     );
     Ok(resolved)

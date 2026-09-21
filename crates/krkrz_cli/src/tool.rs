@@ -56,6 +56,7 @@ enum Command {
         name: String,
         #[arg(long)]
         runtime: bool,
+        /// Save directory (defaults to <project-dir>/savedata).
         #[arg(long, requires = "runtime")]
         save_dir: Option<PathBuf>,
         /// Unix milliseconds at session time zero, for reproducible Date values.

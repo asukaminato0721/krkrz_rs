@@ -10,6 +10,7 @@ use std::{io::Write, path::PathBuf};
 struct Args {
     #[arg(long, default_value = ".")]
     project_dir: PathBuf,
+    /// Save directory (defaults to <project-dir>/savedata, including existing saves).
     #[arg(long)]
     save_dir: Option<PathBuf>,
     /// Explicitly select Otome Domain's Cx encryption profile.
@@ -47,6 +48,10 @@ fn main() -> Result<()> {
     let result = native_host::run(&mut session, !args.no_audio, icon);
     if let Some(path) = args.trace {
         let path = krkrz_core::save_directory(&args.project_dir, Some(&path))?;
+        anyhow::ensure!(
+            !path.starts_with(args.project_dir.canonicalize()?),
+            "trace output must be outside the game installation"
+        );
         let mut output = std::fs::OpenOptions::new()
             .write(true)
             .create_new(true)

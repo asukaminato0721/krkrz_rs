@@ -1,7 +1,6 @@
 //! Shared storage names, limits, diagnostics, and deterministic host input.
-use anyhow::{Result, bail, ensure};
+use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 
 /// Resolve the POSIX local-storage prefix used by Kirikiri's SDL ports.
@@ -52,23 +51,14 @@ impl Default for Limits {
     }
 }
 
+/// Default to the game's existing saves. Explicit overrides can select an
+/// isolated directory; other installation resources are not save destinations.
 pub fn save_directory(project: &Path, override_path: Option<&Path>) -> Result<PathBuf> {
     let project = project.canonicalize()?;
     let result = if let Some(path) = override_path {
         path.to_path_buf()
     } else {
-        let base = if let Some(path) = std::env::var_os("XDG_DATA_HOME").filter(|s| !s.is_empty()) {
-            PathBuf::from(path)
-        } else if let Some(home) = std::env::var_os("HOME") {
-            PathBuf::from(home).join(".local/share")
-        } else {
-            bail!("HOME and XDG_DATA_HOME are unset; use --save-dir")
-        };
-        let id = format!(
-            "{:x}",
-            Sha256::digest(project.as_os_str().as_encoded_bytes())
-        );
-        base.join("krkrz_rs").join(&id[..24])
+        project.join("savedata")
     };
     // Resolve existing ancestors, including symlinks, before creating anything.
     let absolute = if result.is_absolute() {
@@ -93,8 +83,8 @@ pub fn save_directory(project: &Path, override_path: Option<&Path>) -> Result<Pa
         resolved.push(part);
     }
     ensure!(
-        !resolved.starts_with(&project),
-        "save directory must be outside the game installation"
+        !resolved.starts_with(&project) || resolved.starts_with(project.join("savedata")),
+        "save directory must be in the game's savedata directory or outside the installation"
     );
     Ok(resolved)
 }
@@ -130,9 +120,16 @@ mod tests {
         }
     }
     #[test]
-    fn installation_is_not_save_storage() {
+    fn default_saves_use_the_game_savedata_directory() {
         let p = tempfile::tempdir().unwrap();
-        assert!(save_directory(p.path(), Some(&p.path().join("savedata"))).is_err());
+        let expected = p.path().canonicalize().unwrap().join("savedata");
+        assert_eq!(save_directory(p.path(), None).unwrap(), expected);
+        assert!(!expected.exists());
+        std::fs::create_dir(&expected).unwrap();
+        assert_eq!(save_directory(p.path(), None).unwrap(), expected);
+        assert_eq!(save_directory(p.path(), Some(&expected)).unwrap(), expected);
+        assert!(save_directory(p.path(), Some(p.path())).is_err());
+        assert!(save_directory(p.path(), Some(&p.path().join("data"))).is_err());
     }
     #[cfg(unix)]
     #[test]

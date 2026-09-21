@@ -11,8 +11,8 @@ original UI, restarting, restoring and advancing the saved dialogue also pass.
 
 The Rust TJS interpreter and Kirikiri services run the original scripts. Native
 winit/wgpu presentation, mouse/keyboard input and CPAL audio share the same
-session as deterministic headless replay. The game installation remains read-only;
-saves use a separate directory.
+session as deterministic headless replay. Saves default to the game's `savedata`
+directory; use `--save-dir` to select a separate directory.
 
 ## Build and verify
 
@@ -150,13 +150,13 @@ supports it. The frontend uses winit **0.31.0-beta.3**, the latest prerelease,
 because stable 0.30.13 does not include that protocol. See
 [dependency validation](docs/dependency-upgrade.md) for compatibility checks.
 
-The save directory defaults to `$XDG_DATA_HOME/krkrz_rs/<project-path-hash>`
-(or `$HOME/.local/share/krkrz_rs/<project-path-hash>`). Save paths within the
-installation are rejected. Native Array/Dictionary structured saves, Array text
-load/save, and the standalone saveStruct plugin now write through a separate
-overlay. Game-relative writes are redirected there; reads prefer that overlay.
-Directories are created when data is written. Existing Windows saves remain
-untouched. Original game save/load acceptance is still open.
+The save directory defaults to `<project-dir>/savedata`, so startup reads existing
+game settings and saves there, and subsequent saves use the same directory.
+Use `--save-dir /path/to/separate/saves` for an isolated profile. Other installation
+directories cannot be selected as save destinations. Native Array/Dictionary
+structured saves, Array text load/save, and the standalone saveStruct plugin
+write through this overlay. Game-relative writes are redirected there; reads
+prefer it. Directories are created when data is written.
 
 Use an optimized build for the original game; the debug interpreter is much slower.
 Optional `--trace /path/outside/the/game/new-trace.json` records execution for diagnosis.

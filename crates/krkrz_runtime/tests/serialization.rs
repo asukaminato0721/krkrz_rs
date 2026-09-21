@@ -72,6 +72,57 @@ return state.scene+","+state.choice+","+state.flags[1]+","+state.volume;
 }
 
 #[test]
+fn default_startup_reads_and_updates_existing_game_saves() {
+    let project = tempfile::tempdir().unwrap();
+    let savedata = project.path().join("savedata");
+    std::fs::create_dir(&savedata).unwrap();
+    std::fs::write(savedata.join("data0.ksd"), b"[42]").unwrap();
+    std::fs::write(
+        project.path().join("startup.tjs"),
+        "return Scripts.evalStorage(System.dataPath+'data0.ksd')[0];",
+    )
+    .unwrap();
+    let mut session = Session::open(project.path(), None, false, 10_000).unwrap();
+    assert_eq!(session.services.save_dir, savedata.canonicalize().unwrap());
+    assert_eq!(session.startup().unwrap(), Value::Integer(42));
+    session
+        .evaluate("[43].saveStruct(System.dataPath+'data0.ksd')")
+        .unwrap();
+    let mut restarted = Session::open(project.path(), None, false, 10_000).unwrap();
+    assert_eq!(restarted.startup().unwrap(), Value::Integer(43));
+
+    let isolated = tempfile::tempdir().unwrap();
+    std::fs::write(isolated.path().join("data0.ksd"), b"[99]").unwrap();
+    let mut overridden =
+        Session::open(project.path(), Some(isolated.path()), false, 10_000).unwrap();
+    assert_eq!(overridden.startup().unwrap(), Value::Integer(99));
+    overridden
+        .evaluate("[100].saveStruct(System.dataPath+'data0.ksd')")
+        .unwrap();
+    assert_eq!(restarted.startup().unwrap(), Value::Integer(43));
+}
+
+#[cfg(unix)]
+#[test]
+fn default_save_writes_cannot_follow_symlinks_into_game_resources() {
+    let project = tempfile::tempdir().unwrap();
+    let savedata = project.path().join("savedata");
+    std::fs::create_dir(&savedata).unwrap();
+    std::fs::write(project.path().join("protected.tjs"), b"keep").unwrap();
+    std::os::unix::fs::symlink(project.path(), savedata.join("escape")).unwrap();
+    let mut session = Session::open(project.path(), None, false, 10_000).unwrap();
+    assert!(
+        session
+            .evaluate("[1].saveStruct(System.dataPath+'escape/protected.tjs')")
+            .is_err()
+    );
+    assert_eq!(
+        std::fs::read(project.path().join("protected.tjs")).unwrap(),
+        b"keep"
+    );
+}
+
+#[test]
 fn invalid_serialization_does_not_replace_existing_save() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
