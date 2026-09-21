@@ -4,6 +4,7 @@ mod input_dialog;
 mod native_host;
 mod presenter;
 mod project;
+mod shell_execute;
 use anyhow::Result;
 use clap::Parser;
 use krkrz_runtime::Session;

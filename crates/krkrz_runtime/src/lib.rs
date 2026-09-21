@@ -24,6 +24,7 @@ mod plugins;
 mod psb_file;
 mod save_storage;
 pub mod scheduler;
+mod shell_execute;
 mod sound;
 mod sound_flags;
 mod sound_stream;
@@ -72,6 +73,7 @@ pub struct Services {
     pub fonts: fonts::FontBook,
     app_locks: app_lock::AppLocks,
     file_dialogs: file_dialog::State,
+    shell_execute: shell_execute::State,
     async_triggers: async_trigger::State,
     continuous_handlers: Vec<Option<Value>>,
     events: scheduler::EventQueue,
@@ -720,6 +722,13 @@ impl Host for Services {
             "System.createAppLock" => Ok(Value::Integer(
                 self.app_locks.acquire(&arg(0)?.text())?.into(),
             )),
+            "System.shellExecute" => {
+                let target = arg(0)?.text();
+                let parameters = args.get(1).map(Value::text).unwrap_or_default();
+                Ok(Value::Integer(
+                    self.shell_execute(&target, &parameters).into(),
+                ))
+            }
             "System.get:graphicCacheLimit" => Ok(Value::Integer(self.image_cache.limit() as i64)),
             "System.set:graphicCacheLimit" => {
                 self.image_cache.set_limit(arg(0)?.integer()?);
@@ -958,6 +967,7 @@ impl Session {
             "System.removeContinuousHandler",
             "System.readRegValue",
             "System.createAppLock",
+            "System.shellExecute",
             "System.getArgument",
             "System.setArgument",
             "System.doCompact",
@@ -999,6 +1009,7 @@ impl Session {
                 image_cache: graphics::ImageCache::new(graphics::automatic_limit()),
                 app_locks: app_lock::AppLocks::default(),
                 file_dialogs: file_dialog::State::default(),
+                shell_execute: shell_execute::State::default(),
                 async_triggers: async_trigger::State::default(),
                 continuous_handlers: Vec::new(),
                 events: scheduler::EventQueue::default(),

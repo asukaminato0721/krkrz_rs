@@ -119,6 +119,16 @@ pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Re
         wait.set(wait.get() + start.elapsed());
         answer
     });
+    let project = session.services.storage.project.clone();
+    let wait = dialog_wait.clone();
+    session
+        .services
+        .set_shell_execute_handler(move |target, parameters| {
+            let start = Instant::now();
+            let result = crate::shell_execute::execute(&project, target, parameters);
+            wait.set(wait.get() + start.elapsed());
+            result
+        });
     let mut host = Host {
         session,
         audio: if audio_enabled {

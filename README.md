@@ -345,3 +345,13 @@ supports BMP, PNG (RGBA or `png24`) and JPEG (`jpg` or `jpgN` quality), includin
 appending serialized state after BMP thumbnails. PNG/JPEG metadata options are
 unsupported; JPEG encoding uses the Rust codec and is not byte-identical to the
 original encoder.
+
+`System.shellExecute(target, parameters)` delegates URLs and local documents to
+the desktop opener (`xdg-open` on Linux, `open` on macOS). Targets are passed as
+one literal argument; relative documents resolve from the project directory.
+The method returns `1` when the opener accepts the request, or `0` for launch
+failure. A desktop application that stays open does not block the game; failures
+reported after the initial 200 ms launch window are logged asynchronously.
+Nonempty executable parameters are not supported by this backend and return
+`0` with a diagnostic. Headless sessions return `0` without opening applications;
+embedding hosts can supply their own shell handler.
