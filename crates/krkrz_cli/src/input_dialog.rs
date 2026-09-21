@@ -12,13 +12,20 @@ use std::{
 const MAX_JSON_BYTES: usize = 16 << 20;
 
 pub fn show(request: &InputDialog) -> Result<Option<Vec<String>>> {
+    run_process("--native-dialog", request)
+}
+
+pub(super) fn run_process<T: serde::Serialize, R: serde::de::DeserializeOwned>(
+    flag: &str,
+    request: &T,
+) -> Result<R> {
     let bytes = serde_json::to_vec(request)?;
     ensure!(
         bytes.len() <= MAX_JSON_BYTES,
         "dialog request exceeds 16 MiB"
     );
     let mut child = Command::new(std::env::current_exe()?)
-        .arg("--native-dialog")
+        .arg(flag)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -96,7 +103,7 @@ pub fn run_child() -> Result<()> {
     Ok(())
 }
 
-fn install_fonts(ctx: &egui::Context) {
+pub(super) fn install_fonts(ctx: &egui::Context) {
     let mut database = fontdb::Database::new();
     database.load_system_fonts();
     let families = [

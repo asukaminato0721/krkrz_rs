@@ -1,4 +1,5 @@
 mod audio_output;
+mod file_dialog;
 mod input_dialog;
 mod native_host;
 mod presenter;
@@ -12,6 +13,8 @@ use std::{io::Write, path::PathBuf};
 struct Args {
     #[arg(long, hide = true)]
     native_dialog: bool,
+    #[arg(long, hide = true)]
+    file_dialog: bool,
     #[arg(long, default_value = ".")]
     project_dir: PathBuf,
     /// Save directory (defaults to <project-dir>/savedata, including existing saves).
@@ -39,6 +42,9 @@ fn main() -> Result<()> {
     let args = Args::parse();
     if args.native_dialog {
         return input_dialog::run_child();
+    }
+    if args.file_dialog {
+        return file_dialog::run_child();
     }
     let storage = args.project.open(&args.project_dir)?;
     let mut session = Session::from_storage(

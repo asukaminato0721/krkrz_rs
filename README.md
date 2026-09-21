@@ -333,3 +333,15 @@ while the dialog is open. This backend requires neither kdialog nor zenity.
 Modeless dialogs, other control types, live control notifications, native handles,
 drawing, message boxes and pointer-based buffer operations remain unsupported.
 Layout and positioning are approximate rather than Win32 dialog-unit rendering.
+
+`System.personalPath` and `System.appDataPath` use the platform's user document
+and application-data directories. `Storages.selectFile` opens a separate egui
+file picker for opening or saving, with initial paths, filename filters,
+one-based filter indices, default extensions and overwrite confirmation.
+Cancellation leaves the script's options unchanged. A selected file can be read
+outside the project; a save selection also permits writes to that exact file.
+Ordinary save data continues to use the session's save directory. Image export
+supports BMP, PNG (RGBA or `png24`) and JPEG (`jpg` or `jpgN` quality), including
+appending serialized state after BMP thumbnails. PNG/JPEG metadata options are
+unsupported; JPEG encoding uses the Rust codec and is not byte-identical to the
+original encoder.

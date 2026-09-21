@@ -112,6 +112,13 @@ pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Re
         wait.set(wait.get() + start.elapsed());
         answer
     });
+    let wait = dialog_wait.clone();
+    session.services.set_file_dialog_handler(move |request| {
+        let start = Instant::now();
+        let answer = crate::input_dialog::run_process("--file-dialog", request);
+        wait.set(wait.get() + start.elapsed());
+        answer
+    });
     let mut host = Host {
         session,
         audio: if audio_enabled {

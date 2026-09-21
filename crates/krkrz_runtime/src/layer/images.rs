@@ -94,6 +94,9 @@ impl Services {
     }
 
     fn graphic_cache_key(&self, name: &str) -> Result<String> {
+        if let Some(path) = self.selected_file(name) {
+            return Ok(path.to_string_lossy().into_owned());
+        }
         match crate::save_storage::path(&self.storage.project, &self.save_dir, name) {
             Ok(path) if path.is_file() => Ok(path.to_string_lossy().into_owned()),
             _ => self.storage.placed_path(name),
@@ -152,6 +155,9 @@ impl Services {
     }
 
     pub(super) fn resolve_graphic(&self, name: &str) -> Result<String> {
+        if let Some(path) = self.selected_file(name) {
+            return Ok(path.to_string_lossy().into_owned());
+        }
         if let Ok(path) = crate::save_storage::path(&self.storage.project, &self.save_dir, name)
             && path.is_file()
         {

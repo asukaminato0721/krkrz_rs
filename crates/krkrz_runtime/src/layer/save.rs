@@ -1,6 +1,8 @@
 //! Native BMP headers and ordered palette dithering from GraphicsLoaderIntf.cpp
-//! and tvpgl.c. File writes use the session's isolated storage overlay.
+//! and tvpgl.c. PNG/JPEG use the image codecs. Writes use the save overlay or
+//! the exact destination explicitly chosen in a save dialog.
 use super::*;
+use image::ImageEncoder;
 
 fn dither(pixel: &[u8], x: usize, y: usize) -> u8 {
     const MATRIX: [[u8; 4]; 4] = [[0, 12, 2, 14], [8, 4, 10, 6], [3, 15, 1, 13], [11, 7, 9, 5]];
@@ -72,9 +74,22 @@ impl Services {
             .filter(|v| !matches!(v, Value::Void))
             .map(Value::text)
             .unwrap_or_else(|| "bmp".into());
-        if !mode.starts_with("bmp") && mode != ".bmp" && mode != ".dib" {
+        let is_bmp = mode.starts_with("bmp") || mode == ".bmp" || mode == ".dib";
+        let is_png = mode.starts_with("png") || mode == ".png";
+        let is_jpeg = mode.starts_with("jpg") || mode == ".jpg" || mode == ".jpeg";
+        if !is_bmp && !is_png && !is_jpeg {
             return Err(unsupported(format!("Layer.saveLayerImage format {mode}")));
         }
+        if !is_bmp
+            && args
+                .get(2)
+                .is_some_and(|v| *v != Value::Void && *v != Value::NULL)
+        {
+            return Err(unsupported(
+                "Layer.saveLayerImage PNG/JPEG metadata options",
+            ));
+        }
+        let path = self.write_storage_path(&name)?;
         let bytes = match mode.as_str() {
             "bmp8" => 1,
             "bmp24" => 3,
@@ -84,8 +99,57 @@ impl Services {
         *budget = budget
             .checked_sub(image.width as u64 * image.height as u64)
             .ok_or_else(|| unsupported("saveLayerImage execution budget exceeded"))?;
-        let path = crate::save_storage::path(&self.storage.project, &self.save_dir, &name)?;
-        crate::save_storage::write(&path, &bmp(image, bytes), None)?;
+        let output = if is_bmp {
+            bmp(image, bytes)
+        } else {
+            let mut output = Vec::new();
+            if is_png && mode != "png24" {
+                image::codecs::png::PngEncoder::new(&mut output).write_image(
+                    &image.rgba,
+                    image.width,
+                    image.height,
+                    image::ExtendedColorType::Rgba8,
+                )?;
+            } else {
+                let rgb: Vec<u8> = image
+                    .rgba
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .flat_map(|p| p[..3].iter().copied())
+                    .collect();
+                if is_png {
+                    image::codecs::png::PngEncoder::new(&mut output).write_image(
+                        &rgb,
+                        image.width,
+                        image.height,
+                        image::ExtendedColorType::Rgb8,
+                    )?;
+                } else {
+                    let quality =
+                        mode.strip_prefix("jpg")
+                            .filter(|s| !s.is_empty())
+                            .map_or(90, |suffix| {
+                                let n = suffix
+                                    .bytes()
+                                    .filter(u8::is_ascii_digit)
+                                    .fold(0u32, |n, c| {
+                                        n.saturating_mul(10).saturating_add((c - b'0') as u32)
+                                    });
+                                if n == 0 { 10 } else { n.min(100) as u8 }
+                            });
+                    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut output, quality)
+                        .encode(
+                            &rgb,
+                            image.width,
+                            image.height,
+                            image::ExtendedColorType::Rgb8,
+                        )?;
+                }
+            }
+            output
+        };
+        crate::save_storage::write(&path, &output, None)?;
         self.image_cache.clear();
         Ok(Value::Void)
     }

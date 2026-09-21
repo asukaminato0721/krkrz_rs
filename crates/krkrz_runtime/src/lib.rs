@@ -10,6 +10,7 @@ mod csv;
 pub mod dialog;
 pub mod display;
 mod draw_device;
+pub mod file_dialog;
 mod font;
 pub mod fonts;
 mod get_sample;
@@ -70,6 +71,7 @@ pub struct Services {
     pub image_cache: graphics::ImageCache,
     pub fonts: fonts::FontBook,
     app_locks: app_lock::AppLocks,
+    file_dialogs: file_dialog::State,
     async_triggers: async_trigger::State,
     continuous_handlers: Vec<Option<Value>>,
     events: scheduler::EventQueue,
@@ -101,6 +103,14 @@ pub struct Services {
 }
 impl Services {
     fn read_storage(&mut self, name: &str) -> Result<Vec<u8>> {
+        if let Some(path) = self.selected_file(name) {
+            ensure!(path.canonicalize()? == path, "selected file path changed");
+            ensure!(
+                path.metadata()?.len() <= 512 << 20,
+                "selected file exceeds size limit"
+            );
+            return Ok(std::fs::read(path)?);
+        }
         if let Ok(path) = save_storage::path(&self.storage.project, &self.save_dir, name)
             && path.is_file()
         {
@@ -431,6 +441,10 @@ impl Host for Services {
                 .with_context(|| format!("{name}: missing argument {i}"))
         };
         match name {
+            "Storages.selectFile" => self.select_file(vm, arg(0)?, budget),
+            "System.get:personalPath" | "System.get:appDataPath" => Ok(Value::string(
+                &file_dialog::system_path(name == "System.get:personalPath", &self.storage.project),
+            )),
             "TextStream.read" => {
                 let bytes = self.read_storage(&arg(0)?.text())?;
                 let (mode, offset) = save_storage::offset_mode(&arg(1)?.text())?;
@@ -447,8 +461,7 @@ impl Host for Services {
                 let Value::String(units) = arg(1)? else {
                     anyhow::bail!("text writer requires a string");
                 };
-                let path =
-                    save_storage::path(&self.storage.project, &self.save_dir, &arg(0)?.text())?;
+                let path = self.write_storage_path(&arg(0)?.text())?;
                 let (bytes, offset) = if name == "TextStream.write" {
                     let (mode, offset) = save_storage::offset_mode(&arg(2)?.text())?;
                     (text::encode_units(units, &mode)?, offset)
@@ -793,8 +806,10 @@ impl Host for Services {
                 Ok(Value::Void)
             }
             "Storages.isExistentStorage" => Ok(Value::Integer(i64::from(
-                save_storage::path(&self.storage.project, &self.save_dir, &arg(0)?.text())
-                    .is_ok_and(|p| p.is_file())
+                self.selected_file(&arg(0)?.text())
+                    .is_some_and(Path::is_file)
+                    || save_storage::path(&self.storage.project, &self.save_dir, &arg(0)?.text())
+                        .is_ok_and(|p| p.is_file())
                     || self.storage.resolve(&arg(0)?.text()).is_ok(),
             ))),
             "Storages.extractStorageName"
@@ -814,6 +829,9 @@ impl Host for Services {
             }
             "Storages.getPlacedPath" => {
                 let name = arg(0)?.text();
+                if let Some(path) = self.selected_file(&name) {
+                    return Ok(Value::string(&format!("file://.{}", path.display())));
+                }
                 if let Ok(path) = save_storage::path(&self.storage.project, &self.save_dir, &name)
                     && path.is_file()
                 {
@@ -906,6 +924,8 @@ impl Session {
             "desktopTop",
             "desktopWidth",
             "desktopHeight",
+            "personalPath",
+            "appDataPath",
         ] {
             vm.register_native_property(&system, name, Some(&format!("System.get:{name}")), None)?;
         }
@@ -948,6 +968,7 @@ impl Session {
             "Scripts.getClassNames",
             "Scripts.setCallMissing",
             "Storages.addAutoPath",
+            "Storages.selectFile",
             "Storages.isExistentStorage",
             "Storages.getPlacedPath",
             "Storages.getFullPath",
@@ -977,6 +998,7 @@ impl Session {
                 displays: Vec::new(),
                 image_cache: graphics::ImageCache::new(graphics::automatic_limit()),
                 app_locks: app_lock::AppLocks::default(),
+                file_dialogs: file_dialog::State::default(),
                 async_triggers: async_trigger::State::default(),
                 continuous_handlers: Vec::new(),
                 events: scheduler::EventQueue::default(),
