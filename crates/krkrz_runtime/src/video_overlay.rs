@@ -1,4 +1,4 @@
-//! VideoOverlay state, FFmpeg media decoding, and session-clock playback.
+//! VideoOverlay state, built-in MPEG decoding, and session-clock playback.
 //! Follows visual/VideoOvlIntf.cpp and visual/win32/VideoOvlImpl.cpp.
 //! Frames and PCM share the host clock used by timers and sound buffers.
 use crate::{Services, Session};
@@ -481,10 +481,8 @@ impl Video {
             } else if self.looping {
                 position %= movie.duration_ms;
             }
-            let at = (position * 48.0) as usize;
             for channel in 0..2 {
-                frame[channel] +=
-                    movie.audio.get(at * 2 + channel).copied().unwrap_or(0.0) * gain[channel];
+                frame[channel] += movie.audio_sample(position, channel) * gain[channel];
             }
         }
     }

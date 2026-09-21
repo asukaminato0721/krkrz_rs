@@ -24,13 +24,25 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-Movie playback and the movie integration tests require `ffmpeg` and `ffprobe`
-on PATH. MPEG frames stream through a bounded decoder; stereo PCM is mixed on
-the session clock.
+Movie playback uses the bundled pure Rust MPEG-1/2 decoder, with MPEG audio
+(MP1/2/3), AC-3 and DVD LPCM support. No external decoder executable is required.
+Video frames are decoded incrementally; mono/stereo PCM is mixed on the session
+clock. Other movie codecs and field-coded MPEG pictures are unsupported.
+Backward seeks restart video decoding from the beginning with bounded memory.
 
 The workspace builds independently of sibling repositories. `Cargo.lock` pins
 Rust dependencies. Research checkouts, extracted scripts and media belong outside
 the source tree, for example `$XDG_CACHE_HOME/krkrz_rs`.
+
+GitHub Actions builds release archives for Linux, macOS and Windows on x86_64
+and ARM64, plus FreeBSD x86_64. Each archive contains `krkrz_engine` and
+`krkrz_tool`, with movie decoding built in.
+The workflow builds on branch pushes, pull requests and manual dispatches.
+Native Linux, macOS ARM64 and Windows x86_64 jobs also run the built-in decoder
+and VideoOverlay tests, including playback with an empty PATH.
+Successful branch pushes update the rolling `pre-release` release.
+Gameplay validation currently focuses on Linux; the other platforms have build
+coverage only. Mobile and browser packages are not available yet.
 
 See [library substitutions](docs/library-substitutions.md) for the AMV bit reader,
 matrix operations and real-FFT adapters, including compatibility checks and

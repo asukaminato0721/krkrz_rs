@@ -223,3 +223,29 @@ fn frame_change_detection_keeps_overlay_video_live_and_removes_hidden_frames() {
             .is_none()
     );
 }
+
+#[test]
+fn movie_playback_without_external_programs() {
+    const CHILD: &str = "KRKRZ_TEST_BUILTIN_MOVIE";
+    if std::env::var_os(CHILD).is_some() {
+        movie_frames_pcm_pause_seek_and_eof_use_session_clock();
+        movie_loop_and_period_callbacks_follow_frame_progress();
+        overlay_frames_clip_to_window_bounds_and_respect_visibility();
+        return;
+    }
+    let empty_path = tempfile::tempdir().unwrap();
+    let status = std::process::Command::new(std::env::current_exe().unwrap())
+        .args([
+            "--exact",
+            "movie_playback_without_external_programs",
+            "--nocapture",
+        ])
+        .env(CHILD, "1")
+        .env("PATH", empty_path.path())
+        .status()
+        .unwrap();
+    assert!(
+        status.success(),
+        "built-in playback must work with an empty PATH"
+    );
+}

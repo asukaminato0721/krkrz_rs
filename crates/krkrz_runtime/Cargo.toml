@@ -5,6 +5,7 @@ edition.workspace = true
 license = "MIT AND BSD-3-Clause"
 
 [dependencies]
+na_mpeg2_decoder = { path = "../na_mpeg2_decoder" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

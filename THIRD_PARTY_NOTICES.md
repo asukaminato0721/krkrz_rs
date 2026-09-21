@@ -254,3 +254,12 @@ PE32/PE32+ resource parsing and ICO group reconstruction use `pelite` 0.10.0
 the resulting ICO image. The application reads the user's installed executable
 without loading or executing it. Tests construct synthetic PE resources; no
 original game executable, icon, or artwork is distributed with this repository.
+
+## Built-in MPEG decoder
+
+`crates/na_mpeg2_decoder` vendors the library from `shiinario_rs` revision
+`0136492569d1b6599fa8b6fbc5a8adbccff0cfbc`, originally copied from `siglus_rs`
+revision `91b0882ea938638c9eebe5e10e93c7f1be4fab61`. It is licensed under
+MPL-2.0; the full license and source provenance are recorded in that crate's
+`LICENSE-MPL-2.0` and `README.md`. MPEG audio uses Symphonia, and AC-3 uses
+oxideav-ac3. No external decoder executable or native codec library is used.

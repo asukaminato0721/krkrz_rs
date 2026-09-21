@@ -1,0 +1,220 @@
+name: Build Artifacts
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - name: linux-aarch64
+            os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+          - name: macos-arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+          - name: macos-x86_64
+            os: macos-15
+            target: x86_64-apple-darwin
+          - name: windows-x86_64
+            os: windows-2022
+            target: x86_64-pc-windows-msvc
+          - name: windows-arm64
+            os: windows-2022
+            target: aarch64-pc-windows-msvc
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            pkg-config \
+            libasound2-dev \
+            libudev-dev \
+            libx11-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcb1-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libvulkan-dev
+
+      - name: Test built-in movie decoding
+        if: matrix.name != 'macos-x86_64' && matrix.name != 'windows-arm64'
+        shell: bash
+        run: |
+          cargo test --locked -p na_mpeg2_decoder
+          cargo test --locked -p krkrz_runtime --lib video_overlay::decoder
+          cargo test --locked -p krkrz_runtime --test video_overlay
+
+      - name: Build (release)
+        run: cargo build --release --locked -p krkrz_cli --bins --target ${{ matrix.target }} --verbose
+
+      - name: Package Unix artifact
+        if: runner.os != 'Windows'
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+          ARTIFACT_NAME: krkrz-${{ matrix.name }}
+        run: |
+          mkdir -p dist
+          tar -C "target/${BUILD_TARGET}/release" \
+            -czf "dist/${ARTIFACT_NAME}.tar.gz" \
+            krkrz_engine krkrz_tool \
+            -C "$PWD" README.md THIRD_PARTY_NOTICES.md \
+            -C crates/na_mpeg2_decoder LICENSE-MPL-2.0
+
+      - name: Package Windows artifact
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          BUILD_TARGET: ${{ matrix.target }}
+          ARTIFACT_NAME: krkrz-${{ matrix.name }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path @(
+            "target/$env:BUILD_TARGET/release/krkrz_engine.exe",
+            "target/$env:BUILD_TARGET/release/krkrz_tool.exe",
+            "README.md",
+            "THIRD_PARTY_NOTICES.md",
+            "crates/na_mpeg2_decoder/LICENSE-MPL-2.0"
+          ) -DestinationPath "dist/$env:ARTIFACT_NAME.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: krkrz-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+
+  freebsd:
+    name: freebsd-x86_64
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build FreeBSD artifact
+        uses: vmactions/freebsd-vm@v1
+        with:
+          release: "14.4"
+          arch: x86_64
+          usesh: true
+          sync: rsync
+          copyback: true
+          envs: CARGO_TERM_COLOR
+          prepare: |
+            set -e
+            pkg update
+            pkg install -y \
+              git rust pkgconf cmake ninja gmake llvm19 \
+              alsa-lib libX11 libXcursor libXi libXrandr libXinerama \
+              libxcb wayland libxkbcommon vulkan-loader
+          run: |
+            set -e
+            cargo build --release --locked -p krkrz_cli --bins --verbose
+            mkdir -p dist
+            tar -C target/release -czf dist/krkrz-freebsd-x86_64.tar.gz \
+              krkrz_engine krkrz_tool \
+              -C "$PWD" README.md THIRD_PARTY_NOTICES.md \
+              -C crates/na_mpeg2_decoder LICENSE-MPL-2.0
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: krkrz-freebsd-x86_64
+          path: dist/krkrz-freebsd-x86_64.tar.gz
+          if-no-files-found: error
+
+  prerelease:
+    name: Publish rolling prerelease
+    if: github.event_name == 'push' && !startsWith(github.ref, 'refs/tags/')
+    needs: [build, freebsd]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: krkrz-prerelease
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read workspace version
+        id: version
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import tomllib
+          from pathlib import Path
+
+          data = tomllib.loads(Path("Cargo.toml").read_text(encoding="utf-8"))
+          print(f"version={data['workspace']['package']['version']}")
+          PY
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: krkrz-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          Rolling prerelease from a branch push.
+
+          Version: v${VERSION}
+          Commit: ${GITHUB_SHA}
+
+          Desktop archives contain krkrz_engine and krkrz_tool.
+          MPEG movie decoding is built in; no external decoder is required.
+          EOF
+
+          if gh release view pre-release >/dev/null 2>&1; then
+            gh release delete pre-release --cleanup-tag --yes
+          fi
+
+          gh release create pre-release dist/* \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "krkrz v${VERSION} pre-release (${short_sha})" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"
