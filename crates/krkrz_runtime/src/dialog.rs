@@ -8,12 +8,21 @@ use std::collections::{BTreeMap, BTreeSet};
 struct Exports {
     methods: Vec<String>,
     properties: Vec<String>,
-    constants: BTreeMap<String, i64>,
+    constants: BTreeMap<String, Constant>,
 }
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum Constant {
+    Integer(i64),
+    Text(String),
+}
+mod modal;
+pub use modal::{InputDialog, InputField};
 #[derive(Default)]
 pub(crate) struct State {
     links: BTreeSet<String>,
     objects: BTreeMap<(usize, String), Object>,
+    input_handler: Option<modal::InputHandler>,
 }
 #[derive(Clone, Default)]
 struct Template {
@@ -23,7 +32,7 @@ struct Template {
 #[derive(Clone)]
 enum Object {
     Pending,
-    Dialog { modeless: bool, template: Vec<u8> },
+    Dialog(Box<modal::Dialog>),
     Template(Template),
     Blob(Vec<u8>),
 }
@@ -85,7 +94,11 @@ impl State {
                 )?;
             }
             for (k, v) in e.constants {
-                vm.set_member(&class, &Value::string(&k), Value::Integer(v))?;
+                let value = match v {
+                    Constant::Integer(v) => Value::Integer(v),
+                    Constant::Text(v) => Value::string(&v),
+                };
+                vm.set_member(&class, &Value::string(&k), value)?;
             }
             if name != "WIN32Dialog" {
                 vm.register_native_static_value(&root, &name, class)?;
@@ -200,10 +213,7 @@ impl Services {
                         matches!(arg(0)?, Value::Object(_)),
                         "WIN32Dialog owner must be an object or null"
                     );
-                    Object::Dialog {
-                        modeless: false,
-                        template: vec![],
-                    }
+                    Object::Dialog(Box::new(modal::Dialog::new(arg(0)?.clone())))
                 }
                 "Header" | "Items" => Object::Template(Template::default()),
                 "Blob" => {
@@ -238,6 +248,11 @@ impl Services {
                 "WIN32Dialog.{op}: platform operation is not implemented"
             )));
         }
+        if class == "WIN32Dialog"
+            && let Some(result) = self.modal_dialog_call(vm, method, context, args, budget)?
+        {
+            return Ok(result);
+        }
         let object = self
             .dialogs
             .objects
@@ -247,18 +262,16 @@ impl Services {
             return Ok(Value::Void);
         }
         match object {
-            Object::Dialog { modeless, .. } => match method {
-                "get:modeless" => return Ok(Value::Integer((*modeless).into())),
+            Object::Dialog(dialog) => match method {
+                "get:modeless" => return Ok(Value::Integer((dialog.modeless).into())),
                 "get:isValid" | "get:HWND" | "get:propsheet" | "get:progress" => {
                     return Ok(Value::Integer(0));
                 }
                 "get:icon" => return Ok(Value::Void),
                 "set:modeless" => {
                     let value = arg(0)?.truth()?;
-                    if let Object::Dialog { modeless, .. } =
-                        self.dialogs.objects.get_mut(&key).unwrap()
-                    {
-                        *modeless = value;
+                    if let Object::Dialog(dialog) = self.dialogs.objects.get_mut(&key).unwrap() {
+                        dialog.modeless = value;
                     }
                     return Ok(Value::Void);
                 }
@@ -287,6 +300,8 @@ impl Services {
                     else {
                         bail!("makeTemplate requires a Header");
                     };
+                    let head = head.clone();
+                    let mut items = Vec::new();
                     let mut bytes = vec![];
                     head.write(&mut bytes, true);
                     for v in &args[1..] {
@@ -301,16 +316,17 @@ impl Services {
                             bail!("makeTemplate requires Items");
                         };
                         item.write(&mut bytes, false);
+                        items.push(item.clone());
                         ensure!(
                             bytes.len() <= 16 * 1024 * 1024,
                             "dialog template exceeds 16 MiB limit"
                         );
                     }
                     charge(budget, (bytes.len() as u64).div_ceil(256))?;
-                    if let Object::Dialog { template, .. } =
-                        self.dialogs.objects.get_mut(&key).unwrap()
-                    {
-                        *template = bytes;
+                    if let Object::Dialog(dialog) = self.dialogs.objects.get_mut(&key).unwrap() {
+                        dialog.template = bytes;
+                        dialog.header = head;
+                        dialog.items = items;
                     }
                     return Ok(Value::Void);
                 }
@@ -461,10 +477,12 @@ impl Services {
 impl State {
     pub(crate) fn gc_trace(&self, id: usize, out: &mut Vec<Value>) {
         for ((owner, _), value) in &self.objects {
-            if *owner == id
-                && let Object::Template(template) = value
-            {
-                out.extend(template.fields.values().cloned());
+            if *owner == id {
+                match value {
+                    Object::Template(template) => out.extend(template.fields.values().cloned()),
+                    Object::Dialog(dialog) => out.push(dialog.owner.clone()),
+                    _ => {}
+                }
             }
         }
     }
@@ -482,11 +500,11 @@ mod tests {
         let mut session = Session::open(dir.path(), Some(saves.path()), None, 100_000).unwrap();
         session.execute_storage("test.tjs").unwrap();
         assert_eq!(session.services.dialogs.objects.len(), 1);
-        let Object::Dialog { template, .. } =
-            session.services.dialogs.objects.values().next().unwrap()
+        let Object::Dialog(dialog) = session.services.dialogs.objects.values().next().unwrap()
         else {
             panic!("dialog missing")
         };
+        let template = &dialog.template;
         assert_eq!(template.len(), 80);
         assert_eq!(&template[..4], &[1, 0, 255, 255]);
         assert_eq!(&template[12..18], &[64, 0, 0, 0, 1, 0]);

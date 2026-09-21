@@ -15,7 +15,11 @@ fn run(source: &str, budget: u64) -> anyhow::Result<Value> {
 }
 #[test]
 fn original_dialog_corpus() {
-    let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/dialog.json")).unwrap();
+    let mut cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/dialog.json")).unwrap();
+    cases.extend(
+        serde_json::from_str::<Vec<Case>>(include_str!("fixtures/dialog_control_classes.json"))
+            .unwrap(),
+    );
     for c in cases {
         assert_eq!(
             run(&c.source, 500_000).unwrap_or_else(|e| panic!("{}: {e:#}", c.name)),

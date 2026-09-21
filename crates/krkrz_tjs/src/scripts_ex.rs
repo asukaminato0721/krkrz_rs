@@ -65,10 +65,10 @@ impl Vm {
                 })
                 .collect();
         }
-        if matches!(self.objects[id].kind, ObjectKind::Array(_)) {
-            return Err(unsupported(
-                "ScriptsEx Array member reflection requires the complete native Array member table",
-            ));
+        if visible_only && matches!(self.objects[id].kind, ObjectKind::Array(_)) {
+            // tTJSArrayObject::EnumMembers returns TJS_E_NOTIMPL. ScriptsEx
+            // ignores that status and returns its initially empty key array.
+            return Ok(Vec::new());
         }
         let keys: Vec<_> = if id == 0 {
             self.globals

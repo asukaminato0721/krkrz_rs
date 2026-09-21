@@ -3,7 +3,9 @@ use anyhow::{Context, Result};
 use krkrz_runtime::{InputEvent, Session, WindowFrameState, display::Monitor, window::WindowState};
 use krkrz_tjs::Value;
 use std::{
+    cell::Cell,
     collections::{BTreeMap, BTreeSet},
+    rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -102,6 +104,14 @@ fn icon_executable(project: &std::path::Path) -> Result<Option<std::path::PathBu
 
 pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Result<()> {
     let mut event_loop = EventLoop::new()?;
+    let dialog_wait = Rc::new(Cell::new(Duration::ZERO));
+    let wait = dialog_wait.clone();
+    session.services.set_input_dialog_handler(move |request| {
+        let start = Instant::now();
+        let answer = crate::input_dialog::show(request);
+        wait.set(wait.get() + start.elapsed());
+        answer
+    });
     let mut host = Host {
         session,
         audio: if audio_enabled {
@@ -113,6 +123,7 @@ pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Re
         icon,
         started: false,
         origin: Instant::now(),
+        dialog_wait,
         next_tick: Instant::now(),
         error: None,
         messages: 0,
@@ -128,6 +139,7 @@ struct Host<'a> {
     icon: Option<Icon>,
     started: bool,
     origin: Instant,
+    dialog_wait: Rc<Cell<Duration>>,
     next_tick: Instant,
     error: Option<anyhow::Error>,
     messages: usize,
@@ -177,6 +189,7 @@ impl Host<'_> {
         self.session.startup()?;
         self.started = true;
         self.origin = Instant::now();
+        self.dialog_wait.set(Duration::ZERO);
         self.sync_windows(event_loop)
     }
     fn sync_windows(&mut self, event_loop: &dyn ActiveEventLoop) -> Result<()> {
@@ -490,6 +503,8 @@ impl ApplicationHandler for Host<'_> {
         if self.error.is_some() || !self.started {
             return;
         }
+        // A synchronous input dialog pauses the script clock while the user types.
+        self.origin += self.dialog_wait.take();
         let tick_started = Instant::now();
         if tick_started >= self.next_tick {
             if self.session.vm.should_collect_garbage() {

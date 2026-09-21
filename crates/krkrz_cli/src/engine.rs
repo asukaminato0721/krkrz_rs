@@ -1,4 +1,5 @@
 mod audio_output;
+mod input_dialog;
 mod native_host;
 mod presenter;
 mod project;
@@ -9,6 +10,8 @@ use std::{io::Write, path::PathBuf};
 #[derive(Parser)]
 #[command(about = "Rust Kirikiri compatibility engine (experimental)")]
 struct Args {
+    #[arg(long, hide = true)]
+    native_dialog: bool,
     #[arg(long, default_value = ".")]
     project_dir: PathBuf,
     /// Save directory (defaults to <project-dir>/savedata, including existing saves).
@@ -34,6 +37,9 @@ struct Args {
 fn main() -> Result<()> {
     env_logger::init();
     let args = Args::parse();
+    if args.native_dialog {
+        return input_dialog::run_child();
+    }
     let storage = args.project.open(&args.project_dir)?;
     let mut session = Session::from_storage(
         storage,

@@ -7,7 +7,7 @@ mod audio_mixer;
 pub mod compositor;
 mod continuous;
 mod csv;
-mod dialog;
+pub mod dialog;
 pub mod display;
 mod draw_device;
 mod font;
