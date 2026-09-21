@@ -1,11 +1,10 @@
+//! Native file pickers, isolated from the game's event loop in a child process.
+use crate::file_dialog_egui::{matches_filter, with_default_extension};
 use anyhow::{Result, ensure};
-use eframe::egui;
 use krkrz_runtime::file_dialog::{FileDialog, FileSelection};
 use std::{
-    cell::RefCell,
     io::{Read, Write},
-    path::PathBuf,
-    rc::Rc,
+    path::{Path, PathBuf},
 };
 
 pub fn run_child() -> Result<()> {
@@ -19,347 +18,222 @@ pub fn run_child() -> Result<()> {
         request.filters.len() <= 128,
         "file dialog filter count exceeds limit"
     );
-    let result = Rc::new(RefCell::new(None));
-    let output = result.clone();
-    let options = eframe::NativeOptions {
-        renderer: eframe::Renderer::Glow,
-        viewport: egui::ViewportBuilder::default()
-            .with_title(&request.title)
-            .with_inner_size([720.0, 520.0])
-            .with_min_inner_size([440.0, 300.0]),
-        ..Default::default()
+    ensure!(
+        !request.filters.iter().any(|s| s.contains('\0')),
+        "NUL in file dialog filter"
+    );
+    let result = match native_filters(&request.filters) {
+        Some(filters) => show(&request, &filters),
+        // rfd accepts extension lists, whereas TJS also allows patterns such
+        // as `stand_??.bmp`. Preserve those filters with the existing UI.
+        None => crate::file_dialog_egui::show(request)?,
     };
-    eframe::run_native(
-        "krkrz-file-dialog",
-        options,
-        Box::new(move |cc| {
-            crate::input_dialog::install_fonts(&cc.egui_ctx);
-            Ok(Box::new(FileApp::new(request, output)))
-        }),
-    )
-    .map_err(|e| anyhow::anyhow!("egui file dialog: {e}"))?;
-    std::io::stdout().write_all(&serde_json::to_vec(&*result.borrow())?)?;
+    std::io::stdout().write_all(&serde_json::to_vec(&result)?)?;
     Ok(())
 }
 
-struct FileApp {
-    directory: PathBuf,
-    location: String,
-    name: String,
-    filters: Vec<String>,
-    filter: usize,
-    entries: Vec<(String, bool)>,
-    error: String,
-    save: bool,
-    default_ext: String,
-    overwrite: Option<PathBuf>,
-    result: Rc<RefCell<Option<FileSelection>>>,
+#[derive(Debug, PartialEq)]
+struct Filter {
+    label: String,
+    extensions: Vec<String>,
 }
-impl FileApp {
-    fn new(request: FileDialog, result: Rc<RefCell<Option<FileSelection>>>) -> Self {
-        let mut directory = request.initial_dir;
-        let initial = PathBuf::from(&request.name);
-        let mut name = request.name;
-        if initial.is_absolute()
-            && let Some(parent) = initial.parent()
-            && parent.is_dir()
-        {
-            directory = parent.to_path_buf();
-            name = initial
-                .file_name()
-                .map_or_else(String::new, |s| s.to_string_lossy().into_owned());
+
+fn native_filters(filters: &[String]) -> Option<Vec<Filter>> {
+    filters
+        .iter()
+        .map(|filter| {
+            let (label, patterns) = filter.split_once('|').unwrap_or((filter, filter));
+            let extensions: Option<Vec<_>> = patterns
+                .split(';')
+                .map(|pattern| {
+                    let pattern = pattern.trim();
+                    if matches!(pattern, "" | "*" | "*.*") {
+                        return Some("*".into());
+                    }
+                    pattern
+                        .strip_prefix("*.")
+                        .filter(|ext| !ext.is_empty() && !ext.contains(['*', '?', '/', '\\']))
+                        .map(str::to_owned)
+                })
+                .collect();
+            Some(Filter {
+                label: label.into(),
+                extensions: extensions?,
+            })
+        })
+        .collect()
+}
+
+fn initial_index(request: &FileDialog) -> usize {
+    request
+        .filter_index
+        .saturating_sub(1)
+        .min(request.filters.len().saturating_sub(1))
+}
+
+fn initial_path(request: &FileDialog) -> (PathBuf, String) {
+    let path = if request.name.is_empty() {
+        None
+    } else {
+        Some(request.initial_dir.join(&request.name))
+    };
+    let directory = path
+        .as_ref()
+        .and_then(|p| p.parent())
+        .filter(|p| p.is_dir())
+        .unwrap_or(&request.initial_dir)
+        .to_path_buf();
+    let name = path
+        .as_ref()
+        .filter(|p| p.parent().is_some_and(|p| p.is_dir()))
+        .and_then(|p| p.file_name())
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| request.name.clone());
+    (directory, name)
+}
+
+fn show(request: &FileDialog, filters: &[Filter]) -> Option<FileSelection> {
+    let index = initial_index(request);
+    let (directory, name) = initial_path(request);
+    let name = if request.save {
+        extend(PathBuf::from(name), request, index)
+            .to_string_lossy()
+            .into_owned()
+    } else {
+        name
+    };
+    let mut dialog = rfd::FileDialog::new()
+        .set_title(&request.title)
+        .set_directory(directory)
+        .set_file_name(name);
+    // rfd has no initial-filter setter; present the requested filter first.
+    for i in std::iter::once(index).chain((0..filters.len()).filter(|&i| i != index)) {
+        if let Some(filter) = filters.get(i) {
+            dialog = dialog.add_filter(&filter.label, &filter.extensions);
         }
-        while !directory.is_dir() && directory.parent().is_some() {
-            directory.pop();
-        }
-        if !directory.is_dir() {
-            directory = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("/"));
-        }
-        let filters = if request.filters.is_empty() {
-            vec!["All files|*".into()]
+    }
+    loop {
+        let path = if request.save {
+            dialog.clone().save_file()
         } else {
-            request.filters
+            dialog.clone().pick_file()
+        }?;
+        let filter_index = result_index(request, &path);
+        let final_path = if request.save {
+            extend(path.clone(), request, filter_index)
+        } else {
+            path.clone()
         };
-        let filter = request
-            .filter_index
-            .saturating_sub(1)
-            .min(filters.len() - 1);
-        let mut app = Self {
-            location: directory.to_string_lossy().into_owned(),
-            directory,
-            name,
-            filters,
-            filter,
-            entries: Vec::new(),
-            error: String::new(),
-            result,
-            save: request.save,
-            default_ext: request.default_ext,
-            overwrite: None,
-        };
-        app.refresh();
-        app
-    }
-    fn refresh(&mut self) {
-        self.entries.clear();
-        self.error.clear();
-        let result = (|| -> std::io::Result<()> {
-            for entry in std::fs::read_dir(&self.directory)?.take(20_001) {
-                let entry = entry?;
-                if self.entries.len() >= 20_000 {
-                    self.error =
-                        "This directory has too many entries; enter a filename directly.".into();
-                    break;
-                }
-                self.entries.push((
-                    entry.file_name().to_string_lossy().into_owned(),
-                    entry.path().is_dir(),
-                ));
-            }
-            Ok(())
-        })();
-        if let Err(e) = result {
-            self.error = e.to_string();
+        // Native pickers confirm the path they return. If our default suffix
+        // changes that path to an existing file, reopen with the final name so
+        // overwrite confirmation covers the actual destination.
+        if final_path != path && final_path.exists() {
+            dialog = dialog
+                .set_directory(final_path.parent().unwrap_or(Path::new("/")))
+                .set_file_name(final_path.file_name()?.to_string_lossy());
+            continue;
         }
-        self.entries.sort_by(|a, b| {
-            b.1.cmp(&a.1)
-                .then_with(|| a.0.to_lowercase().cmp(&b.0.to_lowercase()))
+        return Some(FileSelection {
+            path: final_path,
+            filter_index: filter_index + 1,
         });
-    }
-    fn navigate(&mut self, path: PathBuf) {
-        match path.canonicalize() {
-            Ok(path) if path.is_dir() => {
-                self.directory = path;
-                self.location = self.directory.to_string_lossy().into_owned();
-                self.name.clear();
-                self.refresh();
-            }
-            _ => self.error = "Cannot open this directory.".into(),
-        }
-    }
-    fn open(&mut self, ctx: &egui::Context) {
-        if self.name.is_empty() {
-            self.error = "Enter a file name.".into();
-            return;
-        }
-        let mut path = self.directory.join(&self.name);
-        if path.is_dir() {
-            self.navigate(path);
-            return;
-        }
-        if self.save {
-            path = with_default_extension(path, &self.filters[self.filter], &self.default_ext);
-            let Some(parent) = path
-                .parent()
-                .and_then(|p| p.canonicalize().ok())
-                .filter(|p| p.is_dir())
-            else {
-                self.error = "The destination directory does not exist.".into();
-                return;
-            };
-            let Some(name) = path.file_name() else {
-                self.error = "Enter a file name.".into();
-                return;
-            };
-            let path = parent.join(name);
-            match std::fs::symlink_metadata(&path) {
-                Ok(metadata) if metadata.file_type().is_file() => self.overwrite = Some(path),
-                Ok(_) => {
-                    self.error =
-                        "Select a regular file; directories and links cannot be replaced.".into()
-                }
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => self.accept(path, ctx),
-                Err(e) => self.error = e.to_string(),
-            }
-            return;
-        }
-        match path.canonicalize() {
-            Ok(path) if path.is_file() => self.accept(path, ctx),
-            _ => self.error = "Select an existing file.".into(),
-        }
-    }
-    fn accept(&mut self, path: PathBuf, ctx: &egui::Context) {
-        *self.result.borrow_mut() = Some(FileSelection {
-            path,
-            filter_index: self.filter + 1,
-        });
-        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-    }
-}
-impl eframe::App for FileApp {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        let ctx = ui.ctx().clone();
-        egui::CentralPanel::default().show(ui, |ui| {
-            ui.horizontal(|ui| {
-                if ui.button("Up").clicked()
-                    && let Some(parent) = self.directory.parent()
-                {
-                    self.navigate(parent.to_path_buf());
-                }
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.location)
-                        .desired_width((ui.available_width() - 45.0).max(50.0)),
-                );
-                if ui.button("Go").clicked() {
-                    self.navigate(PathBuf::from(&self.location));
-                }
-            });
-            ui.separator();
-            let patterns = self.filters[self.filter]
-                .split_once('|')
-                .map_or(self.filters[self.filter].as_str(), |(_, p)| p);
-            let mut open = false;
-            let mut enter = None;
-            egui::ScrollArea::vertical()
-                .max_height((ui.available_height() - 115.0).max(60.0))
-                .auto_shrink([false, false])
-                .show(ui, |ui| {
-                    for (name, directory) in &self.entries {
-                        if !directory && !matches_filter(name, patterns) {
-                            continue;
-                        }
-                        let label = if *directory {
-                            format!("{name}/")
-                        } else {
-                            name.clone()
-                        };
-                        let response = ui.selectable_label(self.name == *name, label);
-                        if response.clicked() {
-                            self.name = name.clone();
-                        }
-                        if response.double_clicked() {
-                            if *directory {
-                                enter = Some(self.directory.join(name));
-                            } else {
-                                self.name = name.clone();
-                                open = true;
-                            }
-                        }
-                    }
-                });
-            if let Some(path) = enter {
-                self.navigate(path);
-            }
-            ui.separator();
-            ui.horizontal(|ui| {
-                ui.label("File name");
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.name).desired_width(ui.available_width()),
-                );
-            });
-            egui::ComboBox::from_id_salt("filter")
-                .selected_text(self.filters[self.filter].split('|').next().unwrap_or(""))
-                .show_ui(ui, |ui| {
-                    for (i, filter) in self.filters.iter().enumerate() {
-                        ui.selectable_value(
-                            &mut self.filter,
-                            i,
-                            filter.split('|').next().unwrap_or(""),
-                        );
-                    }
-                });
-            ui.horizontal(|ui| {
-                if ui.button(if self.save { "Save" } else { "Open" }).clicked() {
-                    open = true;
-                }
-                if ui.button("Cancel").clicked() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
-            });
-            if !self.error.is_empty() {
-                ui.colored_label(egui::Color32::LIGHT_RED, &self.error);
-            }
-            if open {
-                self.open(&ctx);
-            }
-        });
-        if let Some(path) = self.overwrite.clone() {
-            egui::Modal::new(egui::Id::new("overwrite")).show(&ctx, |ui| {
-                ui.heading("Replace existing file?");
-                ui.label(path.to_string_lossy());
-                ui.horizontal(|ui| {
-                    if ui.button("Replace").clicked() {
-                        self.accept(path, &ctx);
-                    }
-                    if ui.button("Cancel").clicked() {
-                        self.overwrite = None;
-                    }
-                });
-            });
-            if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-                self.overwrite = None;
-            }
-        } else if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-        }
     }
 }
 
-fn with_default_extension(mut path: PathBuf, filter: &str, default: &str) -> PathBuf {
-    if path.extension().is_none() && !default.is_empty() {
-        // Win32 uses the selected filter's first concrete extension, falling
-        // back to lpstrDefExt for wildcard filters. Explicit suffixes survive.
-        let extension = filter
-            .split_once('|')
-            .and_then(|(_, patterns)| patterns.split(';').next())
-            .and_then(|p| p.trim().strip_prefix("*."))
-            .filter(|ext| !ext.is_empty() && !ext.contains(['*', '?', '/', '\\']))
-            .unwrap_or(default.trim_start_matches('.'));
-        if !extension.is_empty() && !extension.contains(['/', '\\']) {
-            path.set_extension(extension);
-        }
+fn extend(path: PathBuf, request: &FileDialog, index: usize) -> PathBuf {
+    if path.as_os_str().is_empty() {
+        return path;
     }
-    path
+    with_default_extension(
+        path,
+        request
+            .filters
+            .get(index)
+            .map(String::as_str)
+            .unwrap_or("*"),
+        &request.default_ext,
+    )
 }
 
-fn matches_filter(name: &str, patterns: &str) -> bool {
-    patterns.split(';').any(|pattern| {
-        let pattern = pattern.trim().to_lowercase();
-        if pattern == "*.*" || pattern == "*" || pattern.is_empty() {
-            return true;
-        }
-        let name: Vec<_> = name.to_lowercase().chars().collect();
-        let mut matches = vec![false; name.len() + 1];
-        matches[0] = true;
-        for c in pattern.chars() {
-            if c == '*' {
-                for i in 1..matches.len() {
-                    matches[i] |= matches[i - 1];
-                }
-            } else {
-                for i in (1..matches.len()).rev() {
-                    matches[i] = matches[i - 1] && (c == '?' || c == name[i - 1]);
-                }
-                matches[0] = false;
-            }
-        }
-        matches[name.len()]
-    })
+fn result_index(request: &FileDialog, path: &Path) -> usize {
+    // The public rfd API returns only a path. Infer a unique concrete match;
+    // preserve the requested index for overlapping filters or no match.
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let mut matching = request
+        .filters
+        .iter()
+        .enumerate()
+        .filter_map(|(i, filter)| {
+            let patterns = filter.split_once('|').map_or(filter.as_str(), |(_, p)| p);
+            let concrete = patterns
+                .split(';')
+                .filter(|p| !matches!(p.trim(), "" | "*" | "*.*"))
+                .any(|pattern| matches_filter(&name, pattern));
+            concrete.then_some(i)
+        });
+    match (matching.next(), matching.next()) {
+        (Some(i), None) => i,
+        _ => initial_index(request),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn windows_file_patterns_are_case_insensitive_and_allow_multiple_extensions() {
-        assert!(matches_filter("画像.BMP", "*.bmp;*.png"));
-        assert!(matches_filter("README", "*.*"));
-        assert!(matches_filter("画像1.png", "画像?.png"));
-        assert!(!matches_filter("image.txt", "*.bmp;*.png"));
+    fn request() -> FileDialog {
+        FileDialog {
+            title: "Select".into(),
+            initial_dir: "/tmp".into(),
+            name: "image".into(),
+            filters: vec![
+                "BMP|*.bmp".into(),
+                "PNG|*.png;*.apng".into(),
+                "All|*.*".into(),
+            ],
+            filter_index: 2,
+            save: true,
+            default_ext: ".bmp".into(),
+        }
     }
     #[test]
-    fn save_extensions_follow_filters_without_replacing_explicit_suffixes() {
-        for (name, filter, default, expected) in [
-            ("画像", "BMP|*.bmp", ".bmp", "画像.bmp"),
-            ("image", "PNG|*.png;*.apng", ".bmp", "image.png"),
-            ("image", "All|*.*", ".bmp", "image.bmp"),
-            ("image.png", "BMP|*.bmp", ".bmp", "image.png"),
-            ("image", "BMP|*.bmp", "", "image"),
-        ] {
-            assert_eq!(
-                with_default_extension(name.into(), filter, default),
-                PathBuf::from(expected)
-            );
-        }
+    fn native_filters_preserve_labels_extensions_and_wildcards() {
+        let filters = native_filters(&request().filters).unwrap();
+        assert_eq!(
+            filters[1],
+            Filter {
+                label: "PNG".into(),
+                extensions: vec!["png".into(), "apng".into()]
+            }
+        );
+        assert_eq!(filters[2].extensions, ["*"]);
+        assert!(native_filters(&["Images|image?.bmp".into()]).is_none());
+        assert!(native_filters(&["Images|*.bmp;stand_*.png".into()]).is_none());
+    }
+    #[test]
+    fn results_use_original_filter_indices_and_keep_explicit_extensions() {
+        let mut r = request();
+        assert_eq!(initial_index(&r), 1);
+        assert_eq!(result_index(&r, Path::new("画像.BMP")), 0);
+        assert_eq!(result_index(&r, Path::new("image.apng")), 1);
+        assert_eq!(extend("image".into(), &r, 1), Path::new("image.png"));
+        assert_eq!(extend("image.bmp".into(), &r, 1), Path::new("image.bmp"));
+        r.filters.push("More PNG|*.png".into());
+        assert_eq!(result_index(&r, Path::new("image.png")), 1);
+        r.filter_index = 100;
+        assert_eq!(initial_index(&r), 3);
+        r.filters.clear();
+        assert_eq!(result_index(&r, Path::new("image")), 0);
+        assert_eq!(extend("image".into(), &r, 0), Path::new("image.bmp"));
+    }
+    #[test]
+    fn initial_names_preserve_subdirectories_and_unicode() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join("sub")).unwrap();
+        let mut r = request();
+        r.initial_dir = dir.path().into();
+        r.name = "sub/画像".into();
+        assert_eq!(initial_path(&r), (dir.path().join("sub"), "画像".into()));
+        r.name = "missing/画像".into();
+        assert_eq!(initial_path(&r), (dir.path().into(), r.name.clone()));
     }
 }
