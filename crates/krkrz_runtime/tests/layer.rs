@@ -12,7 +12,7 @@ fn session(source: &str, budget: u64) -> (tempfile::TempDir, tempfile::TempDir, 
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("case.tjs"), source).unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, budget).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, budget).unwrap();
     session.execute_storage("case.tjs").unwrap();
     (project, saves, session)
 }
@@ -269,7 +269,7 @@ fn original_universal_transition_pixels() {
         .unwrap();
         // Open after creating the asset so the storage directory catalog sees it.
         let mut session =
-            Session::open(project.path(), Some(saves.path()), false, 1_000_000).unwrap();
+            Session::open(project.path(), Some(saves.path()), None, 1_000_000).unwrap();
         let value = session
             .vm
             .execute(
@@ -358,8 +358,7 @@ fn saved_thumbnail_reloads_after_restart_and_prefetch_respects_limits() {
         Value::Integer(75)
     );
     drop(original);
-    let mut restarted =
-        Session::open(project.path(), Some(saves.path()), false, 1_000_000).unwrap();
+    let mut restarted = Session::open(project.path(), Some(saves.path()), None, 1_000_000).unwrap();
     let setup = "var w=new Window(),s=new Layer(w,null);System.graphicCacheLimit=280;System.touchImages(['missing.png','bmp32.bmp','bmp24.bmp'],140);s.loadImages('bmp32');";
     restarted
         .vm

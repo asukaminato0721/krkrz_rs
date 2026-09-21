@@ -12,7 +12,7 @@ fn session(source: &str, budget: u64) -> (tempfile::TempDir, tempfile::TempDir, 
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("case.tjs"), source).unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, budget).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, budget).unwrap();
     session.execute_storage("case.tjs").unwrap();
     (project, saves, session)
 }
@@ -46,8 +46,7 @@ fn saved_call_resumes_in_fresh_session_and_survives_inserted_lines() {
     let setup = "Plugins.link('KAGParserEx.dll');global.p=new KAGParser();";
     std::fs::write(project.path().join("setup.tjs"), setup).unwrap();
     {
-        let mut session =
-            Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
         session.execute_storage("setup.tjs").unwrap();
         assert_eq!(
             session
@@ -67,7 +66,7 @@ fn saved_call_resumes_in_fresh_session_and_survives_inserted_lines() {
         ";new comment\n\n*a\n[call target=*sub]R[p]\n[end]\n*sub\nS[return]",
     )
     .unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     session.execute_storage("setup.tjs").unwrap();
     assert_eq!(session.evaluate("Scripts.exec('p.restore(Scripts.evalStorage(System.dataPath+\"parser.tjs\"));var a=p.getNextTag().text;var b=p.getNextTag().text;return a+b+\":\"+p.callStackDepth;')").unwrap(),Value::string("SR:0"));
 }
@@ -123,5 +122,43 @@ p.restore(s);p.getNextTag();p.getNextTag();
         )
         .unwrap();
         assert!(session.execute_storage("test.tjs").is_err(), "{mutation}");
+    }
+}
+
+#[test]
+fn standard_parser_plugin_and_extended_alias_keep_existing_instances() {
+    for plugins in [
+        ["KAGParser.dll", "KAGParserEx.dll"],
+        ["KAGParserEx.dll", "KAGParser.dll"],
+    ] {
+        let (project, _save, mut s) = session("", 100_000);
+        std::fs::write(
+            project.path().join("story.ks"),
+            "[jump target=*next]\n*next\nHello[p]",
+        )
+        .unwrap();
+        s.evaluate(&format!("Plugins.link('{}')", plugins[0]))
+            .unwrap();
+        s.evaluate("Scripts.exec('global.p=new KAGParser();p.loadScenario(\"story.ks\");')")
+            .unwrap();
+        assert_eq!(
+            s.evaluate("p.getNextTag().text").unwrap(),
+            Value::string("H")
+        );
+        s.evaluate(&format!("Plugins.link('{}')", plugins[1]))
+            .unwrap();
+        assert_eq!(
+            s.evaluate("p.getNextTag().text").unwrap(),
+            Value::string("e")
+        );
+        s.evaluate("p.goToLabel('*next')").unwrap();
+        assert_eq!(
+            s.evaluate("p.getNextTag().text").unwrap(),
+            Value::string("H")
+        );
+        assert_eq!(
+            s.evaluate("Plugins.getList().count").unwrap(),
+            Value::Integer(2)
+        );
     }
 }

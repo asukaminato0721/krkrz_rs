@@ -4,7 +4,7 @@ use krkrz_tjs::Value;
 fn session() -> (tempfile::TempDir, tempfile::TempDir, Session, Value) {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 10_000_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 10_000_000).unwrap();
     session.evaluate("Scripts.exec('global.w=new Window();global.p=new Layer(w,null);p.setSize(8,8);p.setImageSize(8,8);global.a=new Layer(w,p);a.setSize(4,4);a.setImageSize(4,4);a.fillRect(0,0,4,4,0xffff0000);a.visible=true;global.b=new Layer(w,p);b.setSize(4,4);b.setImageSize(4,4);b.fillRect(0,0,4,4,0xff0000ff);b.visible=true;')").unwrap();
     let window = session.evaluate("w").unwrap();
     (project, saves, session, window)

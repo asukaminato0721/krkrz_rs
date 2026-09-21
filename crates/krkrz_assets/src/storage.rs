@@ -90,6 +90,39 @@ impl Storage {
         self.archives.push(archive);
         Ok(())
     }
+    /// Select a known cipher only after decrypted bytes pass the archive's
+    /// checksum. Renaming a game directory or executable does not affect this.
+    pub fn detect_cipher(&mut self) -> Result<Option<&'static str>> {
+        let probe =
+            self.catalog
+                .iter()
+                .filter_map(|(name, &index)| {
+                    let entry = &self.archives[index].entries[name];
+                    (entry.encrypted && entry.size > 0 && entry.size <= 4 * 1024 * 1024)
+                        .then_some((name.clone(), index, entry.size))
+                })
+                .min_by_key(|(name, _, size)| (name != "startup.tjs", *size));
+        let Some((name, index, _)) = probe else {
+            ensure!(
+                !self
+                    .catalog
+                    .iter()
+                    .any(|(name, &index)| self.archives[index].entries[name].encrypted),
+                "encrypted XP3 archives require an explicit cipher profile; no bounded probe entry is available"
+            );
+            return Ok(None);
+        };
+        for &(label, json) in crate::cx::BUILTIN_PROFILES {
+            let cipher = CxEncryption::from_json(json)?;
+            if self.archives[index].verify(&name, Some(&cipher)).is_ok() {
+                self.cipher = Some(cipher);
+                return Ok(Some(label));
+            }
+        }
+        anyhow::bail!(
+            "encrypted XP3 archives do not match a known Cx profile; provide an explicit cipher profile"
+        )
+    }
     pub fn add_search_path(&mut self, path: &str) -> Result<()> {
         let path = self.normalize(path, true)?;
         self.search_paths.retain(|existing| existing != &path);

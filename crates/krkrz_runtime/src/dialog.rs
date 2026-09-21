@@ -479,7 +479,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("test.tjs"),"Plugins.link('win32dialog.dll');var d=new WIN32Dialog(null),h=new WIN32Dialog.Header(),i=new WIN32Dialog.Items();h.store(%[style:64,title:'D',pointSize:12,weight:400,typeFace:'A']);h.dlgItems=1;i.store(%[id:42,x:1,y:2,cx:3,cy:4,windowClass:128,title:'OK']);d.makeTemplate(h,i);h.store(%[title:'changed']);invalidate h;invalidate i;").unwrap();
-        let mut session = Session::open(dir.path(), Some(saves.path()), false, 100_000).unwrap();
+        let mut session = Session::open(dir.path(), Some(saves.path()), None, 100_000).unwrap();
         session.execute_storage("test.tjs").unwrap();
         assert_eq!(session.services.dialogs.objects.len(), 1);
         let Object::Dialog { template, .. } =

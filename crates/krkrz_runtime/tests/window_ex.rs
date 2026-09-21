@@ -12,7 +12,7 @@ fn run(source: &str, budget: u64) -> anyhow::Result<Value> {
     let project = tempfile::tempdir()?;
     let saves = tempfile::tempdir()?;
     std::fs::write(project.path().join("case.tjs"), source)?;
-    Session::open(project.path(), Some(saves.path()), false, budget)?.execute_storage("case.tjs")
+    Session::open(project.path(), Some(saves.path()), None, budget)?.execute_storage("case.tjs")
 }
 #[test]
 fn original_window_ex_corpus() {
@@ -41,7 +41,7 @@ fn deferred_maximize_minimize_restore_and_query_veto() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("startup.tjs"),format!("{SETUP}var w=new Window();w.setPos(40,50);w.setSize(320,240);w.registerExEvent();var events=[],veto=true;w.onMaximizeQuery=function(){{global.events.add('query');return global.veto;}};w.onMaximize=function(){{global.events.add('max');}};w.onMinimize=function(){{global.events.add('min');}};w.onShow=function(){{global.events.add('show');}};")).unwrap();
-    let mut s = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut s = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     s.startup().unwrap();
     s.evaluate("w.maximize()").unwrap();
     assert_eq!(s.evaluate("w.maximized").unwrap(), Value::Integer(0));
@@ -95,7 +95,7 @@ fn menu_bitmap_is_an_independent_alpha_thresholded_snapshot() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("case.tjs"), format!("{SETUP}global.w=new Window();global.m=new MenuItem(w,'item');w.menu.add(m);global.p=new Layer(w,null);p.setSize(2,1);p.setImageSize(2,1);p.setMainPixel(0,0,0x123456);p.setMainPixel(1,0,0xabcdef);p.setMaskPixel(0,0,63);p.setMaskPixel(1,0,64);m.bmpItem=p;m.rightJustify=true;p.setMainPixel(0,0,0);invalidate p;")).unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     session.execute_storage("case.tjs").unwrap();
     let menu = session.evaluate("m").unwrap();
     let appearance = session.menu_appearance(&menu).unwrap();
@@ -133,7 +133,7 @@ fn system_menu_snapshot_reset_and_selection_callback() {
     std::fs::write(project.path().join("case.tjs"), format!(
         "{SETUP}global.w=new Window();w.registerExEvent();global.selected=void;w.onExSystemMenuSelected=function(item){{global.selected=item.state;return 7;}};global.leaf=%[caption:'first',state:42,checked:1,group:1];global.disabled=%[caption:'disabled',state:99,enabled:0];w.exSystemMenu=[%[caption:'hidden',visible:0],%[caption:'-'],%[caption:'parent',children:[leaf,disabled]]];"
     )).unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 50_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 50_000).unwrap();
     session.execute_storage("case.tjs").unwrap();
     let window = session.evaluate("w").unwrap();
     let items = session.system_menu(&window).unwrap();

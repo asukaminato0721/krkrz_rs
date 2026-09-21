@@ -24,7 +24,7 @@ fn original_missing_format_and_math_corpus() {
             let saves = tempfile::tempdir().unwrap();
             std::fs::write(project.path().join("case.tjs"), case.source).unwrap();
             let mut session =
-                Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+                Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
             assert_eq!(
                 session
                     .execute_storage("case.tjs")
@@ -41,7 +41,7 @@ fn original_missing_format_and_math_corpus() {
 fn missing_budget_abort_releases_reentrancy_guard() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     std::fs::write(
         project.path().join("case.tjs"),
         r#"

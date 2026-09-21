@@ -52,7 +52,7 @@ fn unavailable_saved_face_uses_one_fallback_for_layout_and_drawing() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("synthetic.ttf"), FONT).unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     let source = r#"
 Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);
 var w=new Window(),l=new Layer(w,null),f=l.font;
@@ -80,7 +80,7 @@ fn original_add_font_api_registers_private_font_data() {
     let saves = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("synthetic.ttf"), FONT).unwrap();
     std::fs::write(project.path().join("invalid.ttf"), b"not a font").unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     let program = krkrz_tjs::compile("fonts", "Plugins.link('PackinOne.dll');return [typeof System.addFont('missing.ttf'),System.addFont('invalid.ttf',false),System.addFont('synthetic.ttf',false),System.addFont('synthetic.ttf',false)].join('|');").unwrap();
     let result = session
         .vm
@@ -114,8 +114,7 @@ fn original_font_measurement_corpus() {
         let saves = tempfile::tempdir().unwrap();
         std::fs::write(project.path().join("synthetic.ttf"), FONT).unwrap();
         std::fs::write(project.path().join("case.tjs"), case.source).unwrap();
-        let mut session =
-            Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
         assert_eq!(
             session
                 .execute_storage("case.tjs")
@@ -181,8 +180,7 @@ fn fontations_text_pixels_and_quantified_original_differences() {
             original.source.split_once("var h=").unwrap().0
         );
         std::fs::write(project.path().join("case.tjs"), source).unwrap();
-        let mut session =
-            Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
         let output = session.execute_storage("case.tjs").unwrap().text();
         let values: Vec<u32> = output.split(',').map(|s| s.parse().unwrap()).collect();
         let actual: Vec<[u32; 2]> = values.as_chunks::<2>().0.to_vec();

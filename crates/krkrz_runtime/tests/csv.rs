@@ -16,7 +16,7 @@ fn original_csv_corpus() {
         let project = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
         std::fs::write(project.path().join("case.tjs"), &case.source).unwrap();
-        let mut session = Session::open(project.path(), Some(saves.path()), false, 10_000).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 10_000).unwrap();
         let value = session
             .execute_storage("case.tjs")
             .unwrap_or_else(|e| panic!("{}: {e:#}", case.name));
@@ -32,7 +32,7 @@ fn callback_reinitialization_shares_execution_budget() {
 p.doLine=function(a,n){p.init("forever");};
 try { p.parse("forever"); } catch { return 42; }"#;
     std::fs::write(project.path().join("case.tjs"), source).unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 1000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 1000).unwrap();
     let error = session.execute_storage("case.tjs").unwrap_err();
     assert!(error.downcast_ref::<VmAbort>().is_some(), "{error:#}");
 }

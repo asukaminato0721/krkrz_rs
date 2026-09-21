@@ -46,7 +46,7 @@ fn main() -> Result<()> {
         project.path().join("tone.wav.sli"),
         "#2.00\nLabel { Position=1024; Name='early'; }\nLabel { Position=96000; Name='middle'; }",
     )?;
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000)?;
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000)?;
     session.evaluate(&format!(
         "Scripts.exec('global.a=new WaveSoundBuffer(null);var v=new WaveSoundBuffer.PhaseVocoder();v.window={window};v.time={time};v.pitch={pitch};a.filters.add(v);a.open(\"tone.wav\");')"
     ))?;

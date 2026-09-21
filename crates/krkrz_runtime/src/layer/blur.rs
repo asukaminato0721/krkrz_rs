@@ -106,7 +106,7 @@ mod tests {
         let project = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
         let mut session =
-            crate::Session::open(project.path(), Some(saves.path()), false, 1000).unwrap();
+            crate::Session::open(project.path(), Some(saves.path()), None, 1000).unwrap();
         let pixels = vec![17, 31, 57, 255, 91, 0, 11, 32];
         session.services.layers.insert(
             123,

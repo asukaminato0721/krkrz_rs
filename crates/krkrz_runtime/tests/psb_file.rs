@@ -24,7 +24,7 @@ fn original_psb_file_corpus() {
         )
         .unwrap();
         std::fs::write(project.path().join("case.tjs"), &case.source).unwrap();
-        let result = Session::open(project.path(), Some(saves.path()), false, 100_000)
+        let result = Session::open(project.path(), Some(saves.path()), None, 100_000)
             .unwrap()
             .execute_storage("case.tjs")
             .unwrap_or_else(|error| panic!("{}: {error:#}", case.name));
@@ -53,6 +53,6 @@ fn invalidation_rejects_stale_views_without_crashing() {
     "#,
     )
     .unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 10000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 10000).unwrap();
     assert_eq!(session.startup().unwrap(), Value::Integer(2));
 }

@@ -17,8 +17,7 @@ fn library_box_blur_pixels() {
         let project = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
         std::fs::write(project.path().join("case.tjs"), case.source).unwrap();
-        let mut session =
-            Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
         assert_eq!(
             session
                 .execute_storage("case.tjs")
@@ -45,7 +44,7 @@ fn blur_bounds_large_radii_and_handles_short_images_deterministically() {
     "#,
     )
     .unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     assert_eq!(
         session.execute_storage("case.tjs").unwrap(),
         Value::string("3430008:128")
@@ -66,7 +65,7 @@ fn blur_bounds_large_radii_and_handles_short_images_deterministically() {
 fn box_blur_averages_only_the_available_neighborhood() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     let source = "var w=new Window(),l=new Layer(w,null);l.setImageSize(3,1);l.face=dfOpaque;l.fillRect(0,0,3,1,0xff000000);l.setMainPixel(1,0,0xffffff);l.doBoxBlur(1,0);return [l.getMainPixel(0,0),l.getMainPixel(1,0),l.getMainPixel(2,0)].join(',');";
     let value = session
         .vm

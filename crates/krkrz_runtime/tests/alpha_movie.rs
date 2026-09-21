@@ -15,7 +15,7 @@ fn execute(source: &str, budget: u64) -> anyhow::Result<Value> {
         include_bytes!("fixtures/empty.amv"),
     )?;
     std::fs::write(project.path().join("case.tjs"), source)?;
-    Session::open(project.path(), Some(saves.path()), false, budget)?.execute_storage("case.tjs")
+    Session::open(project.path(), Some(saves.path()), None, budget)?.execute_storage("case.tjs")
 }
 #[test]
 fn original_alpha_movie_metadata_and_transport_corpus() {
@@ -65,7 +65,7 @@ fn decoded_frame_updates_layer_pixels_geometry_and_transport() {
     .unwrap();
     std::fs::write(project.path().join("case.tjs"),
         "Plugins.link('AlphaMovie.dll');var w=new Window();var primary=new Layer(w,null);var l=new Layer(w,primary);var a=new AlphaMovie();a.open(System.exePath+'dc.amv');a.setPosition(7,-3);a.play();var n=a.showNextImage(l);var result=[n,l.left,l.top,l.width,l.height,l.imageWidth,l.imageHeight,l.getMainPixel(0,0),l.getMaskPixel(0,0),l.getMainPixel(8,8),l.getMaskPixel(8,8)];a.stop();result.add(a.showNextImage(l));return result.join('|');").unwrap();
-    let result = Session::open(project.path(), Some(saves.path()), false, 100_000)
+    let result = Session::open(project.path(), Some(saves.path()), None, 100_000)
         .unwrap()
         .execute_storage("case.tjs")
         .unwrap();

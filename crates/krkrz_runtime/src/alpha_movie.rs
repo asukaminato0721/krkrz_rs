@@ -265,7 +265,7 @@ mod tests {
         )
         .unwrap();
         std::fs::write(project.path().join("startup.tjs"), "Plugins.link('AlphaMovie.dll');class A extends AlphaMovie {function A(){super.AlphaMovie();open(System.exePath+'empty.amv');}}var a=new A();invalidate a;").unwrap();
-        let mut session = Session::open(project.path(), Some(saves.path()), false, 10_000).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 10_000).unwrap();
         session.startup().unwrap();
         assert!(session.services.alpha_movies.is_empty());
     }

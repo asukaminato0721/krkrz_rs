@@ -215,3 +215,28 @@ fn no_overwrite_or_path_escape() {
     let out = tempfile::NamedTempFile::new().unwrap();
     assert!(s.extract("a", out.path()).is_err());
 }
+
+#[test]
+fn cipher_detection_uses_archive_contents_without_a_game_executable() {
+    let project = tempfile::tempdir().unwrap();
+    let plain = b"// any project name\nreturn 42;";
+    let path = project.path().join("data.xp3");
+    std::fs::write(&path, fixture("startup.tjs", plain, true, false)).unwrap();
+    let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+    assert_eq!(storage.detect_cipher().unwrap(), Some("otome-domain"));
+    assert_eq!(storage.read("startup.tjs").unwrap(), plain);
+
+    // Corrupt the uncompressed segment. Detection must not silently install
+    // a profile when decryption fails the archive checksum.
+    let mut corrupt = fixture("startup.tjs", plain, true, false);
+    corrupt[19] ^= 1;
+    std::fs::write(&path, corrupt).unwrap();
+    let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+    assert!(storage.detect_cipher().is_err());
+    assert!(storage.read("startup.tjs").is_err());
+
+    std::fs::write(&path, fixture("startup.tjs", plain, false, false)).unwrap();
+    let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+    assert_eq!(storage.detect_cipher().unwrap(), None);
+    assert_eq!(storage.read("startup.tjs").unwrap(), plain);
+}

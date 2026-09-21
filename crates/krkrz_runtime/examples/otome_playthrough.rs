@@ -330,7 +330,12 @@ fn main() -> Result<()> {
         }
     }
     let limit = limit.unwrap_or(3_600_000);
-    let mut session = Session::open(&project, Some(Path::new(&args[1])), true, 1_000_000_000_000)?;
+    let mut session = Session::open(
+        &project,
+        Some(Path::new(&args[1])),
+        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        1_000_000_000_000,
+    )?;
     session.services.trace_enabled = false;
     let result = run(
         &mut session,

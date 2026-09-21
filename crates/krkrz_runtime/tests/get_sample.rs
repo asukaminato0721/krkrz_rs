@@ -16,7 +16,7 @@ fn original_get_sample_corpus() {
         let project = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
         std::fs::write(project.path().join("case.tjs"), &case.source).unwrap();
-        let result = Session::open(project.path(), Some(saves.path()), false, 10_000)
+        let result = Session::open(project.path(), Some(saves.path()), None, 10_000)
             .unwrap()
             .execute_storage("case.tjs")
             .unwrap_or_else(|error| panic!("{}: {error:#}", case.name));

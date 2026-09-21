@@ -14,7 +14,7 @@ fn session(source: &str, budget: u64) -> (tempfile::TempDir, tempfile::TempDir, 
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("case.tjs"), source).unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, budget).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, budget).unwrap();
     session.execute_storage("case.tjs").unwrap();
     (project, saves, session)
 }

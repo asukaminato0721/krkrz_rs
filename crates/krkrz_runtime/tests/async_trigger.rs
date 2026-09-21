@@ -5,7 +5,7 @@ use serde::Deserialize;
 fn session() -> (tempfile::TempDir, tempfile::TempDir, Session) {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
-    let session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     (project, saves, session)
 }
 fn execute(s: &mut Session, source: &str) -> Value {

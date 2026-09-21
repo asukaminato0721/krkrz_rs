@@ -19,7 +19,7 @@ fn original_continuous_corpus() {
     for case in cases.as_array().unwrap() {
         let project = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
-        let mut s = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+        let mut s = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
         execute(&mut s, case["source"].as_str().unwrap());
         for t in 0..7 {
             s.tick(t * 16).unwrap();
@@ -42,7 +42,7 @@ fn original_continuous_corpus() {
 fn live_handler_order_context_and_paint() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
-    let mut s = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut s = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     execute(
         &mut s,
         r#"
@@ -77,7 +77,7 @@ fn live_handler_order_context_and_paint() {
 fn failed_handlers_are_removed_and_budget_is_shared() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
-    let mut s = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut s = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     execute(
         &mut s,
         "var n=0;function fail(){n++;throw new Exception('callback failure');}System.addContinuousHandler(fail);",

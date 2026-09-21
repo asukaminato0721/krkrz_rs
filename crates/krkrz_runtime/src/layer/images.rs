@@ -445,7 +445,7 @@ mod tests {
         .write_png(&project.path().join("shared.png"))
         .unwrap();
         let mut session =
-            crate::Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+            crate::Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
         session.services.image_cache.set_limit(4096);
         let (first, _) = session
             .services

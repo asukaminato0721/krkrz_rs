@@ -5,7 +5,7 @@ const SETUP: &str =
 fn session() -> (tempfile::TempDir, tempfile::TempDir, Session) {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     std::fs::write(project.path().join("setup.tjs"), SETUP).unwrap();
     session.execute_storage("setup.tjs").unwrap();
     (project, saves, session)

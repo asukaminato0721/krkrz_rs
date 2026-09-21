@@ -1,31 +1,24 @@
 use anyhow::{Context, Result};
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, Subcommand};
 use krkrz_assets::{
-    cx::CxEncryption,
     media::{Audio, Image},
     sli::LoopInfo,
-    storage::Storage,
     text,
 };
-use krkrz_core::Limits;
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::{self, Write},
     path::PathBuf,
 };
+mod project;
 mod replay;
-#[derive(Clone, Copy, ValueEnum)]
-enum Profile {
-    None,
-    OtomeDomain,
-}
 #[derive(Parser)]
 #[command(about = "Inspect and verify Kirikiri resources directly from XP3 archives")]
 struct Args {
     #[arg(long, default_value = ".", global = true)]
     project_dir: PathBuf,
-    #[arg(long, value_enum, default_value = "none", global = true)]
-    profile: Profile,
+    #[command(flatten)]
+    project: project::ProjectArgs,
     #[command(subcommand)]
     command: Command,
 }
@@ -118,11 +111,7 @@ fn main() -> Result<()> {
 }
 fn run() -> Result<()> {
     let args = Args::parse();
-    let cipher = match args.profile {
-        Profile::None => None,
-        Profile::OtomeDomain => Some(CxEncryption::otome_domain()?),
-    };
-    let mut storage = Storage::open(&args.project_dir, cipher, Limits::default())?;
+    let mut storage = args.project.open(&args.project_dir)?;
     let mut out = io::BufWriter::new(io::stdout().lock());
     match args.command {
         Command::Amv { name } => serde_json::to_writer_pretty(
@@ -199,10 +188,10 @@ fn run() -> Result<()> {
             frame_window,
         } => {
             if runtime {
-                let mut session = krkrz_runtime::Session::open(
-                    &args.project_dir,
+                let mut session = krkrz_runtime::Session::from_storage(
+                    storage,
                     save_dir.as_deref(),
-                    matches!(args.profile, Profile::OtomeDomain),
+                    args.project.exe.as_deref(),
                     budget,
                 )?;
                 if let Some(epoch) = epoch_ms {

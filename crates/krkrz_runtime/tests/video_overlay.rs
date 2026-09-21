@@ -16,8 +16,7 @@ fn original_video_overlay_corpus() {
         let project = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
         std::fs::write(project.path().join("case.tjs"), &case.source).unwrap();
-        let mut session =
-            Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
         assert_eq!(
             session
                 .execute_storage("case.tjs")
@@ -38,7 +37,7 @@ fn bad_owners_and_unavailable_movie_backend_are_explicit_errors() {
         b"synthetic unsupported movie",
     )
     .unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     assert!(session.evaluate("new VideoOverlay(null)").is_err());
     assert!(session.evaluate("new VideoOverlay(%[])").is_err());
     session
@@ -56,7 +55,7 @@ fn bad_owners_and_unavailable_movie_backend_are_explicit_errors() {
 fn invalid_zoom_and_missing_layer_coordinates_do_not_panic() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     session
         .evaluate(
             "Scripts.exec('global.w=new Window();global.v=new VideoOverlay(w);v.mode=vomLayer;')",
@@ -78,7 +77,7 @@ fn movie_session() -> (Session, tempfile::TempDir, tempfile::TempDir) {
         include_bytes!("fixtures/video_overlay.mpg"),
     )
     .unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 10_000_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 10_000_000).unwrap();
     session.evaluate("Scripts.exec('global.w=new Window();global.l=new Layer(w,null);l.setSize(32,24);global.v=new VideoOverlay(w);v.mode=vomLayer;v.layer1=l;global.events=[];v.onStatusChanged=function(s){events.add(s);};v.onPeriod=function(r){events.add(\"period\"+r);};v.open(\"movie.mpg\");')").unwrap();
     (session, project, saves)
 }
@@ -181,7 +180,7 @@ fn installed_movie_decodes_seeks_and_finishes() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
     std::fs::copy(path, project.path().join("movie.mpg")).unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 50_000_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 50_000_000).unwrap();
     session.evaluate("Scripts.exec('global.w=new Window();global.l=new Layer(w,null);l.setSize(1280,720);global.v=new VideoOverlay(w);v.mode=vomLayer;v.layer1=l;global.last=\"\";v.onStatusChanged=function(s){last=s;};v.open(\"movie.mpg\");v.play();')").unwrap();
     session.tick(100).unwrap();
     assert!(!session.take_audio().is_empty());

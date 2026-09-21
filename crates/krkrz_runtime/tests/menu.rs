@@ -11,7 +11,7 @@ fn execute(source: &str) -> anyhow::Result<Value> {
     let project = tempfile::tempdir()?;
     let saves = tempfile::tempdir()?;
     std::fs::write(project.path().join("case.tjs"), source)?;
-    Session::open(project.path(), Some(saves.path()), false, 100_000)?.execute_storage("case.tjs")
+    Session::open(project.path(), Some(saves.path()), None, 100_000)?.execute_storage("case.tjs")
 }
 #[test]
 fn original_menu_model_corpus() {
@@ -32,7 +32,7 @@ fn pending_clicks_are_batched_and_cancelled_on_invalidation() {
     std::fs::write(project.path().join("start.tjs"), "Plugins.link('menu.dll');var w=new Window(),m=new MenuItem(w,'a'),n=new MenuItem(w,'b'),count=0;w.menu.add(m);w.menu.add(n);m.onClick=function(){count++;m.fireClick();invalidate n;};n.onClick=function(){count+=100;};m.fireClick();n.fireClick();").unwrap();
     std::fs::write(project.path().join("count.tjs"), "return count;").unwrap();
     std::fs::write(project.path().join("stop.tjs"), "invalidate m;").unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     session.execute_storage("start.tjs").unwrap();
     assert_eq!(
         session.execute_storage("count.tjs").unwrap(),
@@ -68,7 +68,7 @@ fn clicks_require_enabled_ancestors_and_a_window_root() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("start.tjs"), "Plugins.link('menu.dll');var w=new Window(),p=new MenuItem(w),m=new MenuItem(w),count=0;m.onClick=function(){count++;};p.add(m);m.fireClick();w.menu.add(p);p.enabled=0;m.fireClick();p.enabled=1;m.visible=0;m.fireClick();").unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     session.execute_storage("start.tjs").unwrap();
     session.dispatch_events().unwrap();
     assert_eq!(session.evaluate("count").unwrap(), Value::Integer(1));
@@ -78,7 +78,7 @@ fn callbacks_share_the_execution_budget() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("start.tjs"), "Plugins.link('menu.dll');var w=new Window(),m=new MenuItem(w);w.menu.add(m);m.onClick=function(){while(true){}};m.fireClick();").unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 1000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 1000).unwrap();
     session.execute_storage("start.tjs").unwrap();
     let err = session.dispatch_events().unwrap_err();
     assert!(err.downcast_ref::<VmAbort>().is_some(), "{err:#}");

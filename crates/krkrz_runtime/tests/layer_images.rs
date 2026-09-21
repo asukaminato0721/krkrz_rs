@@ -21,7 +21,7 @@ fn session() -> (tempfile::TempDir, tempfile::TempDir, Session) {
         let entry = entry.unwrap();
         std::fs::copy(entry.path(), project.path().join(entry.file_name())).unwrap();
     }
-    let session = Session::open(project.path(), Some(saves.path()), false, 1_000_000).unwrap();
+    let session = Session::open(project.path(), Some(saves.path()), None, 1_000_000).unwrap();
     (project, saves, session)
 }
 

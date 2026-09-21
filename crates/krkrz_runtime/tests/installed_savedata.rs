@@ -54,7 +54,7 @@ return total;
 "#
     );
     std::fs::write(project.path().join("audit.tjs"), script)?;
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000_000)?;
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000_000)?;
     let count = session.execute_storage("audit.tjs")?.integer()?;
     assert!(count > 1000, "expected nested real game state");
     for (i, name) in names.iter().enumerate() {

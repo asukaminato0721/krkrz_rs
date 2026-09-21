@@ -16,7 +16,7 @@ fn original_plugin_corpus() {
     let saves = tempfile::tempdir().unwrap();
     for case in cases {
         std::fs::write(project.path().join("case.tjs"), &case.source).unwrap();
-        let mut session = Session::open(project.path(), Some(saves.path()), false, 10_000).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 10_000).unwrap();
         let result = session
             .execute_storage("case.tjs")
             .unwrap_or_else(|e| panic!("{}: {e:#}", case.name));
@@ -38,7 +38,7 @@ fn cyclic_structures_and_missing_plugin_operations_fail_explicitly() {
             format!("Plugins.link('ScriptsEx.dll');{source}"),
         )
         .unwrap();
-        let mut session = Session::open(project.path(), Some(saves.path()), false, 10_000).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 10_000).unwrap();
         let error = session.execute_storage("case.tjs").unwrap_err();
         assert!(error.downcast_ref::<VmAbort>().is_some(), "{error:#}");
     }

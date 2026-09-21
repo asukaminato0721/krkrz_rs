@@ -345,7 +345,7 @@ mod tests {
             var layer = new Layer(w, null); layer.setSize(20, 10); layer.visible = true;
         "#).unwrap();
         let mut session =
-            Session::open(project.path(), Some(output.path()), false, 1_000_000).unwrap();
+            Session::open(project.path(), Some(output.path()), None, 1_000_000).unwrap();
         session.startup().unwrap();
         (project, output, session)
     }

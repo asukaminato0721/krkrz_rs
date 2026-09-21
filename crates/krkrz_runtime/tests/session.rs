@@ -15,7 +15,7 @@ t.interval=10;t.enabled=true;
 "#,
     )
     .unwrap();
-    let mut session = Session::open(dir.path(), Some(saves.path()), false, 10000).unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 10000).unwrap();
     session.startup().unwrap();
     session.tick(11).unwrap();
     assert_eq!(
@@ -54,7 +54,7 @@ fn nested_original_storage_calls_share_globals_and_budget() {
         "x=x+2; Debug.message('test', x);",
     )
     .unwrap();
-    let mut session = Session::open(dir.path(), Some(saves.path()), false, 100).unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 100).unwrap();
     session.services.trace_enabled = true;
     assert_eq!(session.startup().unwrap(), Value::Integer(3));
     assert_eq!(session.services.messages, ["test 3"]);
@@ -77,7 +77,7 @@ fn unsupported_call_is_an_error_with_storage_context() {
         "Plugins.link('required.dll');",
     )
     .unwrap();
-    let mut session = Session::open(dir.path(), Some(saves.path()), false, 100).unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 100).unwrap();
     let error = format!("{:#}", session.startup().unwrap_err());
     assert!(error.contains("startup.tjs:1:1"));
     assert!(error.contains("unsupported Kirikiri native operation: Plugins.link"));
@@ -91,7 +91,7 @@ fn nested_scripts_cannot_reset_execution_budget() {
         "Scripts.execStorage('startup.tjs');",
     )
     .unwrap();
-    let mut session = Session::open(dir.path(), Some(saves.path()), false, 10).unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 10).unwrap();
     assert!(format!("{:#}", session.startup().unwrap_err()).contains("execution budget exhausted"));
     assert_eq!(session.budget, 0);
 }
@@ -110,7 +110,7 @@ fn script_catch_cannot_hide_missing_plugins_or_compiled_script_support() {
         )
         .unwrap();
         std::fs::write(dir.path().join("binary.tjs"), b"TJS2").unwrap();
-        let mut session = Session::open(dir.path(), Some(saves.path()), false, 1000).unwrap();
+        let mut session = Session::open(dir.path(), Some(saves.path()), None, 1000).unwrap();
         let error = session.startup().unwrap_err();
         assert!(
             error.downcast_ref::<krkrz_tjs::VmAbort>().is_some(),
@@ -133,7 +133,7 @@ fn preprocessor_state_persists_across_script_calls_but_is_not_runtime_globals() 
         "@if(SLICE==7 && kirikiriz) var x=7; @endif @if(!SLICE) var x=99; @endif",
     )
     .unwrap();
-    let mut session = Session::open(dir.path(), Some(saves.path()), false, 1000).unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 1000).unwrap();
     assert_eq!(session.startup().unwrap(), Value::Integer(7));
     assert!(!session.vm.globals.contains_key("SLICE"));
 }
@@ -154,7 +154,7 @@ fn scripts_use_explicit_context_and_preserve_source_locations() {
     .unwrap();
     std::fs::write(dir.path().join("next.tjs"), "x+=1;").unwrap();
     std::fs::write(dir.path().join("expr.tjs"), "x*2").unwrap();
-    let mut session = Session::open(dir.path(), Some(saves.path()), false, 10_000).unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 10_000).unwrap();
     session.services.trace_enabled = true;
     assert_eq!(session.startup().unwrap(), Value::Integer(14));
     assert!(!session.vm.globals.contains_key("y"));
@@ -194,7 +194,7 @@ fn window_state_and_deferred_resize_callbacks_share_the_session() {
     "#,
     )
     .unwrap();
-    let mut session = Session::open(dir.path(), Some(saves.path()), false, 10_000).unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 10_000).unwrap();
     assert_eq!(session.startup().unwrap(), Value::Integer(1));
     assert_eq!(session.services.windows.len(), 2);
     let story = session
@@ -237,7 +237,7 @@ fn invalidation_releases_native_windows_and_cancels_queued_callbacks() {
         "#,
     )
     .unwrap();
-    let mut session = Session::open(dir.path(), Some(saves.path()), false, 10_000).unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 10_000).unwrap();
     assert_eq!(session.startup().unwrap(), Value::Integer(1));
     assert_eq!(session.services.windows.len(), 2);
     session.dispatch_events().unwrap();
@@ -255,7 +255,7 @@ fn invalidation_releases_native_windows_and_cancels_queued_callbacks() {
 fn declared_plugin_exports_do_not_hide_unimplemented_operations() {
     let dir = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
-    let mut session = Session::open(dir.path(), Some(saves.path()), false, 10_000).unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 10_000).unwrap();
     session.evaluate("Plugins.link('PackinOne.dll')").unwrap();
     session.evaluate("Plugins.link('KAGParserEx.dll')").unwrap();
     session
@@ -308,7 +308,7 @@ fn app_lock_excludes_other_processes_and_releases_with_session() {
     if let Ok(name) = std::env::var(CHILD) {
         let dir = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
-        let mut session = Session::open(dir.path(), Some(saves.path()), false, 100).unwrap();
+        let mut session = Session::open(dir.path(), Some(saves.path()), None, 100).unwrap();
         assert_eq!(
             session
                 .evaluate(&format!("System.createAppLock('{name}')"))
@@ -325,7 +325,7 @@ fn app_lock_excludes_other_processes_and_releases_with_session() {
         dir.path().file_name().unwrap().to_string_lossy()
     );
     let call = format!("System.createAppLock('{name}')");
-    let mut first = Session::open(dir.path(), Some(saves.path()), false, 1000).unwrap();
+    let mut first = Session::open(dir.path(), Some(saves.path()), None, 1000).unwrap();
     assert_eq!(first.evaluate(&call).unwrap(), Value::Integer(1));
     assert_eq!(first.evaluate(&call).unwrap(), Value::Integer(0));
     let status = std::process::Command::new(std::env::current_exe().unwrap())
@@ -338,6 +338,49 @@ fn app_lock_excludes_other_processes_and_releases_with_session() {
         .unwrap();
     assert!(status.success());
     drop(first);
-    let mut second = Session::open(dir.path(), Some(saves.path()), false, 1000).unwrap();
+    let mut second = Session::open(dir.path(), Some(saves.path()), None, 1000).unwrap();
     assert_eq!(second.evaluate(&call).unwrap(), Value::Integer(1));
+}
+
+#[test]
+fn executable_identity_is_independent_of_the_archive_cipher() {
+    let dir = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("AnotherNovel.exe"), []).unwrap();
+    std::fs::write(dir.path().join("unins000.exe"), []).unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 10000).unwrap();
+    assert_eq!(
+        session.evaluate("System.exeName").unwrap(),
+        Value::string(&dir.path().join("AnotherNovel.exe").to_string_lossy())
+    );
+    let storage =
+        krkrz_assets::storage::Storage::open(dir.path(), None, krkrz_core::Limits::default())
+            .unwrap();
+    let mut session = Session::from_storage(
+        storage,
+        Some(saves.path()),
+        Some(std::path::Path::new("AnotherNovel.exe")),
+        10000,
+    )
+    .unwrap();
+    assert_eq!(
+        session.evaluate("System.exeName").unwrap(),
+        Value::string(&dir.path().join("AnotherNovel.exe").to_string_lossy())
+    );
+}
+
+#[test]
+fn standalone_layer_image_plugin_registers_without_packinone() {
+    let project = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    let mut s = Session::open(project.path(), Some(saves.path()), None, 10000).unwrap();
+    s.evaluate("Plugins.link('layerExImage.dll')").unwrap();
+    assert_eq!(
+        s.evaluate("Plugins.getList().count").unwrap(),
+        Value::Integer(1)
+    );
+    s.evaluate("Scripts.exec('global.w=new Window();global.l=new Layer(w,null);')")
+        .unwrap();
+    let error = s.evaluate("l.light(0,0)").unwrap_err();
+    assert!(format!("{error:#}").contains("unsupported Layer operation: light"));
 }

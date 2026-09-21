@@ -10,7 +10,7 @@ fn main() -> Result<()> {
     let mut s = Session::open(
         Path::new(&project),
         Some(saves.path()),
-        true,
+        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
         1_000_000_000_000,
     )?;
     s.services.epoch_ms = 0;

@@ -16,8 +16,7 @@ fn original_phase_vocoder_corpus() {
         let project = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
         std::fs::write(project.path().join("case.tjs"), &case.source).unwrap();
-        let mut session =
-            Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
         assert_eq!(
             session
                 .execute_storage("case.tjs")
@@ -56,7 +55,7 @@ fn session() -> (tempfile::TempDir, tempfile::TempDir, Session) {
     )
     .unwrap();
     std::fs::write(project.path().join("startup.tjs"), "global.a=new WaveSoundBuffer(null);global.b=new WaveSoundBuffer(null);global.v=new WaveSoundBuffer.PhaseVocoder();v.window=256;v.time=0.5;a.filters.add(v);a.open('tone.wav');").unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     session.startup().unwrap();
     (project, saves, session)
 }

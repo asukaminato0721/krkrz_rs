@@ -3,6 +3,10 @@
 use anyhow::{Result, ensure};
 use serde::Deserialize;
 
+/// Named data profiles are independent of executable names and script behavior.
+pub const BUILTIN_PROFILES: &[(&str, &str)] =
+    &[("otome-domain", include_str!("../data/otome_domain_cx.json"))];
+
 #[derive(Deserialize)]
 struct Profile {
     m_mask: u32,

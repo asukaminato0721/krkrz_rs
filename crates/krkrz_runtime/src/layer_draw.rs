@@ -506,7 +506,7 @@ mod tests {
         "#,
         )
         .unwrap();
-        let mut session = Session::open(project.path(), Some(saves.path()), false, 10_000).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 10_000).unwrap();
         session.startup().unwrap();
         assert!(session.services.layer_draw.objects.is_empty());
     }

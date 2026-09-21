@@ -21,7 +21,7 @@ fn original_wave_corpus() {
         )
         .unwrap();
         std::fs::write(project.path().join("case.tjs"), &case.source).unwrap();
-        let result = Session::open(project.path(), Some(saves.path()), false, 10000)
+        let result = Session::open(project.path(), Some(saves.path()), None, 10000)
             .unwrap()
             .execute_storage("case.tjs")
             .unwrap_or_else(|error| panic!("{}: {error:#}", case.name));
@@ -48,7 +48,7 @@ fn original_wave_label_corpus() {
         )
         .unwrap();
         std::fs::write(project.path().join("case.tjs"), &case.source).unwrap();
-        let mut session = Session::open(project.path(), Some(saves.path()), false, 10000).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 10000).unwrap();
         assert_eq!(
             session
                 .execute_storage("case.tjs")
@@ -86,7 +86,7 @@ fn pcm_preview_loops_labels_and_eof() {
     "#,
     )
     .unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 50000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 50000).unwrap();
     session.startup().unwrap();
     let sound = session.evaluate("w").unwrap();
     let peak = (32767.0f64 / 32768.0).powi(2);
@@ -181,7 +181,7 @@ fn label_callback_cancels_stale_eof_and_later_labels() {
     "#,
     )
     .unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 10000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 10000).unwrap();
     session.startup().unwrap();
     let sound = session.evaluate("w").unwrap();
     session.render_sound_source(&sound, 5000).unwrap();
@@ -208,7 +208,7 @@ fn script_flags_control_conditional_pcm_links() {
         "#2.00\nLink { From=4; To=1; Condition=eq; RefValue=0; CondVar=0; }",
     )
     .unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 10000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 10000).unwrap();
     session
         .evaluate(
             "Scripts.exec(\"global.w=new WaveSoundBuffer(null);w.open('tone.wav');w.play();\")",

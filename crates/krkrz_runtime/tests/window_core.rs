@@ -12,7 +12,7 @@ fn run(source: &str, budget: u64) -> anyhow::Result<Value> {
     let project = tempfile::tempdir()?;
     let saves = tempfile::tempdir()?;
     std::fs::write(project.path().join("case.tjs"), source)?;
-    Session::open(project.path(), Some(saves.path()), false, budget)?.execute_storage("case.tjs")
+    Session::open(project.path(), Some(saves.path()), None, budget)?.execute_storage("case.tjs")
 }
 #[test]
 fn original_window_lifetime_and_context_corpus() {

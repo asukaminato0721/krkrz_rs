@@ -16,7 +16,7 @@ fn original_sound_control_corpus() {
         let project = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
         std::fs::write(project.path().join("case.tjs"), &case.source).unwrap();
-        let result = Session::open(project.path(), Some(saves.path()), false, 10_000)
+        let result = Session::open(project.path(), Some(saves.path()), None, 10_000)
             .unwrap()
             .execute_storage("case.tjs")
             .unwrap_or_else(|error| panic!("{}: {error:#}", case.name));
@@ -42,7 +42,7 @@ fn deterministic_fade_beats_and_invalidation() {
     "#,
     )
     .unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 10_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 10_000).unwrap();
     session.startup().unwrap();
     for (time, volume) in [
         (59, 100000),
@@ -88,6 +88,6 @@ fn missing_sound_is_a_script_exception() {
         "var w=new WaveSoundBuffer(null);try{w.open('missing.ogg');}catch(e){return w.status;}",
     )
     .unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 1000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 1000).unwrap();
     assert_eq!(session.startup().unwrap(), Value::string("unload"));
 }

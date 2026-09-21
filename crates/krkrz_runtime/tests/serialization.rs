@@ -13,7 +13,7 @@ struct Case {
 
 fn run(project: &Path, saves: &Path, source: &str) -> anyhow::Result<Value> {
     std::fs::write(project.join("case.tjs"), source)?;
-    Session::open(project, Some(saves), false, 10_000)?.execute_storage("case.tjs")
+    Session::open(project, Some(saves), None, 10_000)?.execute_storage("case.tjs")
 }
 
 #[test]
@@ -82,19 +82,19 @@ fn default_startup_reads_and_updates_existing_game_saves() {
         "return Scripts.evalStorage(System.dataPath+'data0.ksd')[0];",
     )
     .unwrap();
-    let mut session = Session::open(project.path(), None, false, 10_000).unwrap();
+    let mut session = Session::open(project.path(), None, None, 10_000).unwrap();
     assert_eq!(session.services.save_dir, savedata.canonicalize().unwrap());
     assert_eq!(session.startup().unwrap(), Value::Integer(42));
     session
         .evaluate("[43].saveStruct(System.dataPath+'data0.ksd')")
         .unwrap();
-    let mut restarted = Session::open(project.path(), None, false, 10_000).unwrap();
+    let mut restarted = Session::open(project.path(), None, None, 10_000).unwrap();
     assert_eq!(restarted.startup().unwrap(), Value::Integer(43));
 
     let isolated = tempfile::tempdir().unwrap();
     std::fs::write(isolated.path().join("data0.ksd"), b"[99]").unwrap();
     let mut overridden =
-        Session::open(project.path(), Some(isolated.path()), false, 10_000).unwrap();
+        Session::open(project.path(), Some(isolated.path()), None, 10_000).unwrap();
     assert_eq!(overridden.startup().unwrap(), Value::Integer(99));
     overridden
         .evaluate("[100].saveStruct(System.dataPath+'data0.ksd')")
@@ -110,7 +110,7 @@ fn default_save_writes_cannot_follow_symlinks_into_game_resources() {
     std::fs::create_dir(&savedata).unwrap();
     std::fs::write(project.path().join("protected.tjs"), b"keep").unwrap();
     std::os::unix::fs::symlink(project.path(), savedata.join("escape")).unwrap();
-    let mut session = Session::open(project.path(), None, false, 10_000).unwrap();
+    let mut session = Session::open(project.path(), None, None, 10_000).unwrap();
     assert!(
         session
             .evaluate("[1].saveStruct(System.dataPath+'escape/protected.tjs')")

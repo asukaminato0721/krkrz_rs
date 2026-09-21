@@ -1,7 +1,8 @@
 # Rust Kirikiri Z compatibility engine
 
-This repository contains an experimental native Linux port of Otome Domain.
-The unchanged game archives now reach the title menu and playable opening
+This repository contains an experimental native Linux implementation of the
+Kirikiri 2/Z runtime. Otome Domain is the most extensively tested project so far.
+Its unchanged game archives now reach the title menu and playable opening
 dialogue: native-order mouse clicks advance the first five text entries. The
 original Load menu restores copied Windows saves, including a choice that
 advances into its selected branch. Native X11 input also reaches and advances
@@ -133,6 +134,21 @@ An unfiltered `verify` deliberately returns failure for the installation's
 malformed protection-notice entry. It verifies all other resolved resources
 before reporting the failure. The entry is not hidden or treated as valid.
 
+## Checking other installed games
+
+```sh
+python3 tools/check_installed_games.py ~/.wine/drive_c \
+  --output /tmp/krkrz-game-check
+```
+
+The checker scans engine markers, runs Kirikiri startup scripts with a bounded
+instruction budget and timeout, and advances each session by one second. It
+writes logs and fresh saves only under the new output directory. Other engines
+are reported without running them. A passing startup probe does not establish
+title-menu, rendering, input, audio or full-game compatibility. See
+[multi-game validation](docs/multi-game-validation.md) for the tested projects
+and current blockers.
+
 ## Native Linux host
 
 ```sh
@@ -142,14 +158,25 @@ cargo run --release -p krkrz_cli --bin krkrz_engine -- \
   --budget 100000000000
 ```
 
-`--project-dir` defaults to the current directory. The executor selects the
-Otome Domain Cx profile when `otomedomain.exe` is present; `--otome-domain`
-selects it explicitly. It never executes the Windows executable or DLLs.
+`--project-dir` defaults to the current directory. Both executables accept
+`--profile auto` (the default), `--profile none`, or `--profile otome-domain`.
+Automatic selection checks decrypted archive contents against their stored
+checksums; it does not depend on the game's directory or executable name.
+The only bundled Cx data profile currently comes from Otome Domain. Other Cx
+profiles can be supplied with `--cx-profile /path/to/profile.json` (the schema
+is shown in `crates/krkrz_assets/data/otome_domain_cx.json`). This does not add
+support for unrelated XP3 encryption schemes. `--otome-domain` remains an
+explicit compatibility alias. Unknown encryption fails with a diagnostic;
+`--profile none` still permits inspecting its archive index with `list`.
+Windows executables and DLLs are never executed.
 
-The native window automatically uses the icon embedded in `otomedomain.exe`.
-Other projects use an executable matching the directory name, or the only EXE
-in that directory. `--icon /path/to/icon.ico` overrides this choice (PNG, JPEG,
-BMP and TLG also work). On Wayland this uses `xdg_toplevel_icon_v1` when the compositor
+`System.exeName` and the window icon use the same generic executable selection:
+prefer a name matching the directory (ignoring punctuation and case), otherwise
+use the sole EXE that is not an installer, uninstaller, updater or settings tool.
+Ambiguous installations can specify `--exe OriginalGame.exe`; a missing
+selection falls back to the host name and no automatic icon.
+`--icon /path/to/icon.ico` overrides the image (PNG, JPEG, BMP and TLG also work).
+On Wayland this uses `xdg_toplevel_icon_v1` when the compositor
 supports it. The frontend uses winit **0.31.0-beta.3**, the latest prerelease,
 because stable 0.30.13 does not include that protocol. See
 [dependency validation](docs/dependency-upgrade.md) for compatibility checks.

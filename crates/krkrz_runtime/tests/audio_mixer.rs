@@ -26,7 +26,7 @@ fn setup(
     )
     .unwrap();
     std::fs::write(project.path().join("startup.tjs"), format!("var events='';var s=new WaveSoundBuffer(null);s.onLabel=function(n){{global.events+=n+',';}};s.onStatusChanged=function(n){{global.events+=n+',';}};s.open('tone.wav');s.play();{source}")).unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 1_000_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 1_000_000).unwrap();
     session.startup().unwrap();
     session.evaluate("events='' ").unwrap();
     (project, saves, session)

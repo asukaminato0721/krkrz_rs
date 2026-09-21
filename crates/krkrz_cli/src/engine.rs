@@ -1,6 +1,7 @@
 mod audio_output;
 mod native_host;
 mod presenter;
+mod project;
 use anyhow::Result;
 use clap::Parser;
 use krkrz_runtime::Session;
@@ -13,9 +14,8 @@ struct Args {
     /// Save directory (defaults to <project-dir>/savedata, including existing saves).
     #[arg(long)]
     save_dir: Option<PathBuf>,
-    /// Explicitly select Otome Domain's Cx encryption profile.
-    #[arg(long)]
-    otome_domain: bool,
+    #[command(flatten)]
+    project: project::ProjectArgs,
     #[arg(long, default_value_t = 100_000_000_000)]
     budget: u64,
     /// Write an execution trace to a new JSON file, including on startup failure.
@@ -34,17 +34,22 @@ struct Args {
 fn main() -> Result<()> {
     env_logger::init();
     let args = Args::parse();
-    let mut session = Session::open(
-        &args.project_dir,
+    let storage = args.project.open(&args.project_dir)?;
+    let mut session = Session::from_storage(
+        storage,
         args.save_dir.as_deref(),
-        args.otome_domain || args.project_dir.join("otomedomain.exe").is_file(),
+        args.project.exe.as_deref(),
         args.budget,
     )?;
     session.services.trace_enabled = args.trace.is_some();
     if let Some(epoch) = args.epoch_ms {
         session.services.epoch_ms = epoch;
     }
-    let icon = native_host::project_icon(&args.project_dir, args.icon.as_deref())?;
+    let icon = native_host::project_icon(
+        &args.project_dir,
+        args.icon.as_deref(),
+        args.project.exe.as_deref(),
+    )?;
     let result = native_host::run(&mut session, !args.no_audio, icon);
     if let Some(path) = args.trace {
         let path = krkrz_core::save_directory(&args.project_dir, Some(&path))?;

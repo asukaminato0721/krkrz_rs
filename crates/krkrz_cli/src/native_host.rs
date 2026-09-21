@@ -63,13 +63,14 @@ pub fn load_icon(path: &std::path::Path) -> Result<Icon> {
 pub fn project_icon(
     project: &std::path::Path,
     explicit: Option<&std::path::Path>,
+    executable: Option<&std::path::Path>,
 ) -> Result<Option<Icon>> {
     if let Some(path) = explicit {
         return load_icon(path).map(Some);
     }
     let load = || -> Result<Option<Icon>> {
         use std::io::Read;
-        let Some(path) = icon_executable(project)? else {
+        let Some(path) = krkrz_core::project_executable(project, executable)? else {
             return Ok(None);
         };
         let mut bytes = Vec::new();
@@ -94,34 +95,9 @@ pub fn project_icon(
     }
 }
 
+#[cfg(test)]
 fn icon_executable(project: &std::path::Path) -> Result<Option<std::path::PathBuf>> {
-    let project = project.canonicalize()?;
-    let mut executables = std::fs::read_dir(&project)?
-        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
-        .filter(|path| {
-            path.is_file()
-                && path
-                    .extension()
-                    .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
-        })
-        .collect::<Vec<_>>();
-    executables.sort();
-    let preferred = executables
-        .iter()
-        .find(|path| {
-            path.file_name()
-                .is_some_and(|name| name.eq_ignore_ascii_case("otomedomain.exe"))
-        })
-        .or_else(|| {
-            executables.iter().find(|path| {
-                path.file_stem()
-                    .zip(project.file_name())
-                    .is_some_and(|(stem, directory)| stem.eq_ignore_ascii_case(directory))
-            })
-        });
-    Ok(preferred
-        .cloned()
-        .or_else(|| (executables.len() == 1).then(|| executables.remove(0))))
+    krkrz_core::project_executable(project, None)
 }
 
 pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Result<()> {
@@ -718,7 +694,7 @@ mod icon_tests {
     #[test]
     fn application_executable_is_preferred_to_updaters() {
         let project = tempfile::tempdir().unwrap();
-        for name in ["updater.exe", "OtomeDomain.EXE", "readme.txt"] {
+        for name in ["updater.exe", "AnotherNovel.EXE", "readme.txt"] {
             std::fs::write(project.path().join(name), b"").unwrap();
         }
         assert_eq!(
@@ -727,7 +703,7 @@ mod icon_tests {
                 .unwrap()
                 .file_name()
                 .unwrap(),
-            "OtomeDomain.EXE"
+            "AnotherNovel.EXE"
         );
         let generic = tempfile::tempdir().unwrap();
         assert!(icon_executable(generic.path()).unwrap().is_none());
@@ -741,7 +717,10 @@ mod icon_tests {
             "game.exe"
         );
         std::fs::write(generic.path().join("updater.exe"), b"").unwrap();
-        assert!(icon_executable(generic.path()).unwrap().is_none());
+        assert_eq!(
+            icon_executable(generic.path()).unwrap(),
+            Some(generic.path().join("game.exe"))
+        );
         let matching = generic
             .path()
             .join(generic.path().file_name().unwrap())
@@ -753,8 +732,8 @@ mod icon_tests {
     #[test]
     fn explicit_image_overrides_auto_detection_and_reports_invalid_input() {
         let project = tempfile::tempdir().unwrap();
-        std::fs::write(project.path().join("otomedomain.exe"), b"malformed PE").unwrap();
-        assert!(project_icon(project.path(), None).unwrap().is_none());
+        std::fs::write(project.path().join("novel.exe"), b"malformed PE").unwrap();
+        assert!(project_icon(project.path(), None, None).unwrap().is_none());
         let icon = project.path().join("icon.png");
         krkrz_assets::media::Image {
             width: 2,
@@ -763,7 +742,18 @@ mod icon_tests {
         }
         .write_png(&icon)
         .unwrap();
-        assert!(project_icon(project.path(), Some(&icon)).unwrap().is_some());
-        assert!(project_icon(project.path(), Some(&project.path().join("missing.ico"))).is_err());
+        assert!(
+            project_icon(project.path(), Some(&icon), None)
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            project_icon(
+                project.path(),
+                Some(&project.path().join("missing.ico")),
+                None
+            )
+            .is_err()
+        );
     }
 }

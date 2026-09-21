@@ -522,18 +522,21 @@ impl Host for Services {
                             .insert(path.rsplit('/').next().unwrap().to_ascii_lowercase());
                         Ok(Value::Void)
                     }
-                    // PackinOne already registers the image extension. The
-                    // original accepts this component alias without replacing
-                    // its Layer methods. Their invocation is still explicit
-                    // unsupported until the native Layer implementation exists.
-                    "layereximage.dll" if self.loaded_plugins.contains("packinone.dll") => {
+                    // These Layer exports are already declared with the core
+                    // class. Standalone loading must not depend on PackinOne;
+                    // unimplemented effects still fail when invoked.
+                    "layereximage.dll" => {
+                        self.loaded_plugins.insert("layereximage.dll".into());
                         Ok(Value::Void)
                     }
-                    "kagparserex.dll" => {
-                        if !self.loaded_plugins.contains("kagparserex.dll") {
+                    "kagparser.dll" | "kagparserex.dll" => {
+                        if !self.loaded_plugins.contains("kagparser.dll")
+                            && !self.loaded_plugins.contains("kagparserex.dll")
+                        {
                             kag_parser::register(vm)?;
-                            self.loaded_plugins.insert("kagparserex.dll".into());
                         }
+                        self.loaded_plugins
+                            .insert(path.rsplit('/').next().unwrap().to_ascii_lowercase());
                         Ok(Value::Void)
                     }
                     "scriptsex.dll" => {
@@ -858,16 +861,24 @@ impl Session {
     pub fn open(
         project: &Path,
         save_dir: Option<&Path>,
-        otome_profile: bool,
+        cipher: Option<CxEncryption>,
         budget: u64,
     ) -> Result<Self> {
-        let save_dir = save_directory(project, save_dir)?;
-        let cipher = if otome_profile {
-            Some(CxEncryption::otome_domain()?)
-        } else {
-            None
-        };
         let storage = Storage::open(project, cipher, Limits::default())?;
+        Self::from_storage(storage, save_dir, None, budget)
+    }
+
+    /// Start a runtime from a configured archive set. Encryption and executable
+    /// selection belong to the caller, not to game-specific script behavior.
+    pub fn from_storage(
+        storage: Storage,
+        save_dir: Option<&Path>,
+        executable: Option<&Path>,
+        budget: u64,
+    ) -> Result<Self> {
+        let save_dir = save_directory(&storage.project, save_dir)?;
+        let executable = krkrz_core::project_executable(&storage.project, executable)?
+            .unwrap_or_else(|| storage.project.join("krkrz_engine"));
         let mut vm = Vm::default();
         vm.preprocessor.set("kirikiriz", 1);
         let constants = krkrz_tjs::compile(
@@ -906,18 +917,7 @@ impl Session {
         )?;
         for (key, value) in [
             ("exePath", format!("{}/", storage.project.display())),
-            (
-                "exeName",
-                storage
-                    .project
-                    .join(if otome_profile {
-                        "otomedomain.exe"
-                    } else {
-                        "krkrz_engine"
-                    })
-                    .display()
-                    .to_string(),
-            ),
+            ("exeName", executable.display().to_string()),
             ("title", "krkrz_rs".into()),
             ("osName", std::env::consts::OS.into()),
             ("platformName", std::env::consts::OS.into()),

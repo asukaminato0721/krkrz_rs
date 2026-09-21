@@ -36,7 +36,7 @@ fn original_title_accepts_new_game_input() -> Result<()> {
     let mut session = Session::open(
         Path::new(&project),
         Some(saves.path()),
-        true,
+        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
         100_000_000_000,
     )?;
     session.services.epoch_ms = 0;
@@ -143,7 +143,12 @@ fn original_startup_completes_framework_initialization() -> Result<()> {
     use krkrz_tjs::Value;
     let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
     let saves = tempfile::tempdir()?;
-    let mut session = Session::open(Path::new(&project), Some(saves.path()), true, 2_000_000_000)?;
+    let mut session = Session::open(
+        Path::new(&project),
+        Some(saves.path()),
+        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        2_000_000_000,
+    )?;
     session.startup()?;
     assert!(session.budget > 0);
     assert_eq!(session.services.fonts.face_count(), 8);
@@ -299,7 +304,12 @@ fn native_sound_reads_archive_pcm_and_sli() -> Result<()> {
     use krkrz_tjs::Value;
     let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
     let saves = tempfile::tempdir()?;
-    let mut session = Session::open(Path::new(&project), Some(saves.path()), true, 10_000)?;
+    let mut session = Session::open(
+        Path::new(&project),
+        Some(saves.path()),
+        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        10_000,
+    )?;
     session
         .evaluate(r#"Scripts.exec('var w=new WaveSoundBuffer(null); w.open("bgm/bgm01.ogg");')"#)?;
     let sound = session.evaluate("w")?;
@@ -335,7 +345,12 @@ fn original_storage_data_reads_binary_scenario() -> Result<()> {
     use krkrz_tjs::Value;
     let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
     let saves = tempfile::tempdir()?;
-    let mut session = Session::open(Path::new(&project), Some(saves.path()), true, 1_000_000)?;
+    let mut session = Session::open(
+        Path::new(&project),
+        Some(saves.path()),
+        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        1_000_000,
+    )?;
     session.evaluate("Plugins.link('psbfile.dll')")?;
     session.evaluate("Plugins.link('ScriptsEx.dll')")?;
     session.execute_storage("system/storagedata.tjs")?;
@@ -379,7 +394,12 @@ fn original_text_render_wrapper_uses_native_layout() -> Result<()> {
     use krkrz_tjs::Value;
     let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
     let saves = tempfile::tempdir()?;
-    let mut session = Session::open(Path::new(&project), Some(saves.path()), true, 100_000)?;
+    let mut session = Session::open(
+        Path::new(&project),
+        Some(saves.path()),
+        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        100_000,
+    )?;
     session.execute_storage("system/textrender.tjs")?;
     // Fixed metrics isolate the unchanged wrapper/native interface. This does
     // not validate fonts, glyph pixels, or presentation of the game's dialogue.
@@ -404,7 +424,12 @@ fn original_voice_track_constructs_with_phase_vocoder() -> Result<()> {
     use krkrz_tjs::Value;
     let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
     let saves = tempfile::tempdir()?;
-    let mut session = Session::open(Path::new(&project), Some(saves.path()), true, 100_000)?;
+    let mut session = Session::open(
+        Path::new(&project),
+        Some(saves.path()),
+        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        100_000,
+    )?;
     session.evaluate("Plugins.link('getSample.dll')")?;
     session.execute_storage("system/voice.tjs")?;
     session.evaluate("Scripts.exec('global.voice=new VoiceSoundBuffer(%[],0);')")?;

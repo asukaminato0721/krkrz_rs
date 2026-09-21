@@ -1,4 +1,7 @@
 //! Shared storage names, limits, diagnostics, and deterministic host input.
+mod project;
+pub use project::project_executable;
+
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};

@@ -25,7 +25,7 @@ fn original_fullscreen_control_corpus() {
 fn session() -> (tempfile::TempDir, tempfile::TempDir, Session) {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
     session.evaluate("Scripts.exec('global.a=new Window();global.b=new Window();a.setInnerSize(640,480);a.setPos(30,40);a.setZoom(3,2);b.setInnerSize(300,200);')").unwrap();
     (project, saves, session)
 }

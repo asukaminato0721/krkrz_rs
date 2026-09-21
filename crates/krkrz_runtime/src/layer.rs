@@ -1276,7 +1276,7 @@ mod memory_tests {
         let project = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
         let mut session =
-            crate::Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+            crate::Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
         session.services.layers.insert(1, Layer::default());
         session.services.layers.insert(2, Layer::default());
         session
@@ -1322,7 +1322,7 @@ mod memory_tests {
         let project = tempfile::tempdir().unwrap();
         let saves = tempfile::tempdir().unwrap();
         let mut session =
-            crate::Session::open(project.path(), Some(saves.path()), false, 100_000).unwrap();
+            crate::Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
         let mut layer = Layer::default();
         layer.resize_image(4, 1, 4096).unwrap();
         layer

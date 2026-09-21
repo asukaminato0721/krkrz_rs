@@ -5,7 +5,7 @@ fn session(source: &str) -> (tempfile::TempDir, tempfile::TempDir, Session) {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
     std::fs::write(project.path().join("startup.tjs"), source).unwrap();
-    let mut session = Session::open(project.path(), Some(saves.path()), false, 10_000_000).unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 10_000_000).unwrap();
     session.startup().unwrap();
     (project, saves, session)
 }
