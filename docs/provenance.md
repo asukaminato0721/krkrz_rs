@@ -49,11 +49,9 @@ Implementation references:
   casts, mutable const declarations, default arguments, unnamed argument tails,
   comma aliases, trailing omissions, octet parsing, switch/do/while, comma/swap
   evaluation, ordered class-body initialization and deferred superclass getters. Native export declarations
-  come from the isolated binary probe; see [native-exports-provenance.json](native-exports-provenance.json).
+  come from the isolated binary probe.
 - `Habakiri/core/src/jp/kirikiri/tjs2`: external execution reference for the
   synthetic TJS corpus. No Java interpreter code is included in the workspace.
-  See [community-implementations.md](community-implementations.md) for coverage
-  and known reference differences.
 - `KAGParserEx/readme.txt`, `KAGParser.cpp`: ordered attributes and multiline tags.
 
 Catalog SHA-256:

@@ -1,5 +1,5 @@
 //! AlphaMovie registration, storage and transport controls. Observed against the
-//! installed DLL with synthetic AJPM resources; see docs/alpha-movie-interface.json.
+//! installed DLL with synthetic AJPM resources.
 //! Pixel reconstruction uses the checked assets decoder. Queued movies remain
 //! explicit unsupported calls; frame decoding is synchronous.
 use crate::Services;

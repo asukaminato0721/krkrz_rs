@@ -36,7 +36,7 @@ primary layer while children remain. Ten original-engine cases verify idle
 finalization, cached children, focus/modal retention, and orphan-layer behavior;
 the runtime test explicitly collects between ticks. This corrects retention of
 obsolete PSD layers during extended dialogue. Full-route acceptance is still in
-progress; see [playthrough-validation.md](playthrough-validation.md).
+progress.
 
 A native Xvfb run also displayed the title, accepted X11 New Game input and
 advanced from the first dialogue to the next character with a second click.
@@ -89,7 +89,6 @@ run. `moviemode.ks*movie_ed_kaz` played advancing frames from `ed_a.mpg`,
 returned to the title after a click to skip, and returned after natural EOF in
 a second run. This used the original recollection entry without changing game
 scripts; it does not establish reaching an ending through the story.
-See [movie-validation.md](movie-validation.md) for timings and replay recipes.
 
 The original settings UI accepted message speed changes from 50 to 60 and back,
 BGM volume from 40 to 30, and mute off/on. Auto advanced dialogue from ID 2 to
@@ -114,8 +113,7 @@ The font backend has migrated from FreeType to Fontations (`skrifa`) and Zeno.
 Original layout metrics remain exact; raster differences are recorded against
 the preserved original pixels rather than replacing their expected values.
 The real title, load confirmation, restored choice and subsequent Japanese
-dialogue were rendered and visually checked. See
-[dependency-upgrade.md](dependency-upgrade.md) for versions and pixel differences.
+dialogue were rendered and visually checked.
 
 The older sections below are historical component records. Their original startup
 failure locations and missing-feature lists do not supersede this update.
@@ -271,7 +269,6 @@ The independent Java reference has 32-bit integers, unlike the Rust VM's 64-bit
 integers. The shared corpus avoids that difference. Differential agreement is
 limited to these cases. The separate original-engine run establishes exact-version
 agreement for this corpus, not gameplay compatibility.
-See [community-implementations.md](community-implementations.md).
 
 ## Isolated original-engine checks
 

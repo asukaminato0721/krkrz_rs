@@ -1,8 +1,8 @@
 # Rust Kirikiri Z compatibility engine
 
 This repository contains an experimental native Linux implementation of the
-Kirikiri 2/Z runtime. Otome Domain is the most extensively tested project so far.
-Its unchanged game archives now reach the title menu and playable opening
+Kirikiri 2/Z runtime. In the most extensively tested installation,
+unchanged game archives now reach the title menu and playable opening
 dialogue: native-order mouse clicks advance the first five text entries. The
 original Load menu restores copied Windows saves, including a choice that
 advances into its selected branch. Native X11 input also reaches and advances
@@ -14,6 +14,17 @@ The Rust TJS interpreter and Kirikiri services run the original scripts. Native
 winit/wgpu presentation, mouse/keyboard input and CPAL audio share the same
 session as deterministic headless replay. Saves default to the game's `savedata`
 directory; use `--save-dir` to select a separate directory.
+
+**Bundled decryption data:** the built-in Cx profile is sourced from
+[GARbro](https://github.com/morkt/GARbro), specifically
+`ArcFormats/Resources/Formats.dat` at commit
+`b09ee4570ccb1daf6ac56710ee8934dc0b8baeb0`. Its game-specific decryption
+parameters and control table are included in this repository and embedded in the
+executables. The Cx algorithm implementation is also adapted from GARbro.
+See [provenance](docs/provenance.md) for extraction details and
+[third-party notices](THIRD_PARTY_NOTICES.md) for attribution and license terms.
+Proprietary game scripts, scenarios, media and saves are not bundled; running a
+game requires a user-supplied installation.
 
 ## Build and verify
 
@@ -44,25 +55,22 @@ Successful branch pushes update the rolling `pre-release` release.
 Gameplay validation currently focuses on Linux; the other platforms have build
 coverage only. Mobile and browser packages are not available yet.
 
-See [library substitutions](docs/library-substitutions.md) for the AMV bit reader,
-matrix operations and real-FFT adapters, including compatibility checks and
-synthetic vocoder measurements.
-
 ## Developer tools
 
-The following examples read the existing installation without modifying it:
+The following examples read the existing installation without modifying it.
+Replace the project directory and resource names with paths from your installation:
 
 ```sh
 cargo run -p krkrz_cli --bin krkrz_tool -- \
-  --project-dir /path/to/otome_domain list --contains startup
+  --project-dir /path/to/game list --contains startup
 cargo run -p krkrz_cli --bin krkrz_tool -- \
-  --project-dir /path/to/otome_domain --profile otome-domain verify --contains .tjs
+  --project-dir /path/to/game --profile auto verify --contains .tjs
 cargo run -p krkrz_cli --bin krkrz_tool -- \
-  --project-dir /path/to/otome_domain --profile otome-domain script startup.tjs
+  --project-dir /path/to/game --profile auto script startup.tjs
 cargo run -p krkrz_cli --bin krkrz_tool -- \
-  --project-dir /path/to/otome_domain --profile otome-domain psb scn/ra01_0.txt.scn
+  --project-dir /path/to/game --profile auto psb path/to/resource.psb
 cargo run -p krkrz_cli --bin krkrz_tool -- \
-  --project-dir /path/to/otome_domain --profile otome-domain inventory
+  --project-dir /path/to/game --profile auto inventory
 cargo run -p krkrz_cli --bin krkrz_tool -- eval '3 / 2'
 ```
 
@@ -103,7 +111,7 @@ For example, save this as `/tmp/replay.json`:
 
 ```sh
 cargo run -p krkrz_cli --bin krkrz_tool -- \
-  --project-dir /path/to/otome_domain --profile otome-domain \
+  --project-dir /path/to/game --profile auto \
   exec startup.tjs --runtime --save-dir /tmp/replay-save --budget 1000000000 \
   --epoch-ms 0 --replay /tmp/replay.json --advance-ms 2200
 ```
@@ -125,24 +133,13 @@ TJS `expression` and fails the command if false. Checkpoints preserve evidence
 before a later failure; stdout retains the usual result or `--inspect` output.
 Replay syntax, timestamp order, and frame destinations are checked before startup.
 
-The checked-in Otome Domain replays cover opening dialogue and saved games.
-Run `tools/replays/otome-save-opening.json` with a fresh, separate `--save-dir`,
-then run `tools/replays/otome-load-opening.json` in a new process with that same
-directory. Both use `--epoch-ms 0 --step-ms 16 --budget 100000000000` and the
-release build. The first writes slot zero through the Save menu; the second
-restores it through Load and advances one dialogue entry. To test the supplied
-Windows choice save instead, copy its saves into a separate directory and use
-`tools/replays/otome-load-existing-save0.json`. These replays write to their
-selected save directory, so keep it separate from original saves.
-`tools/replays/otome-settings-auto.json` checks message speed, BGM volume and
-mute controls, and automatic dialogue advance through the original menus.
-It uses a fresh save directory and the installation's default settings.
-`tools/replays/otome-backlog-auto.json` checks dialogue history, Escape to
-close it, and automatic playback afterward.
-`tools/replays/otome-gallery-music.json` uses copied saves with Gallery unlocked
-to check track selection, pause/resume, next track, stop, and return to title.
+Replay coordinates and script expressions must be adapted for each project.
+Use the release build with
+`--epoch-ms 0 --step-ms 16 --budget 100000000000` and a separate `--save-dir`.
+Save and load replays run in separate processes with the same save directory.
+Replays that require existing progress use copies of user-supplied saves.
 
-An unfiltered `verify` deliberately returns failure for the installation's
+In the tested installation, an unfiltered `verify` returns failure for a
 malformed protection-notice entry. It verifies all other resolved resources
 before reporting the failure. The entry is not hidden or treated as valid.
 
@@ -157,28 +154,26 @@ The checker scans engine markers, runs Kirikiri startup scripts with a bounded
 instruction budget and timeout, and advances each session by one second. It
 writes logs and fresh saves only under the new output directory. Other engines
 are reported without running them. A passing startup probe does not establish
-title-menu, rendering, input, audio or full-game compatibility. See
-[multi-game validation](docs/multi-game-validation.md) for the tested projects
-and current blockers.
+title-menu, rendering, input, audio or full-game compatibility.
 
 ## Native Linux host
 
 ```sh
 cargo run --release -p krkrz_cli --bin krkrz_engine -- \
-  --project-dir /path/to/otome_domain \
+  --project-dir /path/to/game \
   --save-dir /path/outside/the/game/saves \
   --budget 100000000000
 ```
 
 `--project-dir` defaults to the current directory. Both executables accept
-`--profile auto` (the default), `--profile none`, or `--profile otome-domain`.
+`--profile auto` (the default) or `--profile none`; named profiles are listed
+in `--help`.
 Automatic selection checks decrypted archive contents against their stored
 checksums; it does not depend on the game's directory or executable name.
-The only bundled Cx data profile currently comes from Otome Domain. Other Cx
-profiles can be supplied with `--cx-profile /path/to/profile.json` (the schema
-is shown in `crates/krkrz_assets/data/otome_domain_cx.json`). This does not add
-support for unrelated XP3 encryption schemes. `--otome-domain` remains an
-explicit compatibility alias. Unknown encryption fails with a diagnostic;
+One Cx data profile from GARbro is bundled. Other Cx profiles can be supplied
+with `--cx-profile /path/to/profile.json`; see the bundled JSON in
+[asset profile data](crates/krkrz_assets/data/) for the schema. This does not add
+support for unrelated XP3 encryption schemes. Unknown encryption fails with a diagnostic;
 `--profile none` still permits inspecting its archive index with `list`.
 Windows executables and DLLs are never executed.
 
@@ -190,8 +185,7 @@ selection falls back to the host name and no automatic icon.
 `--icon /path/to/icon.ico` overrides the image (PNG, JPEG, BMP and TLG also work).
 On Wayland this uses `xdg_toplevel_icon_v1` when the compositor
 supports it. The frontend uses winit **0.31.0-beta.3**, the latest prerelease,
-because stable 0.30.13 does not include that protocol. See
-[dependency validation](docs/dependency-upgrade.md) for compatibility checks.
+because stable 0.30.13 does not include that protocol.
 
 The save directory defaults to `<project-dir>/savedata`, so startup reads existing
 game settings and saves there, and subsequent saves use the same directory.
@@ -291,14 +285,13 @@ when the Session ends. These locks coordinate Rust processes, not Windows/Wine.
 Synthetic fixtures run by default. To opt into tests that use your installation:
 
 ```sh
-KRKRZ_PROJECT_DIR=/path/to/otome_domain \
+KRKRZ_PROJECT_DIR=/path/to/game \
   cargo test -p krkrz_assets --test installed_game -- --ignored --nocapture
-KRKRZ_PROJECT_DIR=/path/to/otome_domain \
+KRKRZ_PROJECT_DIR=/path/to/game \
   cargo test -p krkrz_runtime --test installed_game -- --ignored --nocapture
 ```
 
-See [community-implementations.md](docs/community-implementations.md) for the
-community source map and differential-test command, [validation.md](docs/validation.md) for observed results and outstanding
+See [validation.md](docs/validation.md) for observed results and outstanding
 acceptance work, [references.json](docs/references.json) for pinned research
 sources, and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for adapted code
 notices. Proprietary scripts, scenarios, media and saves are not included.
