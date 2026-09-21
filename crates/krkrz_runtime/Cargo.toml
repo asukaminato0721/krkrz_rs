@@ -15,7 +15,7 @@ krkrz_kag.workspace = true
 encoding_rs.workspace = true
 tempfile.workspace = true
 sha2.workspace = true
-rustfft = "6.4"
+realfft = "3.5"
 uuid = { version = "1", features = ["v4"] }
 skrifa = "0.47.0"
 zeno = "0.3.3"

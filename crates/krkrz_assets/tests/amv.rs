@@ -112,6 +112,39 @@ fn malformed_entropy_returns_error_without_panicking() {
 }
 
 #[test]
+fn entropy_truncation_rejects_missing_coefficients_but_allows_padding() {
+    for bytes in [
+        include_bytes!("fixtures/amv/dc.amv").as_slice(),
+        include_bytes!("fixtures/amv/ac.amv").as_slice(),
+    ] {
+        let original = Movie::parse(bytes.to_vec()).unwrap();
+        let expected = original.decode_packet(0).unwrap().unwrap();
+        let packet = &original.packets[0];
+        for end in packet.entropy.start..packet.entropy.end {
+            let mut truncated = bytes[..end].to_vec();
+            truncated[4..8].copy_from_slice(&(end as u32).to_le_bytes());
+            let length = end - packet.offset - 8;
+            truncated[packet.offset + 4..packet.offset + 8]
+                .copy_from_slice(&(length as u32).to_le_bytes());
+            let movie = Movie::parse(truncated).unwrap();
+            match movie.decode_packet(0) {
+                Ok(image) => {
+                    // Fixtures align the entropy to four bytes. Removing only
+                    // padding must retain every decoded pixel.
+                    assert!(end >= packet.entropy.end - 3);
+                    assert_eq!(image.unwrap().rgba, expected.rgba);
+                }
+                Err(error) => assert!(
+                    format!("{error:#}").contains("truncated AlphaMovie entropy stream"),
+                    "entropy length {}: {error:#}",
+                    end - packet.entropy.start
+                ),
+            }
+        }
+    }
+}
+
+#[test]
 fn ac_reconstruction_stays_within_integer_idct_rounding_error() {
     // Four macroblocks with nonzero AC coefficients, positive/negative DC
     // differences and non-unit quantizers. Captured from the original DLL.

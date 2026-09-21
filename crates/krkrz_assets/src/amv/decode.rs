@@ -4,6 +4,7 @@ use super::tables::*;
 use super::{AlphaEncoding, Movie};
 use crate::media::Image;
 use anyhow::{Context, Result, bail, ensure};
+use bitstream_io::{BigEndian, BitRead, BitReader};
 use std::io::Read;
 
 const ZIGZAG: [usize; 64] = [
@@ -12,27 +13,21 @@ const ZIGZAG: [usize; 64] = [
     52, 45, 38, 31, 39, 46, 53, 60, 61, 54, 47, 55, 62, 63,
 ];
 struct Bits<'a> {
-    bytes: &'a [u8],
-    position: usize,
+    reader: BitReader<&'a [u8], BigEndian>,
 }
 impl Bits<'_> {
     fn read(&mut self, n: u8) -> Result<i32> {
-        ensure!(
-            self.position + n as usize <= self.bytes.len() * 8,
-            "truncated AlphaMovie entropy stream"
-        );
-        let mut v = 0;
-        for _ in 0..n {
-            v = (v << 1) | ((self.bytes[self.position / 8] >> (7 - self.position % 8)) & 1) as i32;
-            self.position += 1;
-        }
-        Ok(v)
+        self.reader
+            .read_var::<u32>(n.into())
+            .map(|v| v as i32)
+            .context("truncated AlphaMovie entropy stream")
     }
     fn signed(&mut self, n: u8) -> Result<i32> {
         if n == 0 {
             return Ok(0);
         }
         ensure!(n <= 11, "invalid AlphaMovie coefficient size");
+        // JPEG-style magnitude encoding is not a two's-complement signed read.
         let v = self.read(n)?;
         Ok(if v < 1 << (n - 1) {
             v - ((1 << n) - 1)
@@ -129,8 +124,7 @@ impl Movie {
             None
         };
         let mut bits = Bits {
-            bytes: self.entropy(index)?,
-            position: 0,
+            reader: BitReader::endian(self.entropy(index)?, BigEndian),
         };
         let (mut chroma, mut luma) = (0, 0);
         let mut rgba = vec![0; width * height * 4];

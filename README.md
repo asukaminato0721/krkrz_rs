@@ -31,6 +31,10 @@ The workspace builds independently of sibling repositories. `Cargo.lock` pins
 Rust dependencies. Research checkouts, extracted scripts and media belong outside
 the source tree, for example `$XDG_CACHE_HOME/krkrz_rs`.
 
+See [library substitutions](docs/library-substitutions.md) for the AMV bit reader,
+matrix operations and real-FFT adapters, including compatibility checks and
+synthetic vocoder measurements.
+
 ## Developer tools
 
 The following examples read the existing installation without modifying it:

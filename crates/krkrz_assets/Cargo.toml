@@ -18,6 +18,7 @@ png = "0.18"
 lewton = "0.10"
 pelite = { version = "0.10.0", default-features = false, features = ["std"] }
 hound = "3.5.1"
+bitstream-io = "4.10"
 
 [dev-dependencies]
 tempfile.workspace = true

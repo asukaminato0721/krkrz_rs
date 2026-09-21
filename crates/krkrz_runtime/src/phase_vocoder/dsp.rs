@@ -1,9 +1,9 @@
 //! Streaming Vorbis-window phase vocoder following Kirikiri PhaseVocoderDSP.cpp.
-//! RustFFT replaces the original real FFT. Channels retain independent phase history.
+//! RealFFT supplies real transforms. Channels retain independent phase history.
 use super::{Config, Settings};
 use crate::audio::{AudioBlock, AudioLabel, SoundStream};
 use anyhow::{Result, ensure};
-use rustfft::{Fft, FftPlanner, num_complex::Complex32};
+use realfft::{ComplexToReal, RealFftPlanner, RealToComplex, num_complex::Complex32};
 use std::{
     collections::VecDeque,
     f32::consts::{PI, TAU},
@@ -160,7 +160,7 @@ fn pull(
                     break;
                 }
             }
-            dsp.process(config, input_hop, output_hop, overlap);
+            dsp.process(config, input_hop, output_hop, overlap)?;
         }
         let count = (frames - result.positions.len()).min(dsp.output_positions.len());
         let offset = result.positions.len();
@@ -212,8 +212,9 @@ fn hops(config: Config) -> Result<(usize, usize, usize)> {
 struct Dsp {
     window: usize,
     channels: usize,
-    forward: Arc<dyn Fft<f32>>,
-    inverse: Arc<dyn Fft<f32>>,
+    forward: Arc<dyn RealToComplex<f32>>,
+    inverse: Arc<dyn ComplexToReal<f32>>,
+    real: Vec<f32>,
     fft: Vec<Complex32>,
     scratch: Vec<Complex32>,
     magnitudes: Vec<f32>,
@@ -231,18 +232,17 @@ struct Dsp {
 }
 impl Dsp {
     fn new(window: usize, channels: usize) -> Self {
-        let mut planner = FftPlanner::new();
+        let mut planner = RealFftPlanner::new();
         let forward = planner.plan_fft_forward(window);
         let inverse = planner.plan_fft_inverse(window);
-        let scratch_size = forward
-            .get_inplace_scratch_len()
-            .max(inverse.get_inplace_scratch_len());
+        let scratch_size = forward.get_scratch_len().max(inverse.get_scratch_len());
         Self {
             window,
             channels,
             forward,
             inverse,
-            fft: vec![Complex32::default(); window],
+            real: vec![0.0; window],
+            fft: vec![Complex32::default(); window / 2 + 1],
             scratch: vec![Complex32::default(); scratch_size],
             magnitudes: vec![0.0; window / 2],
             frequencies: vec![0.0; window / 2],
@@ -264,22 +264,26 @@ impl Dsp {
             output_labels: VecDeque::new(),
         }
     }
-    fn process(&mut self, config: Config, input_hop: usize, output_hop: usize, overlap: usize) {
+    fn process(
+        &mut self,
+        config: Config,
+        input_hop: usize,
+        output_hop: usize,
+        overlap: usize,
+    ) -> Result<()> {
         let n = self.window;
         let bins = n / 2;
         let step = TAU / overlap as f32;
         let scale = output_hop as f32 / input_hop as f32;
-        // RealFFT's inverse has half the gain of RustFFT's complex inverse.
+        // The original C++ FFT has half the inverse gain of RustFFT/RealFFT.
+        // Both Rust libraries are unnormalized, so retain the existing gain.
         let gain = config.time / n as f32 / config.pitch.sqrt() / overlap as f32 * 2.0;
         for channel in 0..self.channels {
             for i in 0..n {
-                self.fft[i] = Complex32::new(
-                    self.input[i * self.channels + channel] * self.window_values[i],
-                    0.0,
-                );
+                self.real[i] = self.input[i * self.channels + channel] * self.window_values[i];
             }
             self.forward
-                .process_with_scratch(&mut self.fft, &mut self.scratch);
+                .process_with_scratch(&mut self.real, &mut self.fft, &mut self.scratch)?;
             for i in 0..bins {
                 let phase = self.fft[i].arg();
                 let history = channel * bins + i;
@@ -288,7 +292,9 @@ impl Dsp {
                 self.magnitudes[i] = self.fft[i].norm();
                 self.frequencies[i] = (i as f32 + delta / step) * step;
             }
-            self.fft.fill(Complex32::default());
+            // The native filter excludes Nyquist. RealFFT reconstructs the
+            // conjugate half itself; its two endpoint imaginary parts must be zero.
+            self.fft[bins] = Complex32::default();
             for i in 0..bins {
                 let index = i as f32 / config.pitch;
                 let low = index as usize;
@@ -310,16 +316,13 @@ impl Dsp {
                 let phase = wrap(self.last_synthesis[history] + frequency * scale);
                 self.last_synthesis[history] = phase;
                 self.fft[i] = Complex32::from_polar(magnitude, phase);
-                if i > 0 {
-                    self.fft[n - i] = self.fft[i].conj();
-                }
             }
             self.fft[0].im = 0.0;
             self.inverse
-                .process_with_scratch(&mut self.fft, &mut self.scratch);
+                .process_with_scratch(&mut self.fft, &mut self.real, &mut self.scratch)?;
             for i in 0..n {
                 self.accumulation[i * self.channels + channel] +=
-                    self.fft[i].re * self.window_values[i] * gain;
+                    self.real[i] * self.window_values[i] * gain;
             }
         }
         self.output
@@ -346,6 +349,7 @@ impl Dsp {
         }
         self.input.drain(..input_hop * self.channels);
         self.input_positions.drain(..input_hop);
+        Ok(())
     }
 }
 fn wrap(phase: f32) -> f32 {

@@ -56,3 +56,19 @@ fn drawing_and_unimplemented_resources_fail_explicitly() {
         );
     }
 }
+
+#[test]
+fn inversion_preserves_native_singularity_and_status_rules() {
+    let source = r#"Plugins.link('layerExDraw.dll');
+    var q=1.0/1048576, m=new GdiPlus.Matrix(q,q,0,q,0,0);
+    var a=m.IsInvertible() && m.Invert()==0 &&
+        m.Equals([1048576,-1048576,0,1048576,0,0]);
+    // f32 rounds this determinant to zero even though f64 would not.
+    q=1.0/8388608;
+    var n=new GdiPlus.Matrix(1,1+q,1-q,1,3,4);
+    var b=!n.IsInvertible() && n.Invert()==2 &&
+        n.Equals([1,1+q,1-q,1,3,4]);
+    n.Translate(0,0,0);
+    return a && b && n.GetLastStatus()==2 && n.GetLastStatus()==0;"#;
+    assert_eq!(execute(source, 10_000).unwrap(), Value::Integer(1));
+}

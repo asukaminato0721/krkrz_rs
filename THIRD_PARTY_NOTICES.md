@@ -71,7 +71,7 @@ SLI parsing and PCM loop mixing are adapted from Kirikiri Z
 and fades follow `sound/WaveIntf.cpp`, `sound/SoundBufferBaseIntf.cpp`,
 `sound/win32/WaveImpl.cpp` and `sound/win32/SoundBufferBaseImpl.h`.
 PhaseVocoder control and streaming DSP follow `sound/PhaseVocoderFilter.cpp`
-and `sound/PhaseVocoderDSP.cpp`; RustFFT supplies the FFT implementation.
+and `sound/PhaseVocoderDSP.cpp`; RealFFT, backed by RustFFT, supplies the FFT implementation.
 The getSample replacement follows Kirikiroid2
 `src/plugins/getSample.cpp`, revision `d1c2b1259423542c893e0b65eaeb46c848848f2b`,
 under the Kirikiri notice below. Visualization downmix follows Kirikiri Z

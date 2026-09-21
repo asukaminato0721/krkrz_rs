@@ -5,6 +5,7 @@ use anyhow::{Context, Result, bail, ensure};
 use krkrz_tjs::{Value, Vm, unsupported};
 use serde::Deserialize;
 use std::collections::BTreeMap;
+use tiny_skia::Transform;
 
 #[derive(Deserialize)]
 struct Exports {
@@ -27,9 +28,8 @@ pub(crate) struct State {
 enum Geometry {
     Point([f32; 2]),
     Rect([f32; 4]),
-    Matrix([f32; 6], i32),
+    Matrix(Transform, i32),
 }
-const IDENTITY: [f32; 6] = [1., 0., 0., 1., 0., 0.];
 fn real(n: f32) -> Value {
     Value::Real(n as f64)
 }
@@ -132,10 +132,14 @@ impl Services {
         }
         if let Ok(id) = id(v) {
             if let Ok(object) = self.geometry(id, kind) {
+                let matrix;
                 let data: &[f32] = match object {
                     Geometry::Point(p) => p,
                     Geometry::Rect(r) => r,
-                    Geometry::Matrix(m, _) => m,
+                    Geometry::Matrix(m, _) => {
+                        matrix = elements(*m);
+                        &matrix
+                    }
                 };
                 return Ok(data.try_into().expect("matching geometry dimensions"));
             }
@@ -210,7 +214,7 @@ impl Services {
             let value = match kind {
                 "PointF" => Geometry::Point([0.; 2]),
                 "RectF" => Geometry::Rect([0.; 4]),
-                "Matrix" => Geometry::Matrix(IDENTITY, 0),
+                "Matrix" => Geometry::Matrix(Transform::identity(), 0),
                 _ => {
                     return Err(unsupported(format!(
                         "GdiPlus.{kind} construction is not implemented"
@@ -335,16 +339,18 @@ impl Services {
                             "GdiPlus.Matrix requires zero or six arguments"
                         );
                         if args.is_empty() {
-                            *m = IDENTITY;
+                            *m = Transform::identity();
                         } else {
-                            for (i, v) in m.iter_mut().enumerate() {
+                            let mut values = [0.; 6];
+                            for (i, v) in values.iter_mut().enumerate() {
                                 *v = number(arg(i)?)?;
                             }
+                            *m = transform(values);
                         }
                     }
-                    "OffsetX" => return Ok(real(m[4])),
-                    "OffsetY" => return Ok(real(m[5])),
-                    "IsIdentity" => return Ok(Value::Integer((*m == IDENTITY).into())),
+                    "OffsetX" => return Ok(real(m.tx)),
+                    "OffsetY" => return Ok(real(m.ty)),
+                    "IsIdentity" => return Ok(Value::Integer(m.is_identity().into())),
                     "IsInvertible" => return Ok(Value::Integer((determinant(m) != 0.).into())),
                     "GetLastStatus" => {
                         result = Value::Integer(*status as i64);
@@ -361,73 +367,72 @@ impl Services {
                         let Geometry::Matrix(current, _) = self.geometry(id, kind)? else {
                             unreachable!()
                         };
-                        result = Value::Integer((*current == other).into());
+                        result = Value::Integer((*current == transform(other)).into());
                     }
                     "Reset" => {
-                        *m = IDENTITY;
+                        *m = Transform::identity();
                         result = Value::Integer(0);
                     }
                     "SetElements" => {
-                        for (i, v) in m.iter_mut().enumerate() {
+                        let mut values = [0.; 6];
+                        for (i, v) in values.iter_mut().enumerate() {
                             *v = number(arg(i)?)?;
                         }
+                        *m = transform(values);
                         result = Value::Integer(0);
                     }
                     "Invert" => {
+                        // Keep GDI+'s exact-zero test and f32 arithmetic. Skia
+                        // rejects some invertible matrices using a tolerance.
                         let det = determinant(m);
                         if det == 0. {
                             rc = 2;
                         } else {
-                            let [a, b, c, d, x, y] = *m;
-                            *m = [
+                            let [a, b, c, d, x, y] = elements(*m);
+                            *m = transform([
                                 d / det,
                                 -b / det,
                                 -c / det,
                                 a / det,
                                 (c * y - d * x) / det,
                                 (b * x - a * y) / det,
-                            ];
+                            ]);
                         }
                         result = Value::Integer(rc);
                     }
                     "Multiply" | "Translate" | "Scale" | "Shear" | "Rotate" | "RotateAt" => {
                         let (n, order) = match op {
                             "Multiply" => (
-                                self.converted(
+                                transform(self.converted(
                                     vm,
                                     arg(0)?,
                                     "Matrix",
                                     ["m11", "m12", "m21", "m22", "dx", "dy"],
                                     budget,
-                                )?,
+                                )?),
                                 arg(1)?.integer()?,
                             ),
                             "Translate" => (
-                                [1., 0., 0., 1., number(arg(0)?)?, number(arg(1)?)?],
+                                Transform::from_translate(number(arg(0)?)?, number(arg(1)?)?),
                                 arg(2)?.integer()?,
                             ),
                             "Scale" => (
-                                [number(arg(0)?)?, 0., 0., number(arg(1)?)?, 0., 0.],
+                                Transform::from_scale(number(arg(0)?)?, number(arg(1)?)?),
                                 arg(2)?.integer()?,
                             ),
                             "Shear" => (
-                                [1., number(arg(1)?)?, number(arg(0)?)?, 1., 0., 0.],
+                                Transform::from_skew(number(arg(0)?)?, number(arg(1)?)?),
                                 arg(2)?.integer()?,
                             ),
                             _ => {
-                                let radians = number(arg(0)?)?.to_radians();
-                                let (s, c) = radians.sin_cos();
-                                let mut n = [c, s, -s, c, 0., 0.];
-                                let order = if op == "RotateAt" {
+                                let angle = number(arg(0)?)?;
+                                if op == "RotateAt" {
                                     let [x, y] =
                                         self.converted(vm, arg(1)?, "PointF", ["x", "y"], budget)?;
-                                    n[4] = x - c * x + s * y;
-                                    n[5] = y - s * x - c * y;
-                                    arg(2)?.integer()?
+                                    (Transform::from_rotate_at(angle, x, y), arg(2)?.integer()?)
                                 } else {
-                                    arg(1)?.integer()?
-                                };
-                                (n, order)
+                                    (Transform::from_rotate(angle), arg(1)?.integer()?)
+                                }
                             }
                         };
                         let Geometry::Matrix(current, current_status) = self.geometry(id, kind)?
@@ -437,9 +442,9 @@ impl Services {
                         *m = *current;
                         *status = *current_status;
                         if order == 0 {
-                            *m = multiply(&n, m);
+                            *m = m.pre_concat(n);
                         } else if order == 1 {
-                            *m = multiply(m, &n);
+                            *m = m.post_concat(n);
                         } else {
                             rc = 2;
                         }
@@ -468,18 +473,14 @@ impl Services {
         Ok(result)
     }
 }
-fn determinant(m: &[f32; 6]) -> f32 {
-    m[0] * m[3] - m[1] * m[2]
+fn transform([a, b, c, d, x, y]: [f32; 6]) -> Transform {
+    Transform::from_row(a, b, c, d, x, y)
 }
-fn multiply(a: &[f32; 6], b: &[f32; 6]) -> [f32; 6] {
-    [
-        a[0] * b[0] + a[1] * b[2],
-        a[0] * b[1] + a[1] * b[3],
-        a[2] * b[0] + a[3] * b[2],
-        a[2] * b[1] + a[3] * b[3],
-        a[4] * b[0] + a[5] * b[2] + b[4],
-        a[4] * b[1] + a[5] * b[3] + b[5],
-    ]
+fn elements(m: Transform) -> [f32; 6] {
+    [m.sx, m.ky, m.kx, m.sy, m.tx, m.ty]
+}
+fn determinant(m: &Transform) -> f32 {
+    m.sx * m.sy - m.ky * m.kx
 }
 
 impl State {
