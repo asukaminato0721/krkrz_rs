@@ -13,6 +13,7 @@ pub struct Presenter {
     config: wgpu::SurfaceConfiguration,
     pipeline: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
+    rect_buffer: wgpu::Buffer,
     texture: Option<(wgpu::Texture, wgpu::BindGroup, u32, u32)>,
 }
 impl Presenter {
@@ -79,51 +80,12 @@ impl Presenter {
         }
         config.present_mode = wgpu::PresentMode::Fifo;
         configure_surface(&surface, &device, &config)?;
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: None,
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            }],
-        });
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("CPU frame upload"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("presenter.wgsl").into()),
-        });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[&layout],
-            push_constant_ranges: &[],
-        });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: None,
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: "vertex",
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: "fragment",
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: None,
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: Default::default(),
-            depth_stencil: None,
-            multisample: Default::default(),
-            multiview: None,
+        let (layout, pipeline) = create_pipeline(&device, config.format);
+        let rect_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Kirikiri destination rectangle"),
+            size: 16,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
         Ok(Self {
             surface,
@@ -132,6 +94,7 @@ impl Presenter {
             config,
             pipeline,
             layout,
+            rect_buffer,
             texture: None,
         })
     }
@@ -171,10 +134,16 @@ impl Presenter {
             let group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: None,
                 layout: &self.layout,
-                entries: &[wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                }],
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: wgpu::BindingResource::TextureView(&view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: self.rect_buffer.as_entire_binding(),
+                    },
+                ],
             });
             self.texture = Some((texture, group, image.width, image.height));
         }
@@ -197,38 +166,21 @@ impl Presenter {
             Err(wgpu::SurfaceError::Timeout) => return Ok(()),
             Err(error) => return Err(error.into()),
         };
+        // The game rectangle may extend beyond the acquired surface during a
+        // resize, or intentionally through zoom/full-screen placement. Keep the
+        // default viewport (the attachment extent) and clip in the shader so the
+        // image retains its original scale and source coordinates.
+        let rect_bytes = rect.map(|value| (value as f32).to_ne_bytes());
+        self.queue
+            .write_buffer(&self.rect_buffer, 0, rect_bytes.as_flattened());
         let view = frame.texture.create_view(&Default::default());
-        let mut encoder = self.device.create_command_encoder(&Default::default());
-        {
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: None,
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-            if rect[2] > 0 && rect[3] > 0 {
-                pass.set_pipeline(&self.pipeline);
-                pass.set_bind_group(0, group, &[]);
-                pass.set_viewport(
-                    rect[0] as f32,
-                    rect[1] as f32,
-                    rect[2] as f32,
-                    rect[3] as f32,
-                    0.,
-                    1.,
-                );
-                pass.draw(0..3, 0..1);
-            }
-        }
-        self.queue.submit(Some(encoder.finish()));
+        self.queue.submit(Some(render_frame(
+            &self.device,
+            &self.pipeline,
+            group,
+            &view,
+            rect,
+        )));
         frame.present();
         Ok(())
     }
@@ -251,3 +203,103 @@ fn configure_surface(
         anyhow::anyhow!("GPU cannot configure the native window surface: {reason}")
     })
 }
+
+fn create_pipeline(
+    device: &wgpu::Device,
+    format: wgpu::TextureFormat,
+) -> (wgpu::BindGroupLayout, wgpu::RenderPipeline) {
+    let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: None,
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(16),
+                },
+                count: None,
+            },
+        ],
+    });
+    let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("CPU frame upload"),
+        source: wgpu::ShaderSource::Wgsl(include_str!("presenter.wgsl").into()),
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: None,
+        bind_group_layouts: &[&layout],
+        push_constant_ranges: &[],
+    });
+    let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: None,
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &shader,
+            entry_point: "vertex",
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &shader,
+            entry_point: "fragment",
+            compilation_options: Default::default(),
+            targets: &[Some(wgpu::ColorTargetState {
+                format,
+                blend: None,
+                write_mask: wgpu::ColorWrites::ALL,
+            })],
+        }),
+        primitive: Default::default(),
+        depth_stencil: None,
+        multisample: Default::default(),
+        multiview: None,
+    });
+    (layout, pipeline)
+}
+
+fn render_frame(
+    device: &wgpu::Device,
+    pipeline: &wgpu::RenderPipeline,
+    group: &wgpu::BindGroup,
+    view: &wgpu::TextureView,
+    rect: [i32; 4],
+) -> wgpu::CommandBuffer {
+    let mut encoder = device.create_command_encoder(&Default::default());
+    {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: None,
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        });
+        if rect[2] > 0 && rect[3] > 0 {
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(0, group, &[]);
+            pass.draw(0..3, 0..1);
+        }
+    }
+    encoder.finish()
+}
+
+#[cfg(test)]
+mod tests;
