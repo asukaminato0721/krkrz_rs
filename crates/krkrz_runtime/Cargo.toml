@@ -5,7 +5,7 @@ edition.workspace = true
 license = "MIT AND BSD-3-Clause"
 
 [dependencies]
-na_mpeg2_decoder = { path = "../na_mpeg2_decoder" }
+na_mpeg2_decoder.workspace = true
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -16,15 +16,15 @@ krkrz_kag.workspace = true
 encoding_rs.workspace = true
 tempfile.workspace = true
 sha2.workspace = true
-realfft = "3.5"
-uuid = { version = "1", features = ["v4"] }
-skrifa = "0.47.0"
-zeno = "0.3.3"
-fast_image_resize = "6.1.0"
-tiny-skia = { version = "0.12.0", default-features = false, features = ["std", "simd"] }
-lru = "0.18.4"
-image = { version = "0.25.10", default-features = false }
-imageproc = { version = "0.27.0", default-features = false }
-rubato = { version = "5.0.0", default-features = false }
-audioadapter-buffers = "5.2"
-dirs = "6.0"
+realfft.workspace = true
+uuid.workspace = true
+skrifa.workspace = true
+zeno.workspace = true
+fast_image_resize.workspace = true
+tiny-skia.workspace = true
+lru.workspace = true
+image.workspace = true
+imageproc.workspace = true
+rubato.workspace = true
+audioadapter-buffers.workspace = true
+dirs.workspace = true

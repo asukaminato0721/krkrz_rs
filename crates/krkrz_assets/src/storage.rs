@@ -4,10 +4,12 @@ use crate::{
 };
 use anyhow::{Context, Result, ensure};
 use krkrz_core::{Limits, storage_name};
+use lru::LruCache;
 use std::{
     cell::RefCell,
     collections::BTreeMap,
     fs,
+    num::NonZeroUsize,
     path::{Path, PathBuf},
 };
 
@@ -21,6 +23,36 @@ pub struct Storage {
     search_paths: Vec<String>,
     limits: Limits,
     loose_directories: RefCell<BTreeMap<PathBuf, DirectoryIndex>>,
+    resolutions: RefCell<LruCache<String, CachedResolution>>,
+}
+
+// Filesystem facts consulted during one resolution, including absent paths.
+// Recheck them on cache hits so loose overrides and symlink changes stay visible.
+#[derive(Default)]
+struct ResolutionProbe {
+    directories: BTreeMap<PathBuf, Option<fs::Metadata>>,
+    canonical_paths: BTreeMap<PathBuf, PathBuf>,
+}
+
+struct CachedResolution {
+    resolved: Option<String>,
+    probe: ResolutionProbe,
+}
+
+impl ResolutionProbe {
+    fn unchanged(&self) -> bool {
+        self.directories
+            .iter()
+            .all(|(path, old)| match (old, fs::metadata(path).ok()) {
+                (Some(old), Some(new)) => same_metadata(old, &new),
+                (None, None) => true,
+                _ => false,
+            })
+            && self
+                .canonical_paths
+                .iter()
+                .all(|(path, old)| path.canonicalize().is_ok_and(|new| new == *old))
+    }
 }
 
 struct DirectoryIndex {
@@ -31,27 +63,33 @@ struct DirectoryIndex {
 
 impl DirectoryIndex {
     fn unchanged(&self, metadata: &fs::Metadata) -> bool {
-        let modified = self.metadata.modified().ok();
-        if modified.is_none() || modified != metadata.modified().ok() {
+        same_metadata(&self.metadata, metadata)
+    }
+}
+
+fn same_metadata(old: &fs::Metadata, metadata: &fs::Metadata) -> bool {
+    if old.is_dir() != metadata.is_dir() || old.is_file() != metadata.is_file() {
+        return false;
+    }
+    let modified = old.modified().ok();
+    if modified.is_none() || modified != metadata.modified().ok() {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        if (old.dev(), old.ino(), old.ctime(), old.ctime_nsec())
+            != (
+                metadata.dev(),
+                metadata.ino(),
+                metadata.ctime(),
+                metadata.ctime_nsec(),
+            )
+        {
             return false;
         }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            let old = &self.metadata;
-            if (old.dev(), old.ino(), old.ctime(), old.ctime_nsec())
-                != (
-                    metadata.dev(),
-                    metadata.ino(),
-                    metadata.ctime(),
-                    metadata.ctime_nsec(),
-                )
-            {
-                return false;
-            }
-        }
-        true
     }
+    true
 }
 impl Storage {
     pub fn open(project: &Path, cipher: Option<CxEncryption>, limits: Limits) -> Result<Self> {
@@ -75,6 +113,7 @@ impl Storage {
             search_paths: vec![],
             limits,
             loose_directories: RefCell::new(BTreeMap::new()),
+            resolutions: RefCell::new(LruCache::new(NonZeroUsize::new(4096).unwrap())),
         };
         for path in files {
             storage.mount(&path, limits)?;
@@ -88,6 +127,7 @@ impl Storage {
             self.catalog.insert(name.clone(), index);
         }
         self.archives.push(archive);
+        self.resolutions.get_mut().clear();
         Ok(())
     }
     /// Select a known cipher only after decrypted bytes pass the archive's
@@ -127,6 +167,7 @@ impl Storage {
         let path = self.normalize(path, true)?;
         self.search_paths.retain(|existing| existing != &path);
         self.search_paths.push(path);
+        self.resolutions.get_mut().clear();
         Ok(())
     }
     /// Normalize a storage name without requiring the file or directory to
@@ -213,21 +254,42 @@ impl Storage {
             self.catalog.get(name).map(|i| (*i, name))
         }
     }
-    fn contains(
-        &self,
-        name: &str,
-        directories: &mut BTreeMap<PathBuf, Option<fs::Metadata>>,
-    ) -> Result<bool> {
-        Ok(self.loose_path_with_metadata(name, directories)?.is_some()
+    fn contains(&self, name: &str, probe: &mut ResolutionProbe) -> Result<bool> {
+        Ok(self.loose_path_with_metadata(name, probe)?.is_some()
             || self.archive_location(name).is_some())
     }
     pub fn resolve(&self, name: &str) -> Result<String> {
         let name = self.normalize(name, false)?;
+        if let Some(cached) = self.resolutions.borrow_mut().get(&name)
+            && cached.probe.unchanged()
+        {
+            return cached
+                .resolved
+                .clone()
+                .with_context(|| format!("storage not found: {name}"));
+        }
+        let mut probe = ResolutionProbe::default();
+        let resolved = self.resolve_probed(&name, &mut probe)?;
+        // Bound retained names and filesystem dependencies. Never cache errors
+        // (collisions, resource limits, escaped symlinks), only hits and misses.
+        if name.len() <= 4096 && probe.directories.len() + probe.canonical_paths.len() <= 16 {
+            let mut cache = self.resolutions.borrow_mut();
+            cache.put(
+                name.clone(),
+                CachedResolution {
+                    resolved: resolved.clone(),
+                    probe,
+                },
+            );
+        }
+        resolved.with_context(|| format!("storage not found: {name}"))
+    }
+
+    fn resolve_probed(&self, name: &str, probe: &mut ResolutionProbe) -> Result<Option<String>> {
         // Auto paths often share the same missing loose directory. Validate
         // each directory once during this lookup, not once per candidate.
-        let mut directories = BTreeMap::new();
-        if self.contains(&name, &mut directories)? {
-            return Ok(name);
+        if self.contains(name, probe)? {
+            return Ok(Some(name.to_owned()));
         }
         if !name.contains('>') {
             for path in self.search_paths.iter().rev() {
@@ -237,14 +299,14 @@ impl Storage {
                     "/"
                 };
                 let candidate = format!("{path}{separator}{name}");
-                if self.contains(&candidate, &mut directories)? {
-                    return Ok(candidate);
+                if self.contains(&candidate, probe)? {
+                    return Ok(Some(candidate));
                 }
             }
         }
         // Kirikiri auto-paths must be registered explicitly. Do not silently choose
         // one of several basename matches from unrelated archive directories.
-        anyhow::bail!("storage not found: {name}")
+        Ok(None)
     }
     pub fn read(&mut self, name: &str) -> Result<Vec<u8>> {
         let name = self.resolve(name)?;
@@ -272,20 +334,21 @@ impl Storage {
             .with_context(|| format!("read {name}"))
     }
     fn loose_path(&self, name: &str) -> Result<Option<PathBuf>> {
-        self.loose_path_with_metadata(name, &mut BTreeMap::new())
+        self.loose_path_with_metadata(name, &mut ResolutionProbe::default())
     }
 
     fn loose_path_with_metadata(
         &self,
         name: &str,
-        directories: &mut BTreeMap<PathBuf, Option<fs::Metadata>>,
+        probe: &mut ResolutionProbe,
     ) -> Result<Option<PathBuf>> {
         if name.contains('>') {
             return Ok(None);
         }
         let mut path = self.project.clone();
         for component in name.split('/') {
-            let Some(metadata) = directories
+            let Some(metadata) = probe
+                .directories
                 .entry(path.clone())
                 .or_insert_with(|| fs::metadata(&path).ok())
                 .as_ref()
@@ -341,12 +404,19 @@ impl Storage {
                 .with_context(|| format!("ambiguous case-insensitive storage name: {name}"))?;
             // Revalidate symlinks even when the containing directory is cached.
             path = next.canonicalize()?;
+            probe.canonical_paths.insert(next.clone(), path.clone());
             ensure!(
                 path.starts_with(&self.project),
                 "storage symlink escapes game directory: {name}"
             );
         }
-        Ok(path.is_file().then_some(path))
+        let is_file = probe
+            .directories
+            .entry(path.clone())
+            .or_insert_with(|| fs::metadata(&path).ok())
+            .as_ref()
+            .is_some_and(fs::Metadata::is_file);
+        Ok(is_file.then_some(path))
     }
     pub fn placed_path(&self, name: &str) -> Result<String> {
         let name = self.resolve(name)?;
@@ -499,6 +569,46 @@ mod tests {
         assert_eq!(storage.read("renamed.tjs").unwrap(), b"updated");
         fs::remove_file(renamed).unwrap();
         assert!(storage.resolve("renamed.tjs").is_err());
+    }
+
+    #[test]
+    fn resolution_cache_evicts_old_entries_and_refreshes_hits() {
+        let project = tempfile::tempdir().unwrap();
+        let storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+        storage
+            .resolutions
+            .borrow_mut()
+            .resize(NonZeroUsize::new(2).unwrap());
+        for name in ["old", "recent", "old", "new"] {
+            assert!(storage.resolve(name).is_err());
+        }
+        let cache = storage.resolutions.borrow();
+        assert_eq!(cache.len(), 2);
+        assert!(cache.contains("old"));
+        assert!(cache.contains("new"));
+        assert!(!cache.contains("recent"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn resolution_cache_rechecks_symlink_targets_and_file_types() {
+        let project = tempfile::tempdir().unwrap();
+        let target = project.path().join("target");
+        fs::create_dir(&target).unwrap();
+        fs::write(target.join("item"), b"value").unwrap();
+        std::os::unix::fs::symlink(&target, project.path().join("alias")).unwrap();
+        std::os::unix::fs::symlink(target.join("item"), project.path().join("file")).unwrap();
+        let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+        assert!(storage.resolve("alias/new").is_err());
+        fs::write(target.join("new"), b"new").unwrap();
+        assert_eq!(storage.read("alias/new").unwrap(), b"new");
+        assert_eq!(storage.read("file").unwrap(), b"value");
+        fs::remove_file(target.join("item")).unwrap();
+        fs::create_dir(target.join("item")).unwrap();
+        assert!(storage.resolve("file").is_err());
+        fs::remove_dir(target.join("item")).unwrap();
+        fs::write(target.join("item"), b"replacement").unwrap();
+        assert_eq!(storage.read("file").unwrap(), b"replacement");
     }
 
     #[test]

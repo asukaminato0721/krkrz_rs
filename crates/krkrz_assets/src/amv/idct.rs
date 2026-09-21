@@ -91,9 +91,7 @@ fn dequantize_and_idct_block_8x8_inner<'a, I>(
         // eliminate downstream bounds checks
         let output_chunk = &mut output_chunk[..8];
 
-        // TODO When the minimum rust version supports it
-        // let [s0, rest @ ..] = chunk;
-        let (s0, rest) = chunk.split_first().unwrap();
+        let [s0, rest @ ..] = chunk;
         if *rest == [Wrapping(0); 7] {
             let dcterm = stbi_clamp((stbi_fsh(*s0) + Wrapping(X_SCALE)) >> 17);
             output_chunk[0] = dcterm;

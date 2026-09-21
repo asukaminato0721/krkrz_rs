@@ -9,17 +9,18 @@ anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 flate2.workspace = true
-adler2 = "2"
+adler2.workspace = true
 encoding_rs.workspace = true
 krkrz_core.workspace = true
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "bmp", "ico"] }
-libtlg-rs = "0.2.4"
-png = "0.18"
-lewton = "0.10"
-pelite = { version = "0.10.0", default-features = false, features = ["std"] }
-hound = "3.5.1"
-bitstream-io = "4.10"
+image = { workspace = true, features = ["png", "jpeg", "bmp", "ico"] }
+libtlg-rs.workspace = true
+png.workspace = true
+lewton.workspace = true
+pelite.workspace = true
+hound.workspace = true
+lru.workspace = true
+bitstream-io.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
-tlg-rs = { version = "0.1.1", default-features = false }
+tlg-rs.workspace = true

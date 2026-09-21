@@ -123,6 +123,41 @@ fn patch_overrides_and_search_paths() {
 }
 
 #[test]
+fn cached_resolution_observes_overrides_search_order_and_new_mounts() {
+    let d = tempfile::tempdir().unwrap();
+    std::fs::write(
+        d.path().join("data.xp3"),
+        fixture("images/icon.png", b"archive", false, false),
+    )
+    .unwrap();
+    let mut storage = Storage::open(d.path(), None, Limits::default()).unwrap();
+    storage.add_search_path("images").unwrap();
+    storage.add_search_path("override").unwrap();
+    for _ in 0..2 {
+        assert_eq!(storage.read("icon.png").unwrap(), b"archive");
+        assert!(storage.resolve("new.png").is_err());
+        assert!(storage.resolve("patch.xp3>new.png").is_err());
+    }
+    std::fs::create_dir(d.path().join("override")).unwrap();
+    std::fs::write(d.path().join("override/icon.png"), b"loose").unwrap();
+    assert_eq!(storage.read("icon.png").unwrap(), b"loose");
+    storage.add_search_path("images").unwrap();
+    assert_eq!(storage.read("icon.png").unwrap(), b"archive");
+    storage.add_search_path("override").unwrap();
+    assert_eq!(storage.read("icon.png").unwrap(), b"loose");
+    std::fs::remove_file(d.path().join("override/icon.png")).unwrap();
+    assert_eq!(storage.read("icon.png").unwrap(), b"archive");
+    let patch = d.path().join("patch.xp3");
+    std::fs::write(&patch, fixture("new.png", b"mounted", false, false)).unwrap();
+    // Warm the misses after the directory changes. Mounting alone must expire them.
+    assert!(storage.resolve("new.png").is_err());
+    assert!(storage.resolve("patch.xp3>new.png").is_err());
+    storage.mount(&patch, Limits::default()).unwrap();
+    assert_eq!(storage.read("new.png").unwrap(), b"mounted");
+    assert_eq!(storage.read("patch.xp3>new.png").unwrap(), b"mounted");
+}
+
+#[test]
 fn qualified_paths_select_the_named_archive_and_roundtrip_placed_paths() {
     let d = tempfile::tempdir().unwrap();
     for (archive, content) in [

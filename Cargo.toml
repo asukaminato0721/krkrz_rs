@@ -8,16 +8,54 @@ edition = "2024"
 license = "MIT"
 
 [workspace.dependencies]
+adler2 = "2"
 anyhow = "1"
+audioadapter-buffers = "5.2"
+bitstream-io = "4.10"
+byteorder = "1"
 clap = { version = "4", features = ["derive"] }
+cpal = "0.15.3"
+dirs = "6.0"
+eframe = { version = "0.36.2", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
 encoding_rs = "0.8"
+env_logger = "0.11"
+fancy-regex = "0.16.2"
+fast_image_resize = "6.1.0"
 flate2 = "1"
+fontdb = "0.23"
+hound = "3.5.1"
+image = { version = "0.25.10", default-features = false }
+imageproc = { version = "0.27.0", default-features = false }
+jiff = "0.2.37"
+krkrz_assets = { path = "crates/krkrz_assets" }
+krkrz_core = { path = "crates/krkrz_core" }
+krkrz_kag = { path = "crates/krkrz_kag" }
+krkrz_runtime = { path = "crates/krkrz_runtime" }
+krkrz_tjs = { path = "crates/krkrz_tjs" }
+lewton = "0.10"
+libtlg-rs = "0.2.4"
+log = "0.4"
+lru = "0.18.4"
+na_mpeg2_decoder = { path = "crates/na_mpeg2_decoder" }
+oxideav-ac3 = "0.0.10"
+oxideav-core = "=0.1.29"
+pelite = { version = "0.10.0", default-features = false, features = ["std"] }
+png = "0.18"
+pollster = "0.3.0"
+realfft = "3.5"
+rfd = "0.17.2"
+rtrb = "0.4.0"
+rubato = { version = "5.0.0", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+skrifa = "0.47.0"
+symphonia = { version = "0.5.5", default-features = false, features = ["mpa"] }
 tempfile = "3"
-krkrz_core = { path = "crates/krkrz_core" }
-krkrz_assets = { path = "crates/krkrz_assets" }
-krkrz_tjs = { path = "crates/krkrz_tjs" }
-krkrz_kag = { path = "crates/krkrz_kag" }
-krkrz_runtime = { path = "crates/krkrz_runtime" }
+thiserror = "1"
+tiny-skia = { version = "0.12.0", default-features = false, features = ["std", "simd"] }
+tlg-rs = { version = "0.1.1", default-features = false }
+uuid = { version = "1", features = ["v4"] }
+wgpu = "0.20.1"
+winit = "0.31.0-beta.3"
+zeno = "0.3.3"

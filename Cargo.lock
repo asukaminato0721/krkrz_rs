@@ -2127,6 +2127,7 @@ dependencies = [
  "krkrz_core",
  "lewton",
  "libtlg-rs",
+ "lru",
  "pelite",
  "png",
  "serde",

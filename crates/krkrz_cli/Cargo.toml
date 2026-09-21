@@ -14,17 +14,17 @@ krkrz_assets.workspace = true
 krkrz_tjs.workspace = true
 krkrz_kag.workspace = true
 krkrz_runtime.workspace = true
-winit = "0.31.0-beta.3"
-wgpu = "0.20.1"
-pollster = "0.3.0"
-env_logger = "0.11"
-cpal = "0.15.3"
-rtrb = "0.4.0"
-rubato = { version = "5.0.0", default-features = false }
-audioadapter-buffers = "5.2"
-eframe = { version = "0.36.2", default-features = false, features = ["default_fonts", "glow", "x11", "wayland"] }
-fontdb = "0.23"
-rfd = "0.17.2"
+winit.workspace = true
+wgpu.workspace = true
+pollster.workspace = true
+env_logger.workspace = true
+cpal.workspace = true
+rtrb.workspace = true
+rubato.workspace = true
+audioadapter-buffers.workspace = true
+eframe.workspace = true
+fontdb.workspace = true
+rfd.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
