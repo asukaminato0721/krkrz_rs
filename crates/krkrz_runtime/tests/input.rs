@@ -319,3 +319,117 @@ fn callbacks_can_destroy_the_window_during_hit_testing() {
         .unwrap();
     assert!(session.services.windows.is_empty());
 }
+
+#[test]
+fn get_layer_at_searches_the_whole_tree_in_caller_coordinates() {
+    let (_p, _s, mut s, _) = session(
+        r#"
+        var w=new Window(), p=new Layer(w,null), a=new Layer(w,p), b=new Layer(w,p);
+        p.setSize(100,100); a.setSize(20,20); b.setSize(20,20);
+        a.setPos(10,15); b.setPos(10,15);
+        a.visible=b.visible=true; a.hitThreshold=b.hitThreshold=0;
+        var c=new Layer(w,b); c.setSize(5,5); c.setPos(2,3);
+        c.visible=true; c.hitThreshold=0;
+        var q=new Layer(w,null); q.setSize(100,100);
+        "#,
+    );
+    for expression in [
+        "p.getLayerAt(11,16) === b",
+        "a.getLayerAt(1,1) === b", // Searches siblings, not only descendants.
+        "b.getLayerAt(1,1,true) === a",
+        "b.getLayerAt(2,3,true) === c", // Exclusion retains children.
+        "c.getLayerAt(0,0,true) === b",
+        "q.getLayerAt(11,16) === q", // Uses this tree's primary layer.
+        "p.getLayerAt(90,90) === p",
+        "p.getLayerAt(90,90,true) === null",
+        "p.getLayerAt(-1,0) === null",
+        "p.getLayerAt(100,0) === null",
+        "(b.bringToBack(), p.getLayerAt(11,16) === a)",
+        "(a.visible=false, p.getLayerAt(11,16) === b)",
+        "(b.visible=false, p.getLayerAt(12,18) === p)",
+    ] {
+        assert_eq!(
+            s.evaluate(expression).unwrap(),
+            Value::Integer(1),
+            "{expression}"
+        );
+    }
+    assert!(s.evaluate("p.getLayerAt(1)").is_err());
+}
+
+#[test]
+fn get_layer_at_disabled_layers_occlude_and_optional_flags_default_to_false() {
+    let (_p, _s, mut s, _) = session(SETUP);
+    for expression in [
+        "a.getLayerAt(1,1,void,void) === a",
+        "(a.enabled=false, p.getLayerAt(11,6) === null)",
+        "p.getLayerAt(11,6,void,true) === a",
+        "a.getLayerAt(1,1,true) === p",
+        "(a.enabled=true, p.enabled=false, p.getLayerAt(11,6) === null)",
+        "p.getLayerAt(11,6,false,true) === a",
+        "(p.enabled=true, a.setMode(), p.getLayerAt(1,1) === null)",
+        "p.getLayerAt(1,1,false,true) === p",
+        "p.getLayerAt(11,6) === a",
+    ] {
+        assert_eq!(
+            s.evaluate(expression).unwrap(),
+            Value::Integer(1),
+            "{expression}"
+        );
+    }
+}
+
+#[test]
+fn get_layer_at_uses_masks_provinces_and_hit_callbacks() {
+    let (_p, _s, mut s, _) = session(SETUP);
+    for expression in [
+        "(a.hitThreshold=16, p.getLayerAt(11,6) === p)",
+        "(a.setMaskPixel(1,1,16), p.getLayerAt(11,6) === a)",
+        "(a.setImageSize(22,20), a.imageLeft=-1, p.getLayerAt(10,6) === a)",
+        "p.getLayerAt(11,6) === p",
+        "(a.hitType=htProvince, p.getLayerAt(10,6) === p)",
+        "(a.setProvincePixel(1,1,1), p.getLayerAt(10,6) === a)",
+        "(a.onHitTest=function(x,y,hit){log.add(x+':'+y); (global.Layer.onHitTest incontextof this)(x,y,false);}, p.getLayerAt(10,6) === p)",
+        "log[log.count-1] === '0:1'",
+    ] {
+        assert_eq!(
+            s.evaluate(expression).unwrap(),
+            Value::Integer(1),
+            "{expression}"
+        );
+    }
+}
+
+#[test]
+fn get_layer_at_preserves_outer_hit_results_and_allows_invalidation() {
+    let (_p, _s, mut s, _) = session(SETUP);
+    s.evaluate(
+        r#"a.onHitTest=function(x,y,hit) {
+        (global.Layer.onHitTest incontextof this)(x,y,false);
+        global.p.getLayerAt(90,40);
+    }"#,
+    )
+    .unwrap();
+    assert_eq!(
+        s.evaluate("p.getLayerAt(11,6) === p").unwrap(),
+        Value::Integer(1)
+    );
+    s.evaluate(
+        r#"(a.onHitTest=function(x,y,hit) {
+        global.p.getLayerAt(90,40);
+    }, p.onHitTest=function(x,y,hit) {
+        (global.Layer.onHitTest incontextof this)(x,y,false);
+    })"#,
+    )
+    .unwrap();
+    assert_eq!(
+        s.evaluate("p.getLayerAt(11,6) === a").unwrap(),
+        Value::Integer(1)
+    );
+    s.evaluate("a.onHitTest=function(){invalidate global.a;}")
+        .unwrap();
+    assert_eq!(s.evaluate("p.getLayerAt(11,6)").unwrap(), Value::NULL);
+    s.evaluate("p.onHitTest=function(){invalidate global.w;}")
+        .unwrap();
+    assert_eq!(s.evaluate("p.getLayerAt(1,1)").unwrap(), Value::NULL);
+}

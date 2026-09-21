@@ -1,6 +1,12 @@
 //! Host events use the same LayerManager dispatch path in native and replay hosts.
 use super::*;
 
+#[derive(Clone, Copy, Default)]
+struct HitOptions {
+    exclude: Option<usize>,
+    get_disabled: bool,
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) struct State {
     pub capture: Option<usize>,
@@ -71,6 +77,49 @@ fn numbers(values: &[i64]) -> Vec<Value> {
     values.iter().copied().map(Value::Integer).collect()
 }
 impl Services {
+    pub(super) fn layer_get_at(
+        &mut self,
+        vm: &mut Vm,
+        id: usize,
+        args: &[Value],
+        budget: &mut u64,
+    ) -> Result<Value> {
+        ensure!(args.len() >= 2, "Layer.getLayerAt requires x and y");
+        let flag = |index| -> Result<bool> {
+            args.get(index)
+                .filter(|v| !matches!(v, Value::Void))
+                .map(Value::truth)
+                .transpose()
+                .map(|v| v.unwrap_or(false))
+        };
+        let options = HitOptions {
+            exclude: flag(2)?.then_some(id),
+            get_disabled: flag(3)?,
+        };
+        let offset = self.layer_pointer_offset(id);
+        let point = [
+            int(&args[0])?.wrapping_add(offset[0]),
+            int(&args[1])?.wrapping_add(offset[1]),
+        ];
+        let layer = &self.layers[&id];
+        let (root, window) = (layer.root, layer.window);
+        // Search the caller's entire layer tree, even when the caller is a
+        // child or belongs to a different tree from Window.primaryLayer.
+        if !self.layer_managers.contains_key(&root) {
+            return Ok(Value::NULL);
+        }
+        // onHitTest may itself call getLayerAt. Preserve the outer callback's
+        // result, including when the nested lookup raises a script exception.
+        let previous_hit = self.windows.get(&window).map(|w| w.input.hit);
+        let result = self.host_hit(vm, root, point, budget, 0, options);
+        if let Some(previous) = previous_hit
+            && let Some(w) = self.windows.get_mut(&window)
+        {
+            w.input.hit = previous;
+        }
+        Ok(result?.flatten().map_or(Value::NULL, bound))
+    }
+
     pub(super) fn layer_input_default(
         &mut self,
         vm: &mut Vm,
@@ -139,6 +188,7 @@ impl Services {
         point: [i32; 2],
         budget: &mut u64,
         depth: usize,
+        options: HitOptions,
     ) -> Result<Option<Option<usize>>> {
         ensure!(depth < 128, "input layer depth exceeds limit");
         *budget = budget
@@ -155,10 +205,13 @@ impl Services {
         for child in children.into_iter().rev() {
             if let Some(c) = self.layers.get(&child) {
                 let p = [x.saturating_sub(c.left), y.saturating_sub(c.top)];
-                if let Some(hit) = self.host_hit(vm, child, p, budget, depth + 1)? {
+                if let Some(hit) = self.host_hit(vm, child, p, budget, depth + 1, options)? {
                     return Ok(Some(hit));
                 }
             }
+        }
+        if options.exclude == Some(id) {
+            return Ok(None);
         }
         let Some(l) = self.layers.get(&id) else {
             return Ok(None);
@@ -203,7 +256,9 @@ impl Services {
         {
             return Ok(None);
         }
-        Ok(Some(self.layer_node_enabled(id, false).then_some(id)))
+        Ok(Some(
+            (options.get_disabled || self.layer_node_enabled(id, false)).then_some(id),
+        ))
     }
     fn host_target(
         &mut self,
@@ -225,7 +280,9 @@ impl Services {
         let Some(root) = object(&w.primary_layer)? else {
             return Ok(None);
         };
-        Ok(self.host_hit(vm, root, point, budget, 0)?.flatten())
+        Ok(self
+            .host_hit(vm, root, point, budget, 0, HitOptions::default())?
+            .flatten())
     }
     fn host_layer_pointer(
         &mut self,

@@ -969,6 +969,7 @@ impl Services {
             return Ok(value);
         }
         match op {
+            "getLayerAt" => return self.layer_get_at(vm, id, args, budget),
             "get:absoluteOrderMode" => {
                 return Ok(Value::Integer(self.layers[&id].absolute_mode.into()));
             }
