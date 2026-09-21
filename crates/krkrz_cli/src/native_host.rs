@@ -528,24 +528,40 @@ impl ApplicationHandler for Host<'_> {
                 }
             }
             let time = self.origin.elapsed().as_millis().min(u64::MAX as u128) as u64;
-            let result = self.session.tick(time).and_then(|_| {
-                let samples = self.session.take_audio();
-                if let Some(audio) = &mut self.audio {
-                    audio.submit(&samples)?;
-                }
-                self.sync_windows(event_loop)?;
-                for (&id, native) in &mut self.windows {
-                    if native.state.visible
-                        && !native.state.minimized
-                        && !native.suspended
-                        && native.state.primary_layer != Value::NULL
-                        && native.refresh_frame(self.session, &Value::object(id))?
-                    {
-                        native.window.request_redraw();
+            let mut completed = BTreeMap::new();
+            let result = self
+                .session
+                .tick_with_frame_sink(time, |id, image| {
+                    completed.insert(id, image);
+                })
+                .and_then(|_| {
+                    let samples = self.session.take_audio();
+                    if let Some(audio) = &mut self.audio {
+                        audio.submit(&samples)?;
                     }
-                }
-                Ok(())
-            });
+                    self.sync_windows(event_loop)?;
+                    for (&id, native) in &mut self.windows {
+                        let completed = if let Some(image) = completed.remove(&id) {
+                            native.frame = Some(image);
+                            // The final transition callback can mutate the tree.
+                            // Compare/capture that new state on the next tick.
+                            native.frame_state = WindowFrameState::default();
+                            true
+                        } else {
+                            false
+                        };
+                        if native.state.visible
+                            && !native.state.minimized
+                            && !native.suspended
+                            && native.state.primary_layer != Value::NULL
+                            && (completed
+                                || native.refresh_frame(self.session, &Value::object(id))?)
+                        {
+                            native.window.request_redraw();
+                        }
+                    }
+                    Ok(())
+                });
             if let Err(error) = result {
                 self.fail(event_loop, error);
                 return;

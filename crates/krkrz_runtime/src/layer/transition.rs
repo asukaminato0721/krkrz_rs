@@ -453,17 +453,17 @@ impl crate::Session {
         }
         Ok(())
     }
-    pub(crate) fn complete_window_transitions(&mut self, window: usize) -> Result<()> {
+    pub(crate) fn complete_window_transitions(&mut self, window: usize) -> Result<Option<Image>> {
         if !self
             .services
             .layers
             .values()
             .any(|l| l.window == window && l.transition.is_some())
         {
-            return Ok(());
+            return Ok(None);
         }
-        self.capture_window_prepared(&Value::object(window))?;
-        Ok(())
+        self.capture_window_prepared(&Value::object(window))
+            .map(Some)
     }
 }
 

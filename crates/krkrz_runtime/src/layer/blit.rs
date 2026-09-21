@@ -150,6 +150,37 @@ pub(super) fn blend_row(
     opacity: i32,
     hold: bool,
 ) {
+    // Ordinary opaque targets dominate window composition. Select their
+    // operation once per row instead of branching over every blend mode for
+    // every pixel. Keep the native alpha/pair rounding paths below unchanged.
+    if face == 1 && !hold {
+        if mode == 1 && opacity == 255 {
+            dst.copy_from_slice(src);
+            return;
+        }
+        if mode == 2 {
+            for (d, s) in dst
+                .as_chunks_mut::<4>()
+                .0
+                .iter_mut()
+                .zip(src.as_chunks::<4>().0)
+            {
+                let alpha = if opacity == 255 {
+                    s[3] as i32
+                } else {
+                    (s[3] as i32 * opacity) >> 8
+                };
+                if alpha == 255 {
+                    *d = *s;
+                } else if alpha != 0 {
+                    for c in 0..4 {
+                        d[c] = (d[c] as i32 + (((s[c] as i32 - d[c] as i32) * alpha) >> 8)) as u8;
+                    }
+                }
+            }
+            return;
+        }
+    }
     let count = dst.len() / 4;
     let alpha_pairs = mode == 2 && face == 0 && opacity == 255;
     let add_pairs = mode == 12 && (face == 4 || (face == 1 && !hold)) && opacity == 255;
@@ -248,6 +279,36 @@ fn blend(d: &mut [u8], mut s: [u8; 4], face: i32, mode: i32, opacity: i32, hold:
             } else {
                 (d[c] as i32 + (((s[c] as i32 - d[c] as i32) * alpha) >> 8)) as u8
             };
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn opaque_target_fast_rows_match_scalar_rounding() {
+        // Include every source alpha at every layer opacity, with odd row
+        // length and nonzero origin to exercise the dispatch boundaries.
+        let src: Vec<_> = (0..=256usize)
+            .flat_map(|i| [i as u8, (255 - i.min(255)) as u8, 93, i as u8])
+            .collect();
+        for mode in [1, 2] {
+            for opacity in 0..=255 {
+                let mut expected = [171, 21, 238, 53].repeat(257);
+                for (d, s) in expected
+                    .as_chunks_mut::<4>()
+                    .0
+                    .iter_mut()
+                    .zip(src.as_chunks::<4>().0)
+                {
+                    blend(d, *s, 1, mode, opacity, false);
+                }
+                let mut actual = [171, 21, 238, 53].repeat(257);
+                blend_row(&mut actual, &src, 1, 1, mode, opacity, false);
+                assert_eq!(actual, expected, "mode={mode}, opacity={opacity}");
+            }
         }
     }
 }

@@ -133,3 +133,42 @@ fn transitions_advance_and_completion_is_followed_by_a_final_static_frame() {
             .is_none()
     );
 }
+
+#[test]
+fn tick_delivers_transition_pixels_once_and_preserves_completion_mutations() {
+    let (_project, _saves, mut session, window) = session();
+    session.evaluate("Scripts.exec('w.visible=true;b.visible=false;global.updates=0;global.done=0;global.clock=0;a.onTransitionCompleted=function(){global.done++;b.fillRect(0,0,4,4,0xff00ff00);};a.beginTransition(\"crossfade\",true,b,%[time:100,selfupdate:true,callback:function(){global.updates++;return global.clock;}]);')").unwrap();
+    let mut frames = Vec::new();
+    for (index, time) in [0, 50, 100].into_iter().enumerate() {
+        session.evaluate(&format!("clock={time}")).unwrap();
+        session
+            .tick_with_frame_sink(time, |_, image| frames.push(image))
+            .unwrap();
+        assert_eq!(frames.len(), index + 1);
+        assert_eq!(
+            session.evaluate("updates").unwrap(),
+            Value::Integer(index as i64 + 1)
+        );
+    }
+    assert_eq!(session.evaluate("done").unwrap(), Value::Integer(1));
+    assert_eq!(&frames[0].rgba[..4], &[255, 0, 0, 255]);
+    assert_ne!(frames[0].rgba, frames[1].rgba);
+    assert_eq!(&frames[2].rgba[..4], &[0, 0, 255, 255]);
+    // The callback paints the new foreground green. The completed blue frame
+    // must be presented first, then the callback's mutation on the next tick.
+    session
+        .tick_with_frame_sink(116, |_, _| panic!("transition already ended"))
+        .unwrap();
+    let mut state = WindowFrameState::default();
+    let next = session
+        .capture_window_if_changed(&window, &mut state)
+        .unwrap()
+        .unwrap();
+    assert_eq!(&next.rgba[..4], &[0, 255, 0, 255]);
+    assert!(
+        session
+            .capture_window_if_changed(&window, &mut state)
+            .unwrap()
+            .is_none()
+    );
+}

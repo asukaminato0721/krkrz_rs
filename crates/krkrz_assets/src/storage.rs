@@ -5,6 +5,7 @@ use crate::{
 use anyhow::{Context, Result, ensure};
 use krkrz_core::{Limits, storage_name};
 use std::{
+    cell::RefCell,
     collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
@@ -19,6 +20,38 @@ pub struct Storage {
     cipher: Option<CxEncryption>,
     search_paths: Vec<String>,
     limits: Limits,
+    loose_directories: RefCell<BTreeMap<PathBuf, DirectoryIndex>>,
+}
+
+struct DirectoryIndex {
+    metadata: fs::Metadata,
+    // None records a case-insensitive collision, which must remain an error.
+    entries: BTreeMap<String, Option<PathBuf>>,
+}
+
+impl DirectoryIndex {
+    fn unchanged(&self, metadata: &fs::Metadata) -> bool {
+        let modified = self.metadata.modified().ok();
+        if modified.is_none() || modified != metadata.modified().ok() {
+            return false;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt;
+            let old = &self.metadata;
+            if (old.dev(), old.ino(), old.ctime(), old.ctime_nsec())
+                != (
+                    metadata.dev(),
+                    metadata.ino(),
+                    metadata.ctime(),
+                    metadata.ctime_nsec(),
+                )
+            {
+                return false;
+            }
+        }
+        true
+    }
 }
 impl Storage {
     pub fn open(project: &Path, cipher: Option<CxEncryption>, limits: Limits) -> Result<Self> {
@@ -41,6 +74,7 @@ impl Storage {
             cipher,
             search_paths: vec![],
             limits,
+            loose_directories: RefCell::new(BTreeMap::new()),
         };
         for path in files {
             storage.mount(&path, limits)?;
@@ -146,12 +180,20 @@ impl Storage {
             self.catalog.get(name).map(|i| (*i, name))
         }
     }
-    fn contains(&self, name: &str) -> Result<bool> {
-        Ok(self.loose_path(name)?.is_some() || self.archive_location(name).is_some())
+    fn contains(
+        &self,
+        name: &str,
+        directories: &mut BTreeMap<PathBuf, Option<fs::Metadata>>,
+    ) -> Result<bool> {
+        Ok(self.loose_path_with_metadata(name, directories)?.is_some()
+            || self.archive_location(name).is_some())
     }
     pub fn resolve(&self, name: &str) -> Result<String> {
         let name = self.normalize(name, false)?;
-        if self.contains(&name)? {
+        // Auto paths often share the same missing loose directory. Validate
+        // each directory once during this lookup, not once per candidate.
+        let mut directories = BTreeMap::new();
+        if self.contains(&name, &mut directories)? {
             return Ok(name);
         }
         if !name.contains('>') {
@@ -162,7 +204,7 @@ impl Storage {
                     "/"
                 };
                 let candidate = format!("{path}{separator}{name}");
-                if self.contains(&candidate)? {
+                if self.contains(&candidate, &mut directories)? {
                     return Ok(candidate);
                 }
             }
@@ -197,36 +239,74 @@ impl Storage {
             .with_context(|| format!("read {name}"))
     }
     fn loose_path(&self, name: &str) -> Result<Option<PathBuf>> {
+        self.loose_path_with_metadata(name, &mut BTreeMap::new())
+    }
+
+    fn loose_path_with_metadata(
+        &self,
+        name: &str,
+        directories: &mut BTreeMap<PathBuf, Option<fs::Metadata>>,
+    ) -> Result<Option<PathBuf>> {
         if name.contains('>') {
             return Ok(None);
         }
         let mut path = self.project.clone();
         for component in name.split('/') {
-            if !path.is_dir() {
-                return Ok(None);
-            }
-            let mut found = None;
-            for (count, entry) in fs::read_dir(&path)?.enumerate() {
-                ensure!(
-                    count < self.limits.entries,
-                    "loose directory entry limit exceeded"
-                );
-                let entry = entry?;
-                if entry
-                    .file_name()
-                    .to_string_lossy()
-                    .eq_ignore_ascii_case(component)
-                {
-                    ensure!(
-                        found.is_none(),
-                        "ambiguous case-insensitive storage name: {name}"
-                    );
-                    found = Some(entry.path());
-                }
-            }
-            let Some(next) = found else {
+            let Some(metadata) = directories
+                .entry(path.clone())
+                .or_insert_with(|| fs::metadata(&path).ok())
+                .as_ref()
+            else {
                 return Ok(None);
             };
+            if !metadata.is_dir() {
+                return Ok(None);
+            }
+            let mut cache = self.loose_directories.borrow_mut();
+            if !cache
+                .get(&path)
+                .is_some_and(|index| index.unchanged(metadata))
+            {
+                let mut entries = BTreeMap::new();
+                for (count, entry) in fs::read_dir(&path)?.enumerate() {
+                    ensure!(
+                        count < self.limits.entries,
+                        "loose directory entry limit exceeded"
+                    );
+                    let entry = entry?;
+                    entries
+                        .entry(entry.file_name().to_string_lossy().to_ascii_lowercase())
+                        .and_modify(|value| *value = None)
+                        .or_insert_with(|| Some(entry.path()));
+                }
+                // Bound both directory count and total indexed names. Eviction
+                // affects only lookup speed; metadata validates every cache hit.
+                cache.remove(&path);
+                if cache.len() >= 64
+                    || cache
+                        .values()
+                        .map(|index| index.entries.len())
+                        .sum::<usize>()
+                        + entries.len()
+                        > self.limits.entries
+                {
+                    cache.clear();
+                }
+                cache.insert(
+                    path.clone(),
+                    DirectoryIndex {
+                        metadata: metadata.clone(),
+                        entries,
+                    },
+                );
+            }
+            let Some(next) = cache[&path].entries.get(&component.to_ascii_lowercase()) else {
+                return Ok(None);
+            };
+            let next = next
+                .as_ref()
+                .with_context(|| format!("ambiguous case-insensitive storage name: {name}"))?;
+            // Revalidate symlinks even when the containing directory is cached.
             path = next.canonicalize()?;
             ensure!(
                 path.starts_with(&self.project),
@@ -367,6 +447,71 @@ mod tests {
         assert!(storage.verify("hello.tjs").is_err());
         fs::write(project.path().join("Scripts/hello.tjs"), b"return 2;").unwrap();
         assert!(storage.read("hello.tjs").is_err());
+    }
+    #[test]
+    fn cached_directory_observes_creates_renames_removals_and_content_writes() {
+        let project = tempfile::tempdir().unwrap();
+        fs::create_dir(project.path().join("Scripts")).unwrap();
+        let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+        storage.add_search_path("scripts/").unwrap();
+        assert!(storage.resolve("new.tjs").is_err());
+        let file = project.path().join("Scripts/New.TJS");
+        fs::write(&file, b"first").unwrap();
+        assert_eq!(storage.read("new.tjs").unwrap(), b"first");
+        fs::write(&file, b"updated").unwrap();
+        assert_eq!(storage.read("new.tjs").unwrap(), b"updated");
+        let renamed = project.path().join("Scripts/Renamed.TJS");
+        fs::rename(&file, &renamed).unwrap();
+        assert!(storage.resolve("new.tjs").is_err());
+        assert_eq!(storage.read("renamed.tjs").unwrap(), b"updated");
+        fs::remove_file(renamed).unwrap();
+        assert!(storage.resolve("renamed.tjs").is_err());
+    }
+
+    #[test]
+    fn directory_cache_still_enforces_entry_limits_after_a_change() {
+        let project = tempfile::tempdir().unwrap();
+        fs::write(project.path().join("a"), b"a").unwrap();
+        let mut storage = Storage::open(
+            project.path(),
+            None,
+            Limits {
+                entries: 1,
+                ..Limits::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(storage.read("a").unwrap(), b"a");
+        fs::write(project.path().join("b"), b"b").unwrap();
+        assert!(
+            storage
+                .read("a")
+                .unwrap_err()
+                .to_string()
+                .contains("entry limit")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cached_directory_rechecks_retargeted_symlinks() {
+        let project = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::write(project.path().join("inside.tjs"), b"inside").unwrap();
+        fs::write(outside.path().join("secret.tjs"), b"outside").unwrap();
+        let link = project.path().join("alias.tjs");
+        std::os::unix::fs::symlink(project.path().join("inside.tjs"), &link).unwrap();
+        let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+        assert_eq!(storage.read("alias.tjs").unwrap(), b"inside");
+        fs::remove_file(&link).unwrap();
+        std::os::unix::fs::symlink(outside.path().join("secret.tjs"), &link).unwrap();
+        assert!(
+            storage
+                .read("alias.tjs")
+                .unwrap_err()
+                .to_string()
+                .contains("escapes")
+        );
     }
     #[cfg(unix)]
     #[test]

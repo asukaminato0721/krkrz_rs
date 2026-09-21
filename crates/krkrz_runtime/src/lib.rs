@@ -1044,6 +1044,18 @@ impl Session {
     /// Advance one host tick, deliver queued callbacks, and prepare live window
     /// surfaces. Native presentation and headless inspection use the same path.
     pub fn tick(&mut self, time_ms: u64) -> Result<()> {
+        self.tick_with_frame_sink(time_ms, |_, _| {})
+    }
+
+    /// Advance a tick and deliver surfaces already composed for transitions.
+    /// A presenting host must use these frames instead of completing those
+    /// windows again. Completion callbacks may have changed the next frame.
+    /// Windows without transitions still use normal frame change detection.
+    pub fn tick_with_frame_sink(
+        &mut self,
+        time_ms: u64,
+        mut frame: impl FnMut(usize, krkrz_assets::media::Image),
+    ) -> Result<()> {
         self.budget = self
             .budget
             .checked_sub(1)
@@ -1064,7 +1076,9 @@ impl Session {
                 .is_some_and(|w| w.constructed && w.visible && !w.minimized)
             {
                 self.prepare_window_paint(&Value::object(id))?;
-                self.complete_window_transitions(id)?;
+                if let Some(image) = self.complete_window_transitions(id)? {
+                    frame(id, image);
+                }
             }
         }
         Ok(())
