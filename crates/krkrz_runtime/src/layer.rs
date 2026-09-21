@@ -1095,6 +1095,9 @@ impl Services {
         if op == "fillAlpha" {
             return self.layer_fill_alpha(id, budget);
         }
+        if op == "copyAlphaToProvince" {
+            return self.layer_copy_alpha_to_province(id, args, budget);
+        }
         if matches!(op, "copyRect" | "operateRect") {
             return self.layer_blit(id, op, args, budget);
         }
@@ -1133,6 +1136,7 @@ mod affine;
 mod blit;
 mod blur;
 mod clip_alpha;
+mod copy_alpha_to_province;
 mod draw;
 pub use draw::WindowFrameState;
 mod fill_alpha;
