@@ -1272,6 +1272,12 @@ impl Services {
 }
 
 impl Layer {
+    pub(crate) fn plugin_image_mut(&mut self, available: usize) -> Result<&mut Image> {
+        self.prepare_image_write(available)?;
+        self.image_modified = true;
+        Ok(Arc::make_mut(self.image.as_mut().unwrap()))
+    }
+
     pub(crate) fn set_movie_image(&mut self, image: &Image, available: usize) -> Result<()> {
         ensure!(
             image.rgba.len() + self.province.as_ref().map_or(0, |p| p.pixels.len()) <= available,

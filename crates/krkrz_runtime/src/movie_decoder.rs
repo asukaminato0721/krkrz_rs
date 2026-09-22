@@ -8,14 +8,14 @@ use na_mpeg2_decoder::{
 };
 use std::{collections::VecDeque, sync::Arc};
 
-#[path = "wmv_decoder.rs"]
-mod wmv;
+#[path = "ffmpeg_decoder.rs"]
+mod ffmpeg;
 
 const MAX_BYTES: usize = 256 * 1024 * 1024;
 const CHUNK: usize = 2048;
 
 pub(super) struct Movie {
-    wmv: Option<wmv::Video>,
+    ffmpeg: Option<ffmpeg::Video>,
     video: Vec<u8>,
     decoder: Decoder,
     offset: usize,
@@ -39,8 +39,8 @@ pub(super) struct Movie {
 impl Movie {
     pub fn open(bytes: &[u8]) -> Result<Self> {
         ensure!(bytes.len() <= MAX_BYTES, "compressed movie exceeds 256 MiB");
-        if wmv::detects(bytes) {
-            return Self::open_wmv(bytes);
+        if ffmpeg::detects(bytes) {
+            return Self::open_ffmpeg(bytes);
         }
         let mut demux = Demuxer::new_auto();
         let mut video = Vec::new();
@@ -96,7 +96,7 @@ impl Movie {
         // an elementary stream has no sequence-end marker.
         video.extend_from_slice(&[0, 0, 1, 0xb7]);
         Ok(Self {
-            wmv: None,
+            ffmpeg: None,
             video,
             decoder: Decoder::new(),
             offset: 0,
@@ -118,8 +118,8 @@ impl Movie {
         })
     }
 
-    fn open_wmv(bytes: &[u8]) -> Result<Self> {
-        let (video, pcm) = wmv::Video::open(bytes)?;
+    fn open_ffmpeg(bytes: &[u8]) -> Result<Self> {
+        let (video, pcm) = ffmpeg::Video::open(bytes)?;
         let audio_start_ms = pcm.start_ms.unwrap_or(0) as f64;
         let duration_ms = video.duration_ms.max(if pcm.samples.is_empty() {
             0.0
@@ -141,7 +141,7 @@ impl Movie {
             audio_rate: pcm.rate,
             audio_channels: pcm.channels,
             audio_start_ms,
-            wmv: Some(video),
+            ffmpeg: Some(video),
             video: Vec::new(),
             decoder: Decoder::new(),
             offset: 0,
@@ -187,7 +187,7 @@ impl Movie {
         if self.image_frame == Some(frame) {
             return Ok(false);
         }
-        if let Some(video) = &mut self.wmv {
+        if let Some(video) = &mut self.ffmpeg {
             video.frame(frame, &mut self.image)?;
             self.image_frame = Some(frame);
             return Ok(true);

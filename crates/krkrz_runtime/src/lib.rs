@@ -10,6 +10,7 @@ mod csv;
 pub mod dialog;
 pub mod display;
 mod draw_device;
+mod fftgraph;
 pub mod file_dialog;
 mod font;
 pub mod fonts;
@@ -99,6 +100,7 @@ pub struct Services {
     alpha_movie_links: BTreeSet<String>,
     sound_global_volume: i32,
     sample_plugin: get_sample::State,
+    fftgraph: fftgraph::State,
     pub arguments: BTreeMap<String, String>,
     loaded_plugins: BTreeSet<String>,
     plugin_names: Vec<String>,
@@ -635,6 +637,13 @@ impl Host for Services {
                         }
                         Ok(Value::Void)
                     }
+                    "fftgraph.dll" => {
+                        if !self.loaded_plugins.contains("fftgraph.dll") {
+                            vm.register_native("drawFFTGraph")?;
+                            self.loaded_plugins.insert("fftgraph.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
                     "getsample.dll" => {
                         if !self.loaded_plugins.contains("getsample.dll") {
                             get_sample::register(vm)?;
@@ -654,6 +663,7 @@ impl Host for Services {
             "Plugins.getList" => {
                 vm.new_native_array(self.plugin_names.iter().map(|s| Value::string(s)).collect())
             }
+            "drawFFTGraph" => self.draw_fft_graph(vm, args, budget),
             "System.getKeyState" => {
                 let key = args
                     .first()
@@ -1065,6 +1075,7 @@ impl Session {
                 alpha_movie_links: BTreeSet::new(),
                 sound_global_volume: 100_000,
                 sample_plugin: get_sample::State::default(),
+                fftgraph: fftgraph::State::default(),
                 arguments: BTreeMap::from([("-debugwin".into(), "no".into())]),
                 loaded_plugins: BTreeSet::new(),
                 plugin_names: Vec::new(),

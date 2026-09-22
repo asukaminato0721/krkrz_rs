@@ -127,6 +127,40 @@ fn wmv_frames_audio_pause_rewind_loop_and_eof_follow_session_clock() {
 }
 
 #[test]
+#[ignore = "requires ffmpeg and ffprobe on PATH"]
+fn avi_mp42_frames_audio_rewind_and_eof_follow_session_clock() {
+    // Synthetic Microsoft MPEG-4 v2/MP3 AVI, stored under a misleading extension.
+    let (mut session, _project, _saves) =
+        movie_session_with(include_bytes!("fixtures/video_overlay.avi"));
+    let window = session.evaluate("w").unwrap();
+    let first = session.capture_window(&window).unwrap();
+    assert_eq!(
+        session
+            .evaluate("[v.originalWidth,v.originalHeight,v.fps].join(',')")
+            .unwrap(),
+        Value::string("32,24,25")
+    );
+    session.evaluate("v.play()").unwrap();
+    session.tick(160).unwrap();
+    assert_eq!(session.evaluate("v.frame").unwrap(), Value::Integer(4));
+    assert!(session.take_audio().iter().any(|v| v.abs() > 0.01));
+    assert_ne!(first.rgba, session.capture_window(&window).unwrap().rgba);
+    session.evaluate("v.pause()").unwrap();
+    session.tick(240).unwrap();
+    assert_eq!(session.evaluate("v.frame").unwrap(), Value::Integer(4));
+    assert!(session.take_audio().is_empty());
+    session.evaluate("v.frame=0").unwrap();
+    assert_eq!(first.rgba, session.capture_window(&window).unwrap().rgba);
+    session.evaluate("v.play()").unwrap();
+    session.tick(1240).unwrap();
+    assert_eq!(
+        session.evaluate("events[events.count-1]").unwrap(),
+        Value::string("stop")
+    );
+    session.evaluate("v.close()").unwrap();
+}
+
+#[test]
 fn missing_wmv_tools_report_the_required_decoder() {
     const CHILD: &str = "KRKRZ_TEST_MISSING_WMV_TOOLS";
     if std::env::var_os(CHILD).is_some() {
@@ -142,6 +176,16 @@ fn missing_wmv_tools_report_the_required_decoder() {
             .evaluate("Scripts.exec('global.w=new Window();global.v=new VideoOverlay(w);')")
             .unwrap();
         let error = session.evaluate("v.open('movie.wmv')").unwrap_err();
+        assert!(
+            format!("{error:#}").contains("ffprobe must be installed on PATH"),
+            "{error:#}"
+        );
+        std::fs::write(
+            project.path().join("movie.avi"),
+            include_bytes!("fixtures/video_overlay.avi"),
+        )
+        .unwrap();
+        let error = session.evaluate("v.open('movie.avi')").unwrap_err();
         assert!(
             format!("{error:#}").contains("ffprobe must be installed on PATH"),
             "{error:#}"

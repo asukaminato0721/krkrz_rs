@@ -76,6 +76,10 @@ The getSample replacement follows Kirikiroid2
 `src/plugins/getSample.cpp`, revision `d1c2b1259423542c893e0b65eaeb46c848848f2b`,
 under the Kirikiri notice below. Visualization downmix follows Kirikiri Z
 `sound/WaveIntf.cpp`. No original plugin binary is bundled or executed by Rust.
+The fftgraph replacement follows `src/plugins/win32/fftgraph/Main.cpp` from
+krkr2 at the `krkr2-plugins` revision in `docs/references.json`, under the
+Kirikiri notice below. RealFFT supplies the transform; the original FFT
+implementation is not bundled.
 Date parsing and calendar behavior follow Kirikiri Z `tjs2/tjsDate.cpp`,
 `tjsDateParser.cpp`, `syntax/tjsdate.y` and `syntax/dp_wordtable.txt`.
 The jiff crate (MIT OR Unlicense) supplies calendar and platform timezone conversion.

@@ -1,4 +1,4 @@
-//! ASF/Windows Media fallback using local FFmpeg tools. Compressed input lives
+//! ASF/movie and AVI fallback using local FFmpeg tools. Compressed input lives
 //! in a private temporary file; video is streamed one RGBA frame at a time.
 use super::{Audio, MAX_BYTES};
 use anyhow::{Context, Result, bail, ensure};
@@ -17,6 +17,7 @@ const ASF_HEADER: &[u8] = &[
 
 pub(super) fn detects(bytes: &[u8]) -> bool {
     bytes.starts_with(ASF_HEADER)
+        || (bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"AVI "))
 }
 
 #[derive(Deserialize)]
@@ -61,7 +62,7 @@ pub(super) struct Video {
 
 impl Video {
     pub fn open(bytes: &[u8]) -> Result<(Self, Audio)> {
-        let mut source = tempfile::Builder::new().suffix(".wmv").tempfile()?;
+        let mut source = tempfile::Builder::new().suffix(".movie").tempfile()?;
         source.write_all(bytes)?;
         source.flush()?;
         let probe = Process::read_bounded(
@@ -71,32 +72,32 @@ impl Video {
                     "-of", "json"])
                 .arg(source.path()),
             1024 * 1024,
-        ).context("probe ASF/WMV (ffprobe must be installed on PATH)")?;
-        let probe: Probe = serde_json::from_slice(&probe).context("invalid WMV metadata")?;
+        ).context("probe movie (ffprobe must be installed on PATH)")?;
+        let probe: Probe = serde_json::from_slice(&probe).context("invalid movie metadata")?;
         let stream = probe
             .streams
             .iter()
             .find(|s| s.codec_type == "video")
-            .context("ASF movie contains no video stream")?;
-        let width = stream.width.context("WMV video width is missing")?;
-        let height = stream.height.context("WMV video height is missing")?;
+            .context("movie contains no video stream")?;
+        let width = stream.width.context("movie video width is missing")?;
+        let height = stream.height.context("movie video height is missing")?;
         ensure!(
             width > 0 && height > 0 && u64::from(width) * u64::from(height) <= 16 * 1024 * 1024,
-            "WMV dimensions exceed limit"
+            "movie dimensions exceed limit"
         );
         let fps = stream
             .avg_frame_rate
             .as_deref()
             .and_then(rate)
             .or_else(|| stream.r_frame_rate.as_deref().and_then(rate))
-            .context("unsupported WMV frame rate")?;
+            .context("unsupported movie frame rate")?;
         let duration_ms = seconds(stream.duration.as_deref())
             .or_else(|| seconds(probe.format.duration.as_deref()))
-            .context("WMV duration is missing")?
+            .context("movie duration is missing")?
             * 1000.0;
         ensure!(
             duration_ms > 0.0 && duration_ms <= 3_600_000.0,
-            "WMV duration exceeds one-hour limit"
+            "movie duration exceeds one-hour limit"
         );
         let mut audio = Audio::default();
         if let Some(sound) = probe.streams.iter().find(|s| s.codec_type == "audio") {
@@ -106,10 +107,10 @@ impl Video {
                 ]),
                 MAX_BYTES,
             )
-            .context("decode WMV audio (ffmpeg must be installed on PATH)")?;
+            .context("decode movie audio (ffmpeg must be installed on PATH)")?;
             ensure!(
                 !pcm.is_empty() && pcm.len().is_multiple_of(8),
-                "incomplete WMV audio"
+                "incomplete movie audio"
             );
             audio.samples = pcm
                 .as_chunks::<4>()
@@ -119,7 +120,7 @@ impl Video {
                 .collect();
             ensure!(
                 audio.samples.iter().all(|s| s.is_finite()),
-                "non-finite WMV audio sample"
+                "non-finite movie audio sample"
             );
             audio.rate = 48_000;
             audio.channels = 2;
@@ -182,7 +183,7 @@ impl Video {
                             "-pix_fmt", "rgba", "-threads", "2", "-f", "rawvideo", "pipe:1",
                         ]),
                 )
-                .context("decode WMV video (ffmpeg must be installed on PATH)")?,
+                .context("decode movie video (ffmpeg must be installed on PATH)")?,
             );
         }
         let image = image.get_or_insert_with(|| Image {
@@ -196,7 +197,7 @@ impl Video {
             let mut first = [0];
             if process.output.read(&mut first)? == 0 {
                 process.finish()?;
-                ensure!(self.next_frame > 0, "WMV contains no decoded frames");
+                ensure!(self.next_frame > 0, "movie contains no decoded frames");
                 self.process = None;
                 self.ended = true;
                 break;
@@ -205,13 +206,13 @@ impl Video {
             if let Err(error) = process.output.read_exact(&mut image.rgba[1..]) {
                 process.stop();
                 bail!(
-                    "incomplete WMV video frame: {error}; {}",
+                    "incomplete movie video frame: {error}; {}",
                     process.diagnostic()
                 );
             }
             self.next_frame += 1;
         }
-        // ASF duration can outlast its last video packet. Hold that frame until
+        // Container duration can outlast its last video packet. Hold that frame until
         // the session reaches EOF, including any remaining audio samples.
         self.next_frame = target + 1;
         Ok(())
@@ -264,7 +265,7 @@ impl Process {
         let status = self.child.wait()?;
         ensure!(
             status.success(),
-            "Windows Media decoder failed ({status}): {}",
+            "FFmpeg decoder failed ({status}): {}",
             self.diagnostic()
         );
         Ok(())
@@ -277,7 +278,7 @@ impl Process {
             .read_to_end(&mut bytes)?;
         ensure!(
             bytes.len() <= limit,
-            "Windows Media decoder output exceeds {limit} bytes"
+            "FFmpeg decoder output exceeds {limit} bytes"
         );
         process.finish()?;
         Ok(bytes)
@@ -297,6 +298,11 @@ mod tests {
         assert!(detects(ASF_HEADER));
         assert!(!detects(&ASF_HEADER[..15]));
         assert!(!detects(b"fake.wmv"));
+        assert!(detects(b"RIFF\x00\x00\x00\x00AVI "));
+        assert!(!detects(b"RIFF\x00\x00\x00\x00WAVE"));
+        assert!(!detects(b"RIFF\x00\x00\x00\x00WEBP"));
+        assert!(!detects(b"RIFF\x00\x00\x00\x00AVI"));
+        assert!(!detects(b"fake.avi"));
         for invalid in ["0/0", "1/0", "NaN/1", "241/1", "-30/1", "30"] {
             assert!(rate(invalid).is_none());
         }

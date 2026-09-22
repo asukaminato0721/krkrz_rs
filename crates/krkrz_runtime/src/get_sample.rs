@@ -130,31 +130,13 @@ impl Services {
                 _ => return Err(unsupported(format!("getSample operation {operation}"))),
             }
         };
-        let handle = self.sample_plugin.next;
-        self.sample_plugin.next = handle
-            .checked_add(1)
-            .context("sample handle limit reached")?;
-        self.sample_plugin
-            .buffers
-            .insert(handle, vec![0; settings.count as usize]);
-        let result = (|| -> Result<Value> {
-            let callback = vm.get_member(context, &Value::string("getVisBuffer"), false)?;
-            let mut args = vec![
-                Value::Integer(handle),
-                Value::Integer(settings.count.into()),
-                Value::Integer(1),
-            ];
-            if !legacy {
-                args.push(Value::Integer(settings.ahead.into()));
-            }
-            vm.call_function(&callback, context, &args, self, budget)
-        })();
-        let buffer = self
-            .sample_plugin
-            .buffers
-            .remove(&handle)
-            .expect("scoped sample buffer");
-        let result = result?;
+        let (buffer, result) = self.read_vis_buffer(
+            vm,
+            context,
+            settings.count,
+            (!legacy).then_some(settings.ahead),
+            budget,
+        )?;
         if legacy {
             // The original can read unwritten malloc bytes. Zero initialization
             // gives deterministic results without reproducing that memory bug.
@@ -179,5 +161,41 @@ impl Services {
             .unwrap_or(0) as f64
             / 32768.0;
         Ok(Value::Real(peak * peak))
+    }
+
+    // The handle exists only during the callback, including nested calls and errors.
+    pub(crate) fn read_vis_buffer(
+        &mut self,
+        vm: &mut Vm,
+        context: &Value,
+        count: i32,
+        ahead: Option<i32>,
+        budget: &mut u64,
+    ) -> Result<(Vec<i16>, Value)> {
+        let handle = self.sample_plugin.next;
+        self.sample_plugin.next = handle
+            .checked_add(1)
+            .context("sample handle limit reached")?;
+        self.sample_plugin
+            .buffers
+            .insert(handle, vec![0; count as usize]);
+        let result = (|| -> Result<Value> {
+            let callback = vm.get_member(context, &Value::string("getVisBuffer"), false)?;
+            let mut args = vec![
+                Value::Integer(handle),
+                Value::Integer(count.into()),
+                Value::Integer(1),
+            ];
+            if let Some(ahead) = ahead {
+                args.push(Value::Integer(ahead.into()));
+            }
+            vm.call_function(&callback, context, &args, self, budget)
+        })();
+        let buffer = self
+            .sample_plugin
+            .buffers
+            .remove(&handle)
+            .expect("scoped sample buffer");
+        Ok((buffer, result?))
     }
 }

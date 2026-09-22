@@ -38,8 +38,8 @@ cargo clippy --workspace --all-targets -- -D warnings
 MPEG playback uses the bundled pure Rust MPEG-1/2 decoder, with MPEG audio
 (MP1/2/3), AC-3 and DVD LPCM support. MPEG requires no external decoder executable.
 Video frames are decoded incrementally; mono/stereo PCM is mixed on the session
-clock. ASF/WMV files are detected by their header and automatically decoded with
-`ffmpeg` and `ffprobe` on PATH, including WMV3 video and WMA audio. Compressed input
+clock. ASF/WMV and AVI files are detected by their headers and automatically decoded with
+`ffmpeg` and `ffprobe` on PATH, including WMV3/WMA and Microsoft MPEG-4 v2/MP3. Compressed input
 is held in a temporary file and video frames stream through a bounded buffer;
 original game archives are not modified. Missing tools produce an explicit error.
 Other containers and field-coded MPEG pictures remain unsupported.
@@ -323,6 +323,11 @@ The `layerExDraw.dll` replacement registers the installed interface and implemen
 GdiPlus PointF, RectF and Matrix operations. Its synthetic corpus has 32 geometry
 and registration cases plus seven reached TJS language cases. GDI+ fonts, images,
 paths, appearance resources and Layer drawing remain explicit unsupported calls.
+
+The `fftgraph.dll` replacement provides `drawFFTGraph`, with fire and LCD
+spectrum styles, color options, peak hold and decay. It previews WaveSoundBuffer
+audio without advancing playback. Graph rectangles must fit the layer image;
+invalid dimensions and bar divisions are rejected.
 Plugin loading alone does not establish rendered output.
 
 The AlphaMovie binding decodes AJPM rectangles, delivers their pixels and position
