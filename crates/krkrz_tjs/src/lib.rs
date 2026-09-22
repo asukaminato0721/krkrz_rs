@@ -20,6 +20,7 @@ mod regexp;
 pub use readonly::ReadOnlyData;
 mod scripts_ex;
 mod serialization;
+mod string_escape;
 mod string_format;
 pub use preprocessor::Preprocessor;
 pub mod value;

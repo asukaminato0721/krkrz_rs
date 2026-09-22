@@ -11,7 +11,7 @@ fn execute(source: &str) -> Value {
 var w=new Window(),d=new Layer(w,null),s=new Layer(w,d);
 d.setImageSize(8,4);s.setImageSize(2,1);
 d.type=ltOpaque;d.holdAlpha=true;s.type=ltAlpha;
-d.fillRect(0,0,8,4,0xff000000);
+for(var y=0;y<4;y++)for(var x=0;x<8;x++){d.setMainPixel(x,y,0);d.setMaskPixel(x,y,255);}
 s.setMainPixel(0,0,0xff0000);s.setMaskPixel(0,0,128);
 s.setMainPixel(1,0,0x00ff00);s.setMaskPixel(1,0,255);
 {source}

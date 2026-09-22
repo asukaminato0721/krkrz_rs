@@ -456,6 +456,7 @@ impl Vm {
             }
             if [
                 "sprintf",
+                "escape",
                 "replace",
                 "match",
                 "reverse",
@@ -606,6 +607,12 @@ impl Vm {
                 return self.regexp_method(&args[0], name, &forwarded, host, budget);
             }
             return match name {
+                "escape" => {
+                    if !result_needed {
+                        return Ok(Value::Void);
+                    }
+                    crate::string_escape::escape(s, budget)
+                }
                 "sprintf" => {
                     if !result_needed {
                         return Ok(Value::Void);
