@@ -1134,6 +1134,19 @@ impl Services {
         if matches!(op, "copyRect" | "operateRect") {
             return self.layer_blit(id, op, args, budget);
         }
+        if op == "pileRect" {
+            ensure!(args.len() >= 7, "Layer.pileRect: missing arguments");
+            ensure!(
+                matches!(self.layers[&id].draw_face(), 0 | 1),
+                "invalid pileRect draw face"
+            );
+            // Legacy pixel-alpha blit: source layer type is ignored. The eighth
+            // argument is opacity; the deprecated ninth argument has no effect.
+            let mut forwarded = args[..7].to_vec();
+            forwarded.push(Value::Integer(2));
+            forwarded.push(args.get(7).cloned().unwrap_or(Value::Void));
+            return self.layer_blit(id, "operateRect", &forwarded, budget);
+        }
         if op == "loadProvinceImage" {
             return self.layer_load_province(id, args, budget);
         }

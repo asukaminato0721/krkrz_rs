@@ -78,6 +78,7 @@
       "operateAffine",
       "operateRect",
       "operateStretch",
+      "pileRect",
       "piledCopy",
       "releaseCapture",
       "removeMode",

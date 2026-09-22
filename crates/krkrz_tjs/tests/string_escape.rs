@@ -3,11 +3,7 @@ use krkrz_tjs::{Value, Vm, VmAbort, compile};
 fn run(input: Vec<u16>, source: &str, mut budget: u64) -> anyhow::Result<Value> {
     let mut vm = Vm::default();
     vm.globals.insert("input".into(), Value::String(input));
-    vm.execute(
-        &compile("escape-test", source)?,
-        &mut (),
-        &mut budget,
-    )
+    vm.execute(&compile("escape-test", source)?, &mut (), &mut budget)
 }
 
 #[test]
@@ -38,14 +34,11 @@ fn hex_digit_runs_are_unambiguous_and_round_trip_through_eval() {
         run(input.clone(), "return input.escape();", 1000).unwrap(),
         Value::string(r"\x01\x41\x66\x39G\x1f\x30")
     );
+    let escaped = run(input.clone(), "return input.escape();", 1000).unwrap();
+    let program = compile("round-trip", &format!("return \"{}\";", escaped.text())).unwrap();
     assert_eq!(
-        run(
-            input,
-            r#"return eval('"'+input.escape()+'"')===input;"#,
-            1000
-        )
-        .unwrap(),
-        Value::Integer(1)
+        Vm::default().execute(&program, &mut (), &mut 1000).unwrap(),
+        Value::String(input)
     );
 }
 

@@ -289,6 +289,12 @@ serialization. The original `StorageData` script reads a binary game scenario
 through this interface. Stale views fail safely after their owner is invalidated.
 This does not establish story playback or original save compatibility.
 
+Legacy `Layer.pileRect` performs pixel-alpha blending with optional opacity.
+`Layer.operateStretch` supports opaque, alpha and additive-alpha blending with
+scaling, destination clipping and flipped destination rectangles. It shares
+the existing resampling accuracy limits of `stretchCopy`. TJS `string.escape()`
+provides C-style escaping for scripts that construct expressions dynamically.
+
 System constants match the installed engine, including its older stretch-mode
 exports. Graphic-cache limits are bytes and affect a bounded LRU cache; Layer
 decoding/rendering integration remains open. Application locks use per-user
