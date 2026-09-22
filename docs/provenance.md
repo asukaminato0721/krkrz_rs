@@ -189,3 +189,17 @@ No resource DLL or platform GUI code is executed by Rust.
 The next Window-extension reference is `wtnbgo/windowEx` revision
 `88c9be22ff8f9e6d42edbf4787092837f177a89a`, by miahmie. Its source is cached
 outside the repository and has not been ported yet.
+# Synthetic Windows Media fixture
+
+`crates/krkrz_runtime/tests/fixtures/video_overlay.wmv` contains generated test
+bars and a 440 Hz sine wave, with WMV2/WMA2 codecs in ASF. It contains no game data.
+Generate it with:
+
+```sh
+ffmpeg -v error -nostdin \
+  -f lavfi -i 'testsrc2=size=32x24:rate=25:duration=0.48' \
+  -f lavfi -i 'sine=frequency=440:sample_rate=44100:duration=0.48' \
+  -map 0:v -map 1:a -c:v wmv2 -b:v 200k -c:a wmav2 -b:a 64k \
+  -fflags +bitexact -flags:v +bitexact -flags:a +bitexact -map_metadata -1 \
+  -f asf crates/krkrz_runtime/tests/fixtures/video_overlay.wmv
+```

@@ -8,10 +8,14 @@ use na_mpeg2_decoder::{
 };
 use std::{collections::VecDeque, sync::Arc};
 
+#[path = "wmv_decoder.rs"]
+mod wmv;
+
 const MAX_BYTES: usize = 256 * 1024 * 1024;
 const CHUNK: usize = 2048;
 
 pub(super) struct Movie {
+    wmv: Option<wmv::Video>,
     video: Vec<u8>,
     decoder: Decoder,
     offset: usize,
@@ -35,6 +39,9 @@ pub(super) struct Movie {
 impl Movie {
     pub fn open(bytes: &[u8]) -> Result<Self> {
         ensure!(bytes.len() <= MAX_BYTES, "compressed movie exceeds 256 MiB");
+        if wmv::detects(bytes) {
+            return Self::open_wmv(bytes);
+        }
         let mut demux = Demuxer::new_auto();
         let mut video = Vec::new();
         let mut video_pts = None;
@@ -89,6 +96,7 @@ impl Movie {
         // an elementary stream has no sequence-end marker.
         video.extend_from_slice(&[0, 0, 1, 0xb7]);
         Ok(Self {
+            wmv: None,
             video,
             decoder: Decoder::new(),
             offset: 0,
@@ -105,6 +113,42 @@ impl Movie {
             audio_rate: pcm.rate,
             audio_channels: pcm.channels,
             audio_start_ms,
+            image: None,
+            image_frame: None,
+        })
+    }
+
+    fn open_wmv(bytes: &[u8]) -> Result<Self> {
+        let (video, pcm) = wmv::Video::open(bytes)?;
+        let audio_start_ms = pcm.start_ms.unwrap_or(0) as f64;
+        let duration_ms = video.duration_ms.max(if pcm.samples.is_empty() {
+            0.0
+        } else {
+            audio_start_ms
+                + pcm.samples.len() as f64 * 1000.0 / pcm.channels as f64 / pcm.rate as f64
+        });
+        ensure!(
+            duration_ms <= 3_600_000.0,
+            "movie duration exceeds one-hour limit"
+        );
+        Ok(Self {
+            width: video.width,
+            height: video.height,
+            fps: video.fps,
+            frames: (duration_ms * video.fps / 1000.0).ceil() as u64,
+            duration_ms,
+            audio: pcm.samples,
+            audio_rate: pcm.rate,
+            audio_channels: pcm.channels,
+            audio_start_ms,
+            wmv: Some(video),
+            video: Vec::new(),
+            decoder: Decoder::new(),
+            offset: 0,
+            pending: VecDeque::new(),
+            flushed: false,
+            next_frame: 0,
+            padded_rgba: Vec::new(),
             image: None,
             image_frame: None,
         })
@@ -142,6 +186,11 @@ impl Movie {
         let frame = frame.min(self.frames - 1);
         if self.image_frame == Some(frame) {
             return Ok(false);
+        }
+        if let Some(video) = &mut self.wmv {
+            video.frame(frame, &mut self.image)?;
+            self.image_frame = Some(frame);
+            return Ok(true);
         }
         if frame < self.next_frame {
             self.decoder = Decoder::new();

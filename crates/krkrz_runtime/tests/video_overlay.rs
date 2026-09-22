@@ -70,16 +70,94 @@ fn invalid_zoom_and_missing_layer_coordinates_do_not_panic() {
 }
 
 fn movie_session() -> (Session, tempfile::TempDir, tempfile::TempDir) {
+    movie_session_with(include_bytes!("fixtures/video_overlay.mpg"))
+}
+
+fn movie_session_with(bytes: &[u8]) -> (Session, tempfile::TempDir, tempfile::TempDir) {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
-    std::fs::write(
-        project.path().join("movie.mpg"),
-        include_bytes!("fixtures/video_overlay.mpg"),
-    )
-    .unwrap();
+    std::fs::write(project.path().join("movie.mpg"), bytes).unwrap();
     let mut session = Session::open(project.path(), Some(saves.path()), None, 10_000_000).unwrap();
     session.evaluate("Scripts.exec('global.w=new Window();global.l=new Layer(w,null);l.setSize(32,24);global.v=new VideoOverlay(w);v.mode=vomLayer;v.layer1=l;global.events=[];v.onStatusChanged=function(s){events.add(s);};v.onPeriod=function(r){events.add(\"period\"+r);};v.open(\"movie.mpg\");')").unwrap();
     (session, project, saves)
+}
+
+#[test]
+#[ignore = "requires ffmpeg and ffprobe on PATH"]
+fn wmv_frames_audio_pause_rewind_loop_and_eof_follow_session_clock() {
+    // Keep the misleading .mpg filename: detection must use ASF bytes.
+    let (mut session, _project, _saves) =
+        movie_session_with(include_bytes!("fixtures/video_overlay.wmv"));
+    let window = session.evaluate("w").unwrap();
+    let first = session.capture_window(&window).unwrap();
+    assert_eq!(
+        session
+            .evaluate("v.originalWidth+','+v.originalHeight+','+v.fps")
+            .unwrap(),
+        Value::string("32,24,25")
+    );
+    session.evaluate("v.play()").unwrap();
+    session.tick(160).unwrap();
+    assert_eq!(session.evaluate("v.frame").unwrap(), Value::Integer(4));
+    assert!(session.take_audio().iter().any(|v| v.abs() > 0.01));
+    assert_ne!(first.rgba, session.capture_window(&window).unwrap().rgba);
+    session.evaluate("v.pause()").unwrap();
+    session.tick(240).unwrap();
+    assert_eq!(session.evaluate("v.frame").unwrap(), Value::Integer(4));
+    assert!(session.take_audio().is_empty());
+    session.evaluate("v.frame=0").unwrap();
+    assert_eq!(first.rgba, session.capture_window(&window).unwrap().rgba);
+    session
+        .evaluate("Scripts.exec('v.loop=true;v.play();')")
+        .unwrap();
+    let duration = session.evaluate("v.totalTime").unwrap().integer().unwrap() as u64;
+    session.tick(240 + duration + 80).unwrap();
+    assert_eq!(session.evaluate("v.frame").unwrap(), Value::Integer(2));
+    assert_eq!(
+        session.evaluate("events[events.count-1]").unwrap(),
+        Value::string("period0")
+    );
+    session.evaluate("v.loop=false").unwrap();
+    session.tick(240 + 2 * duration + 160).unwrap();
+    assert_eq!(
+        session.evaluate("events[events.count-1]").unwrap(),
+        Value::string("stop")
+    );
+    session.evaluate("v.close()").unwrap();
+}
+
+#[test]
+fn missing_wmv_tools_report_the_required_decoder() {
+    const CHILD: &str = "KRKRZ_TEST_MISSING_WMV_TOOLS";
+    if std::env::var_os(CHILD).is_some() {
+        let project = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        std::fs::write(
+            project.path().join("movie.wmv"),
+            include_bytes!("fixtures/video_overlay.wmv"),
+        )
+        .unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
+        session
+            .evaluate("Scripts.exec('global.w=new Window();global.v=new VideoOverlay(w);')")
+            .unwrap();
+        let error = session.evaluate("v.open('movie.wmv')").unwrap_err();
+        assert!(
+            format!("{error:#}").contains("ffprobe must be installed on PATH"),
+            "{error:#}"
+        );
+        return;
+    }
+    let empty = tempfile::tempdir().unwrap();
+    assert!(
+        std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "missing_wmv_tools_report_the_required_decoder"])
+            .env(CHILD, "1")
+            .env("PATH", empty.path())
+            .status()
+            .unwrap()
+            .success()
+    );
 }
 
 #[test]
