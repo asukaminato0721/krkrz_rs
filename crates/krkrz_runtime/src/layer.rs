@@ -1101,8 +1101,8 @@ impl Services {
         if op == "affineCopy" {
             return self.layer_affine_copy(id, args, budget);
         }
-        if op == "stretchCopy" {
-            return self.layer_stretch_copy(id, args, budget);
+        if matches!(op, "stretchCopy" | "operateStretch") {
+            return self.layer_stretch(id, op, args, budget);
         }
         if op == "saveLayerImage" {
             return self.layer_save_image(id, args, budget);

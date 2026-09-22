@@ -12,6 +12,16 @@ impl Services {
         args: &[Value],
         budget: &mut u64,
     ) -> Result<Value> {
+        self.layer_affine(id, args, None, budget)
+    }
+
+    pub(super) fn layer_affine(
+        &mut self,
+        id: usize,
+        args: &[Value],
+        operation: Option<(i32, i32)>,
+        budget: &mut u64,
+    ) -> Result<Value> {
         ensure!(args.len() >= 12, "Layer.affineCopy: missing arguments");
         let src_id = object(&args[0])?.context("affineCopy source is null")?;
         let src = self
@@ -179,6 +189,37 @@ impl Services {
         }
         let mut output = image.clone();
         for y in 0..height as usize {
+            if let Some((mode, opacity)) = operation {
+                // Blend contiguous covered spans so native row rounding and
+                // destination alpha rules match operateRect after sampling.
+                let row_start = y * width as usize * 4;
+                let mut x = 0;
+                while x < width as usize {
+                    if colors.data()[row_start + x * 4 + 3] == 0 {
+                        x += 1;
+                        continue;
+                    }
+                    let start = x;
+                    while x < width as usize && colors.data()[row_start + x * 4 + 3] != 0 {
+                        let i = row_start + x * 4;
+                        colors.data_mut()[i + 3] = alphas.data()[i];
+                        x += 1;
+                    }
+                    let target =
+                        ((y + clip[1] as usize) * output.width as usize + start + clip[0] as usize)
+                            * 4;
+                    blit::blend_row(
+                        &mut output.rgba[target..target + (x - start) * 4],
+                        &colors.data()[row_start + start * 4..row_start + x * 4],
+                        start + clip[0] as usize,
+                        face,
+                        mode,
+                        opacity,
+                        dst.hold_alpha,
+                    );
+                }
+                continue;
+            }
             for x in 0..width as usize {
                 let i = (y * width as usize + x) * 4;
                 let target =

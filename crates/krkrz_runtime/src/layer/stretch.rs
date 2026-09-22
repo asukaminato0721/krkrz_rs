@@ -38,13 +38,14 @@ pub(super) fn resize(
 }
 
 impl Services {
-    pub(super) fn layer_stretch_copy(
+    pub(super) fn layer_stretch(
         &mut self,
         id: usize,
+        op: &str,
         args: &[Value],
         budget: &mut u64,
     ) -> Result<Value> {
-        ensure!(args.len() >= 9, "Layer.stretchCopy: missing arguments");
+        ensure!(args.len() >= 9, "Layer.{op}: missing arguments");
         let (dx, dy, dw, dh) = (
             int(&args[0])? as i64,
             int(&args[1])? as i64,
@@ -58,11 +59,30 @@ impl Services {
             int(&args[8])? as i64,
         );
         let source = object(&args[4])?.context("stretchCopy source is null")?;
-        let src = self
+        let source_layer = self
             .layers
             .get(&source)
-            .context("stretchCopy source is not a Layer")?
-            .bitmap()?;
+            .context("stretch source is not a Layer")?;
+        let src = source_layer.bitmap()?;
+        let optional_int = |index, default| {
+            args.get(index)
+                .filter(|v| !matches!(v, Value::Void))
+                .map(int)
+                .transpose()
+                .map(|v| v.unwrap_or(default))
+        };
+        let operation = if op == "operateStretch" {
+            let mode = match optional_int(9, 128)? {
+                128 => match source_layer.kind {
+                    2..=5 | 8..=28 => source_layer.kind,
+                    _ => 1,
+                },
+                mode => mode,
+            };
+            Some((mode, optional_int(10, 255)?.clamp(0, 255)))
+        } else {
+            None
+        };
         let dst = &self.layers[&id];
         let image = dst.bitmap()?;
         let clip = [
@@ -83,8 +103,18 @@ impl Services {
             return Ok(Value::Void);
         }
         let face = dst.draw_face();
-        ensure!(matches!(face, 0 | 1 | 4), "stretchCopy: invalid draw face");
-        let mode = args.get(9).map(int).transpose()?.unwrap_or(0);
+        ensure!(matches!(face, 0 | 1 | 4), "Layer.{op}: invalid draw face");
+        if let Some((mode, opacity)) = operation {
+            if !matches!(mode, 1 | 2 | 12) {
+                return Err(unsupported(format!(
+                    "Layer.operateStretch blend mode {mode}"
+                )));
+            }
+            if opacity == 0 {
+                return Ok(Value::Void);
+            }
+        }
+        let mode = optional_int(if operation.is_some() { 11 } else { 9 }, 0)?;
         let filter = mode & 15;
         // Unscaled blits keep the native clipping and overlap semantics.
         if dw == sw
@@ -94,18 +124,26 @@ impl Services {
             && dx + dw <= clip[2]
             && dy + dh <= clip[3]
         {
+            let mut blit_args = vec![
+                args[0].clone(),
+                args[1].clone(),
+                args[4].clone(),
+                args[5].clone(),
+                args[6].clone(),
+                args[7].clone(),
+                args[8].clone(),
+            ];
+            if let Some((mode, opacity)) = operation {
+                blit_args.extend([Value::Integer(mode.into()), Value::Integer(opacity.into())]);
+            }
             return self.layer_blit(
                 id,
-                "copyRect",
-                &[
-                    args[0].clone(),
-                    args[1].clone(),
-                    args[4].clone(),
-                    args[5].clone(),
-                    args[6].clone(),
-                    args[7].clone(),
-                    args[8].clone(),
-                ],
+                if operation.is_some() {
+                    "operateRect"
+                } else {
+                    "copyRect"
+                },
+                &blit_args,
                 budget,
             );
         }
@@ -141,7 +179,7 @@ impl Services {
                 .map(Value::Real),
             );
             affine.push(Value::Integer(mode as i64));
-            return self.layer_affine_copy(id, &affine, budget);
+            return self.layer_affine(id, &affine, operation, budget);
         }
         ensure!(
             sw > 0
@@ -167,8 +205,25 @@ impl Services {
         )?;
         let available = image_available(&self.layers, id);
         let dst = self.layers.get_mut(&id).unwrap();
+        let hold_alpha = dst.hold_alpha;
         dst.prepare_image_write(available)?;
         let image = Arc::make_mut(dst.image.as_mut().unwrap());
+        if let Some((mode, opacity)) = operation {
+            for (y, row) in output.chunks_exact(dw as usize * 4).enumerate() {
+                let start = ((top as usize + y) * image.width as usize + left as usize) * 4;
+                blit::blend_row(
+                    &mut image.rgba[start..start + row.len()],
+                    row,
+                    left as usize,
+                    face,
+                    mode,
+                    opacity,
+                    hold_alpha,
+                );
+            }
+            dst.image_modified = true;
+            return Ok(Value::Void);
+        }
         let mut pixels = output.as_chunks::<4>().0.iter();
         for y in top..bottom {
             for x in left..right {
