@@ -21,6 +21,99 @@ var a=new Layer(w,p,owner);a.setSize(20,20);a.setPos(10,5);a.visible=true;a.hitT
 "#;
 
 #[test]
+fn legacy_quake_moves_presentation_and_hit_testing_then_restores_origin() {
+    let (_project, _saves, mut s, w) = session(
+        r#"
+        class QuakeWindow extends Window {
+            function QuakeWindow(){super.Window();visible=true;setInnerSize(200,100);}
+            function stopQuake(){setLayerPos(0,0);}
+        }
+        var w=new QuakeWindow(),p=new Layer(w,null),a=new Layer(w,p),log=[];
+        p.setSize(100,50);a.setSize(20,20);a.setPos(10,5);
+        a.visible=true;a.hitThreshold=0;
+        a.onMouseMove=function(x,y){log.add(x+','+y);};
+        w.setPos(30,40);w.setZoom(2,1);
+    "#,
+    );
+    let Value::Object(reference) = &w else {
+        panic!("expected Window")
+    };
+    let id = reference.object.unwrap();
+    let mut frame = krkrz_runtime::WindowFrameState::default();
+    assert!(
+        s.capture_window_if_changed(&w, &mut frame)
+            .unwrap()
+            .is_some()
+    );
+    s.evaluate("w.setLayerPos(-3,4)").unwrap();
+    assert_eq!(
+        s.services.windows[&id].draw_rect(100, 50),
+        [-6, 8, 200, 100]
+    );
+    assert!(
+        s.capture_window_if_changed(&w, &mut frame)
+            .unwrap()
+            .is_some()
+    );
+    assert!(
+        s.capture_window_if_changed(&w, &mut frame)
+            .unwrap()
+            .is_none()
+    );
+    s.input(
+        &w,
+        InputEvent::PointerMove {
+            x: 24,
+            y: 28,
+            shift: 0,
+        },
+    )
+    .unwrap();
+    assert_eq!(s.evaluate("log.join('|')").unwrap(), Value::string("5,5"));
+    assert_eq!(
+        s.evaluate("[w.layerLeft,w.layerTop,w.left,w.top,p.left,p.top].join(',')")
+            .unwrap(),
+        Value::string("-3,4,30,40,0,0")
+    );
+    // Fractional zoom truncates negative offsets toward zero.
+    s.evaluate("w.setZoom(1,2)").unwrap();
+    assert_eq!(s.services.windows[&id].draw_rect(100, 50), [-1, 2, 50, 25]);
+    // Resizing and full screen apply the same offset to the fitted canvas.
+    s.services.windows.get_mut(&id).unwrap().fit_to_client = true;
+    s.resize_window(&w, 300, 100).unwrap();
+    assert_eq!(
+        s.services.windows[&id].draw_rect(100, 50),
+        [44, 8, 200, 100]
+    );
+    s.evaluate("w.layerLeft=2").unwrap();
+    s.evaluate("w.layerTop=-1").unwrap();
+    assert_eq!(
+        s.services.windows[&id].draw_rect(100, 50),
+        [54, -2, 200, 100]
+    );
+    s.evaluate("w.fullScreen=true").unwrap();
+    let shifted = s.services.windows[&id].draw_rect(100, 50);
+    s.evaluate("w.stopQuake()").unwrap();
+    let restored = s.services.windows[&id].draw_rect(100, 50);
+    assert_eq!(shifted[0] - restored[0], restored[2] * 2 / 100);
+    assert_eq!(shifted[1] - restored[1], -restored[3] / 50);
+    s.evaluate("w.fullScreen=false").unwrap();
+    assert_eq!(
+        s.services.windows[&id].draw_rect(100, 50),
+        [50, 0, 200, 100]
+    );
+    // The legacy full-screen path also scales offsets without fit_to_client.
+    s.services.windows.get_mut(&id).unwrap().fit_to_client = false;
+    s.evaluate("w.fullScreen=true").unwrap();
+    let origin = s.services.windows[&id].draw_rect(100, 50);
+    s.evaluate("w.setLayerPos(3,-3)").unwrap();
+    let shifted = s.services.windows[&id].draw_rect(100, 50);
+    assert!(shifted[0] > origin[0] && shifted[1] < origin[1]);
+    s.evaluate("w.stopQuake()").unwrap();
+    assert_eq!(s.services.windows[&id].draw_rect(100, 50), origin);
+}
+
+#[test]
 fn host_resizable_canvas_fits_content_and_transforms_pointer_coordinates() {
     let (_project, _saves, mut s, w) = session(
         r#"

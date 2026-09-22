@@ -34,6 +34,9 @@ pub struct WindowState {
     full_screen: Option<WindowedBounds>,
     pub left: i32,
     pub top: i32,
+    /// Legacy KAG quake offset in unscaled layer coordinates.
+    pub layer_left: i32,
+    pub layer_top: i32,
     pub primary_layer: Value,
     pub(crate) pointer: [i32; 2],
     pub(crate) input: crate::layer::input::State,
@@ -72,6 +75,8 @@ impl Default for WindowState {
             full_screen: None,
             left: 0,
             top: 0,
+            layer_left: 0,
+            layer_top: 0,
             primary_layer: Value::NULL,
             pointer: [0; 2],
             input: Default::default(),
@@ -94,6 +99,7 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         "setSize",
         "setZoom",
         "setPos",
+        "setLayerPos",
         "onResize",
         "onClick",
         "onDoubleClick",
@@ -129,6 +135,8 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         "zoomDenom",
         "left",
         "top",
+        "layerLeft",
+        "layerTop",
     ] {
         vm.register_native_property(
             &class,
@@ -251,8 +259,16 @@ impl WindowState {
                 ((ch * width / height).max(1), ch)
             };
             return [
-                ((cw - w) / 2) as i32,
-                ((ch - h) / 2) as i32,
+                (((cw - w) / 2) as i32).saturating_add(scaled_offset(
+                    self.layer_left,
+                    w as i32,
+                    width as i32,
+                )),
+                (((ch - h) / 2) as i32).saturating_add(scaled_offset(
+                    self.layer_top,
+                    h as i32,
+                    height as i32,
+                )),
                 w as i32,
                 h as i32,
             ];
@@ -264,8 +280,8 @@ impl WindowState {
                 (saved.scale, saved.origin)
             });
         [
-            origin[0],
-            origin[1],
+            origin[0].saturating_add(scaled_offset(self.layer_left, scale[0], scale[1])),
+            origin[1].saturating_add(scaled_offset(self.layer_top, scale[0], scale[1])),
             mul_div(width, scale[0], scale[1]).max(1),
             mul_div(height, scale[0], scale[1]).max(1),
         ]
@@ -350,6 +366,8 @@ impl WindowState {
                 "zoomDenom" => Value::Integer(self.zoom_denom.into()),
                 "left" => Value::Integer(self.left.into()),
                 "top" => Value::Integer(self.top.into()),
+                "layerLeft" => Value::Integer(self.layer_left.into()),
+                "layerTop" => Value::Integer(self.layer_top.into()),
                 "primaryLayer" => {
                     ensure!(self.primary_layer != Value::NULL, "Window has no layer");
                     self.primary_layer.clone()
@@ -393,10 +411,18 @@ impl WindowState {
             "setZoom" => self.set_zoom(coordinate(arg(0)?)?, coordinate(arg(1)?)?)?,
             "set:left" => self.left = coordinate(arg(0)?)?,
             "set:top" => self.top = coordinate(arg(0)?)?,
+            "set:layerLeft" => self.layer_left = coordinate(arg(0)?)?,
+            "set:layerTop" => self.layer_top = coordinate(arg(0)?)?,
             "setInnerSize" => self.set_size(dimension(arg(0)?)?, dimension(arg(1)?)?),
             "setPos" => {
                 self.left = coordinate(arg(0)?)?;
                 self.top = coordinate(arg(1)?)?;
+            }
+            "setLayerPos" => {
+                let left = coordinate(arg(0)?)?;
+                let top = coordinate(arg(1)?)?;
+                self.layer_left = left;
+                self.layer_top = top;
             }
             _ => bail!("unknown registered Window operation: {name}"),
         }
@@ -416,6 +442,16 @@ impl WindowState {
             height.saturating_sub(t).saturating_sub(b).max(0),
         );
     }
+}
+
+fn scaled_offset(value: i32, numer: i32, denom: i32) -> i32 {
+    if denom == 0 {
+        return 0;
+    }
+    // Layer placement uses signed integer division (truncation toward zero),
+    // unlike the rounded MulDiv used for the destination size.
+    (i64::from(value) * i64::from(numer) / i64::from(denom))
+        .clamp(i64::from(i32::MIN), i64::from(i32::MAX)) as i32
 }
 
 fn mul_div(value: i32, numer: i32, denom: i32) -> i32 {
