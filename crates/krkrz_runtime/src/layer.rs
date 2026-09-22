@@ -191,18 +191,51 @@ fn pixel_count(w: i32, h: i32) -> Result<usize> {
     Ok(n as usize)
 }
 // High-byte color identifiers use the Win32 COLORREF byte order.
-fn rgb(color: u32) -> Result<[u8; 3]> {
+fn rgb(color: u32) -> [u8; 3] {
     if color & 0x80000000 != 0 {
-        // Invalid GetSysColor indices return black. Valid platform colors require a host palette.
-        if color & 0xff <= 30 {
-            return Err(unsupported("system color palette is not configured"));
-        }
-        return Ok([0, 0, 0]);
+        // Portable light palette for Win32 GetSysColor indices. Scripts use
+        // these identifiers for dialog text, button faces and beveled borders.
+        // Store RGB values here, not COLORREF; invalid/reserved indices are black.
+        const SYSTEM: [u32; 31] = [
+            0xc8c8c8, // ScrollBar
+            0x000000, // Background
+            0x000080, // ActiveCaption
+            0x808080, // InactiveCaption
+            0xf0f0f0, // Menu
+            0xffffff, // Window
+            0x646464, // WindowFrame
+            0x000000, // MenuText
+            0x000000, // WindowText
+            0xffffff, // CaptionText
+            0xb4b4b4, // ActiveBorder
+            0xf4f7fc, // InactiveBorder
+            0x808080, // AppWorkSpace
+            0x0078d7, // Highlight
+            0xffffff, // HighlightText
+            0xf0f0f0, // BtnFace / 3DFace
+            0xa0a0a0, // BtnShadow / 3DShadow
+            0x6d6d6d, // GrayText
+            0x000000, // BtnText
+            0xffffff, // InactiveCaptionText
+            0xffffff, // BtnHighlight / 3DHighlight
+            0x696969, // 3DDkShadow
+            0xe3e3e3, // 3DLight
+            0x000000, // InfoText
+            0xffffe1, // InfoBk
+            0x000000, // Reserved
+            0x0066cc, // HotLight
+            0x1084d0, // GradientActiveCaption
+            0xb5b5b5, // GradientInactiveCaption
+            0x0078d7, // MenuHighlight
+            0xf0f0f0, // MenuBar
+        ];
+        let color = SYSTEM.get((color & 0xff) as usize).copied().unwrap_or(0);
+        return [(color >> 16) as u8, (color >> 8) as u8, color as u8];
     }
     if color & 0xff000000 != 0 {
-        Ok([color as u8, (color >> 8) as u8, (color >> 16) as u8])
+        [color as u8, (color >> 8) as u8, (color >> 16) as u8]
     } else {
-        Ok([(color >> 16) as u8, (color >> 8) as u8, color as u8])
+        [(color >> 16) as u8, (color >> 8) as u8, color as u8]
     }
 }
 impl Layer {
@@ -404,7 +437,7 @@ impl Layer {
         let color = if removing {
             [0; 3]
         } else {
-            rgb(args[4].integer()? as u32)?
+            rgb(args[4].integer()? as u32)
         };
         self.prepare_image_write(available)?;
         let image = Arc::make_mut(self.image.as_mut().unwrap());
@@ -684,7 +717,7 @@ impl Layer {
                     if op == "setMaskPixel" {
                         p[3] = color as u8;
                     } else {
-                        p[..3].copy_from_slice(&rgb(color)?);
+                        p[..3].copy_from_slice(&rgb(color));
                     }
                     self.image_modified = true;
                 }
@@ -730,9 +763,9 @@ impl Layer {
                 }
                 let hold = face == 1 && self.hold_alpha;
                 let c = if hold {
-                    rgb(color)?
+                    rgb(color)
                 } else {
-                    rgb(color & 0xffffff)?
+                    rgb(color & 0xffffff)
                 };
                 self.prepare_image_write(available)?;
                 let image = Arc::make_mut(self.image.as_mut().unwrap());

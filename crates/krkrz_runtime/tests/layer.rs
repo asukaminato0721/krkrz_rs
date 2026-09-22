@@ -99,6 +99,36 @@ fn session(source: &str, budget: u64) -> (tempfile::TempDir, tempfile::TempDir, 
     (project, saves, session)
 }
 #[test]
+fn system_colors_resolve_for_pixels_fills_and_text() {
+    let (_project, _saves, mut session) = session(
+        "var w=new Window(),l=new Layer(w,null);l.setSize(40,40);l.face=dfAlpha;l.fillRect(0,0,40,40,0x80445566);l.face=dfOpaque;l.holdAlpha=true;l.fillRect(0,0,1,1,clBtnFace);l.setMainPixel(1,0,clHighlight);l.colorRect(2,0,1,1,clWindow);l.setMainPixel(3,0,0x800000ff);l.setMainPixel(4,0,0x01010203);",
+        1_000_000,
+    );
+    assert_eq!(
+        session.evaluate("[l.getMainPixel(0,0),l.getMaskPixel(0,0),l.getMainPixel(1,0),l.getMainPixel(2,0),l.getMainPixel(3,0),l.getMainPixel(4,0)].join(',')").unwrap(),
+        Value::string("15790320,128,30935,16777215,0,197121")
+    );
+    session
+        .services
+        .fonts
+        .add(include_bytes!("fixtures/synthetic.ttf").to_vec())
+        .unwrap();
+    session.evaluate("Scripts.exec('l.face=dfAlpha;l.holdAlpha=false;l.font.face=\"Kirikiri Synthetic\";l.font.height=20;l.fillRect(0,0,40,40,0);l.drawText(2,2,\"A\",clBtnText,255,true,128,clHighlight,0,2,2);')").unwrap();
+    let window = session.evaluate("w").unwrap();
+    let themed = session.capture_window(&window).unwrap();
+    assert!(
+        themed
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .any(|p| p == &[0, 0, 0, 255])
+    );
+    session.evaluate("Scripts.exec('l.fillRect(0,0,40,40,0);l.drawText(2,2,\"A\",0x000000,255,true,128,0x0078d7,0,2,2);')").unwrap();
+    assert_eq!(themed.rgba, session.capture_window(&window).unwrap().rgba);
+}
+
+#[test]
 fn original_layer_corpus() {
     let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/layer.json")).unwrap();
     for case in cases {

@@ -29,11 +29,11 @@ impl Services {
         let Value::String(text) = args[2].unary("string")? else {
             unreachable!()
         };
-        let color = rgb(args[3].integer()? as u32)?;
+        let color = rgb(args[3].integer()? as u32);
         let mut opacity = option(4, 255)?;
         let aa = option(5, 1)? != 0;
         let shadow_level = option(6, 0)?;
-        let shadow_color = rgb(option(7, 0)? as u32)?;
+        let shadow_color = rgb(option(7, 0)? as u32);
         let shadow_width = option(8, 0)?;
         let shadow_offset = [option(9, 0)? as i64, option(10, 0)? as i64];
         let layer = &self.layers[&id];
