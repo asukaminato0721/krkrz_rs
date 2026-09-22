@@ -2192,6 +2192,7 @@ dependencies = [
  "dirs",
  "encoding_rs",
  "fast_image_resize",
+ "fontdb",
  "image",
  "imageproc",
  "krkrz_assets",

@@ -230,6 +230,11 @@ The getSample replacement adds lazy sample settings and peak-square/legacy
 measurements through scoped visualization buffers. Script-visible SLI flags and cached label dictionaries are connected to the
 source streams. Negative look-ahead, 3D controls and hardware playback remain open.
 
+Text measurement and drawing prefer game-registered fonts. If none are available,
+sessions automatically load a system font, preferring Noto/Source Han CJK fonts
+for missing Windows faces such as `黑体`. The fallback file is loaded on first use
+and shared across sessions; no font files are copied into the game directory.
+
 The interactive and replay hosts collect unreachable TJS objects between ticks.
 Collection traces script graphs and native references, runs finalizers, and keeps
 object IDs unique for the session. The 100,000-object limit applies to live

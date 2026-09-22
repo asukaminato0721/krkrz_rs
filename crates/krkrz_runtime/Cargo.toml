@@ -28,3 +28,4 @@ imageproc.workspace = true
 rubato.workspace = true
 audioadapter-buffers.workspace = true
 dirs.workspace = true
+fontdb.workspace = true

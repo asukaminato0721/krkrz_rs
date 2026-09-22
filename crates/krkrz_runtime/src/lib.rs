@@ -1020,7 +1020,7 @@ impl Session {
                 layer_managers: BTreeMap::new(),
                 font_objects: BTreeMap::new(),
                 kag_parsers: BTreeMap::new(),
-                fonts: fonts::FontBook::default(),
+                fonts: fonts::FontBook::with_system_fallback(),
                 csv_parsers: BTreeMap::new(),
                 sounds: BTreeMap::new(),
                 wave_flags_class,

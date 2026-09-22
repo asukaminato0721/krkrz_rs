@@ -74,6 +74,34 @@ return width==f.getTextWidth('Aあ');
         Value::Integer(1)
     );
 }
+
+#[test]
+#[ignore = "requires an installed system CJK font"]
+fn system_cjk_fallback_measures_and_draws_without_game_fonts() {
+    let project = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
+    assert_eq!(session.services.fonts.face_count(), 0);
+    session.evaluate("Scripts.exec('global.w=new Window();global.l=new Layer(w,null);l.setSize(400,60);l.face=dfAlpha;l.fillRect(0,0,400,60,0);l.font.face=\"黑体\";l.font.height=24;l.drawText(0,0,\"中文テストABC\",0xffffff);')").unwrap();
+    assert!(
+        session
+            .evaluate("l.font.getTextWidth('中文テストABC')")
+            .unwrap()
+            .integer()
+            .unwrap()
+            > 0
+    );
+    let window = session.evaluate("w").unwrap();
+    let image = session.capture_window(&window).unwrap();
+    assert!(image.rgba.as_chunks::<4>().0.iter().any(|p| p[3] != 0));
+    let book = &session.services.fonts;
+    // Successful rendering must produce a Chinese glyph, not just .notdef.
+    let chinese = book.rasterize("黑体", '黑', 24.0).unwrap();
+    assert!(!chinese.coverage.is_empty());
+    assert_ne!(chinese, book.rasterize("黑体", '\u{10ffff}', 24.0).unwrap());
+    // System fallback does not masquerade as a game-registered private font.
+    assert_eq!(book.face_count(), 0);
+}
 #[test]
 fn original_add_font_api_registers_private_font_data() {
     let project = tempfile::tempdir().unwrap();

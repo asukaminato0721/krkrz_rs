@@ -11,6 +11,7 @@ use skrifa::{
 use std::{collections::BTreeMap, sync::Arc};
 
 mod raster;
+mod system;
 pub(crate) use raster::TextGlyph;
 
 #[derive(Clone)]
@@ -24,6 +25,7 @@ pub struct FontBook {
     names: BTreeMap<String, usize>,
     sources: BTreeMap<[u8; 32], u32>,
     bytes: usize,
+    system_fallback: bool,
 }
 #[derive(Debug, PartialEq)]
 pub struct GlyphBitmap {
@@ -36,6 +38,14 @@ pub struct GlyphBitmap {
     pub coverage: Vec<u8>,
 }
 impl FontBook {
+    /// Keep game fonts private and preferred, with a lazily loaded system font
+    /// for games that rely on Windows fonts instead of bundling their own.
+    pub fn with_system_fallback() -> Self {
+        Self {
+            system_fallback: true,
+            ..Self::default()
+        }
+    }
     /// FontSystem::GetBeingFont chooses the first available named candidate,
     /// then the default font. Use a bundled Japanese face as the portable
     /// default so Windows-only saved preferences remain readable on Linux.
@@ -65,7 +75,14 @@ impl FontBook {
         named
             .or_else(fallback)
             .map(|index| &self.faces[index])
-            .with_context(|| format!("no registered font is available for: {name}"))
+            .or_else(|| {
+                self.system_fallback
+                    .then(|| system::resolve(name))
+                    .flatten()
+            })
+            .with_context(|| {
+                format!("no registered or system fallback font is available for: {name}")
+            })
     }
     pub fn face_count(&self) -> usize {
         self.faces.len()
