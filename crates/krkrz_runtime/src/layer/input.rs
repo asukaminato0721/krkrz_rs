@@ -361,11 +361,24 @@ impl crate::Session {
     /// Physical client coordinates are converted using the window's draw rectangle.
     pub fn input(&mut self, window: &Value, event: InputEvent) -> Result<()> {
         let window = object(window)?.context("input requires a Window")?;
-        let state = self
-            .services
-            .windows
-            .get(&window)
-            .context("input Window is invalid")?;
+        ensure!(
+            self.services.windows.contains_key(&window),
+            "input Window is invalid"
+        );
+        // A transition completion can post KAG's exclusive continuation after
+        // the tick's event batch. Finish it before exposing the new layers to
+        // input: their hover handlers may depend on the resumed scene script.
+        // Reposted exclusive callbacks still precede input and share its budget;
+        // ordinary/idle callbacks keep their usual deferred batch semantics.
+        while self.services.events.has_exclusive() {
+            let through = self.services.events.begin_batch();
+            self.services
+                .dispatch_async(&mut self.vm, through, 1, &mut self.budget)?;
+        }
+        let Some(state) = self.services.windows.get(&window) else {
+            // The continuation may close the window awaiting this OS event.
+            return Ok(());
+        };
         if (!state.visible || state.minimized)
             && !matches!(event, InputEvent::Focus(false) | InputEvent::KeyUp { .. })
         {

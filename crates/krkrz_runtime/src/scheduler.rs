@@ -46,6 +46,9 @@ impl EventQueue {
     pub fn exclusive_posted(&self) -> bool {
         self.exclusive_posted
     }
+    pub fn has_exclusive(&self) -> bool {
+        self.pending.iter().any(|event| event.priority == 1)
+    }
     pub fn post(&mut self, target: usize, kind: EventKind, mode: i32) -> Result<()> {
         if self.pending.len() >= 100_000 {
             return Err(krkrz_tjs::unsupported("pending event limit exceeded"));
