@@ -523,10 +523,11 @@ impl Host for Services {
                         }
                         Ok(Value::Void)
                     }
-                    // wuvorbis installs the Ogg decoder; WaveSoundBuffer already
-                    // uses the Rust Vorbis decoder for these streams.
-                    "wuvorbis.dll" => {
-                        self.loaded_plugins.insert("wuvorbis.dll".into());
+                    // These decoder plugins are provided by the built-in Rust
+                    // WaveSoundBuffer and VideoOverlay implementations.
+                    "wuvorbis.dll" | "krmovie.dll" => {
+                        self.loaded_plugins
+                            .insert(path.rsplit('/').next().unwrap().to_ascii_lowercase());
                         Ok(Value::Void)
                     }
                     // extrans installs transition providers, with no TJS globals.
@@ -545,11 +546,8 @@ impl Host for Services {
                         Ok(Value::Void)
                     }
                     "kagparser.dll" | "kagparserex.dll" => {
-                        if !self.loaded_plugins.contains("kagparser.dll")
-                            && !self.loaded_plugins.contains("kagparserex.dll")
-                        {
-                            kag_parser::register(vm)?;
-                        }
+                        // Both plugin names use the built-in parser. Preserve
+                        // classes and instances created by legacy KAG startup.
                         self.loaded_plugins
                             .insert(path.rsplit('/').next().unwrap().to_ascii_lowercase());
                         Ok(Value::Void)
@@ -916,6 +914,10 @@ impl Session {
         // budget. User scripts retain the full caller-supplied budget.
         vm.execute(&constants, &mut (), &mut 100_000)?;
         window::register(&mut vm)?;
+        // Kirikiri 2 exposes MenuItem and Window.menu without loading menu.dll.
+        // Keep that core surface available to legacy KAG scripts as well.
+        let menus = menu::register(&mut vm)?;
+        kag_parser::register(&mut vm)?;
         let draw_device_class = draw_device::register(&mut vm)?;
         async_trigger::register(&mut vm)?;
         timer::register(&mut vm)?;
@@ -1028,7 +1030,7 @@ impl Session {
                 psb_files: BTreeMap::new(),
                 text_renderers: BTreeMap::new(),
                 layer_draw: layer_draw::State::default(),
-                menus: menu::State::default(),
+                menus,
                 dialogs: dialog::State::default(),
                 window_ex: window_ex::State::default(),
                 alpha_movies: BTreeMap::new(),

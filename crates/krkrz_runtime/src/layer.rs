@@ -1245,6 +1245,9 @@ impl Layer {
             "session layer image memory limit exceeded"
         );
         self.image_size(image.width as i32, image.height as i32, available)?;
+        // VideoOverlay updates both the bitmap and the visible layer bounds.
+        // KAG can attach a small placeholder layer before opening the movie.
+        self.size(image.width as i32, image.height as i32, available)?;
         self.image = Some(Arc::new(image.clone()));
         self.image_modified = true;
         Ok(())
@@ -1264,7 +1267,6 @@ impl Layer {
             "cannot move primary layer"
         );
         self.set_movie_image(image, available)?;
-        self.size(image.width as i32, image.height as i32, available)?;
         self.left = left;
         self.top = top;
         Ok(())

@@ -18,6 +18,15 @@ fn compressed(b: &[u8]) -> Vec<u8> {
     z.finish().unwrap()
 }
 fn fixture(name: &str, payload: &[u8], encrypt: bool, chained: bool) -> Vec<u8> {
+    fixture_with_protection(name, payload, encrypt, encrypt, chained)
+}
+fn fixture_with_protection(
+    name: &str,
+    payload: &[u8],
+    encrypt: bool,
+    protected: bool,
+    chained: bool,
+) -> Vec<u8> {
     let mut data = MAGIC.to_vec();
     data.extend(0u64.to_le_bytes());
     let mut encoded = payload.to_vec();
@@ -45,7 +54,7 @@ fn fixture(name: &str, payload: &[u8], encrypt: bool, chained: bool) -> Vec<u8> 
         data.extend(packed);
     }
     let packed = data.len() - 19;
-    let mut info = if encrypt { 0x80000000u32 } else { 0 }
+    let mut info = if protected { 0x80000000u32 } else { 0 }
         .to_le_bytes()
         .to_vec();
     info.extend((payload.len() as u64).to_le_bytes());
@@ -274,4 +283,44 @@ fn cipher_detection_uses_archive_contents_without_a_game_executable() {
     let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
     assert_eq!(storage.detect_cipher().unwrap(), None);
     assert_eq!(storage.read("startup.tjs").unwrap(), plain);
+}
+
+#[test]
+fn protected_plaintext_is_detected_and_checked_per_entry() {
+    let project = tempfile::tempdir().unwrap();
+    let plain = b"// repacked without clearing the protected flag\nreturn 42;";
+    std::fs::write(
+        project.path().join("data.xp3"),
+        fixture_with_protection("startup.tjs", plain, false, true, true),
+    )
+    .unwrap();
+    // A valid startup must not disable verification of other protected entries.
+    let mut damaged = fixture_with_protection("bad.tjs", plain, false, true, false);
+    damaged[19] ^= 1;
+    for (archive, bytes) in [
+        ("patch.xp3", damaged),
+        ("patch2.xp3", fixture("encrypted.tjs", plain, true, false)),
+    ] {
+        std::fs::write(project.path().join(archive), bytes).unwrap();
+    }
+    let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+    assert_eq!(storage.detect_cipher().unwrap(), Some("plaintext"));
+    assert_eq!(storage.read("startup.tjs").unwrap(), plain);
+    storage.verify("startup.tjs").unwrap();
+    assert!(storage.read("bad.tjs").is_err());
+    assert!(storage.read("encrypted.tjs").is_err());
+
+    let mut archive = Archive::open(project.path().join("data.xp3"), Limits::default()).unwrap();
+    for (start, size) in [(0, plain.len()), (20, 15), (plain.len(), 0)] {
+        assert_eq!(
+            archive
+                .read_range("startup.tjs", start as u64, size as u64, None)
+                .unwrap(),
+            plain[start..start + size]
+        );
+    }
+    let mut archive = Archive::open(project.path().join("patch.xp3"), Limits::default()).unwrap();
+    // Corruption outside the requested slice must still be rejected.
+    assert!(archive.read_range("bad.tjs", 20, 15, None).is_err());
+    assert!(archive.read_range("bad.tjs", 0, 0, None).is_err());
 }

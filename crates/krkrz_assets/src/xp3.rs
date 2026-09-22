@@ -1,5 +1,5 @@
 use crate::{binary::Reader, cx::CxEncryption};
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use flate2::read::ZlibDecoder;
 use krkrz_core::{Limits, storage_name};
 use serde::Serialize;
@@ -178,18 +178,39 @@ impl Archive {
             .get(&name)
             .with_context(|| format!("{}: missing {name}", self.path.display()))?
             .clone();
+        range(offset, size, entry.size)?;
+        if entry.encrypted && cipher.is_none() {
+            // Repacked archives can retain the protected flag on plaintext.
+            // Validate the complete entry, even for a partial read: a prefix
+            // or a different entry's checksum cannot establish this one's state.
+            let bytes = self.read_encoded_range(&entry, 0, entry.size)?;
+            ensure!(
+                adler32(&bytes) == entry.hash,
+                "{}: protected entry is not checksum-verified plaintext; requires a matching cipher profile or is damaged",
+                entry.name
+            );
+            return Ok(if offset == 0 && size == entry.size {
+                bytes
+            } else {
+                bytes[offset as usize..(offset + size) as usize].to_vec()
+            });
+        }
+        let mut result = self.read_encoded_range(&entry, offset, size)?;
+        if entry.encrypted {
+            cipher
+                .context("missing Cx profile")?
+                .apply(entry.hash, offset, &mut result);
+        }
+        Ok(result)
+    }
+    fn read_encoded_range(&mut self, entry: &Entry, offset: u64, size: u64) -> Result<Vec<u8>> {
+        let name = &entry.name;
         ensure!(
             entry.segments.iter().map(|s| s.size).sum::<u64>() == entry.size
                 && entry.segments.iter().map(|s| s.packed_size).sum::<u64>() == entry.packed_size,
             "segment totals disagree with file sizes: {name}"
         );
         range(offset, size, entry.size)?;
-        if entry.encrypted && cipher.is_none() {
-            bail!(
-                "{}: encrypted entry requires an explicit Cx profile",
-                entry.name
-            );
-        }
         let mut result = Vec::with_capacity(usize::try_from(size)?);
         let end = offset + size;
         let mut base = 0;
@@ -216,11 +237,6 @@ impl Archive {
             result.len() as u64 == size,
             "incomplete segmented read: {name}"
         );
-        if entry.encrypted {
-            cipher
-                .context("missing Cx profile")?
-                .apply(entry.hash, offset, &mut result);
-        }
         Ok(result)
     }
     fn segment(&mut self, segment: &Segment) -> Result<Arc<Vec<u8>>> {

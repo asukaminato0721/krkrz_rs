@@ -82,6 +82,28 @@ fn unsupported_call_is_an_error_with_storage_context() {
     assert!(error.contains("startup.tjs:1:1"));
     assert!(error.contains("unsupported Kirikiri native operation: Plugins.link"));
 }
+
+#[test]
+fn movie_plugin_uses_builtin_video_overlay_without_replacing_objects() {
+    let dir = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("startup.tjs"),
+        r#"
+        var klass = VideoOverlay, w = new Window(), video = new VideoOverlay(w);
+        video.left = 17;
+        Plugins.link('plugin/KRMOVIE.dll');
+        Plugins.link('plugin/KRMOVIE.dll');
+        return [VideoOverlay === klass, video.left, Plugins.getList().join(',')].join('|');
+    "#,
+    )
+    .unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 10000).unwrap();
+    assert_eq!(
+        session.startup().unwrap(),
+        Value::string("1|17|plugin/KRMOVIE.dll")
+    );
+}
 #[test]
 fn nested_scripts_cannot_reset_execution_budget() {
     let dir = tempfile::tempdir().unwrap();

@@ -21,6 +21,71 @@ var a=new Layer(w,p,owner);a.setSize(20,20);a.setPos(10,5);a.visible=true;a.hitT
 "#;
 
 #[test]
+fn host_resizable_canvas_fits_content_and_transforms_pointer_coordinates() {
+    let (_project, _saves, mut s, w) = session(
+        r#"
+        var w=new Window(), p=new Layer(w,null), a=new Layer(w,p), log=[];
+        w.visible=true;w.borderStyle=bsSingle;w.setInnerSize(100,50);
+        p.setSize(100,50);a.setSize(30,20);a.setPos(30,10);
+        a.visible=true;a.hitThreshold=0;
+        a.onMouseDown=function(x,y,button,shift){log.add(x+','+y);};
+    "#,
+    );
+    let Value::Object(reference) = &w else {
+        panic!("expected Window")
+    };
+    let id = reference.object.unwrap();
+    s.services.windows.get_mut(&id).unwrap().fit_to_client = true;
+    for (size, rect) in [
+        ([300, 100], [50, 0, 200, 100]),
+        ([100, 100], [0, 25, 100, 50]),
+        ([50, 25], [0, 0, 50, 25]),
+    ] {
+        s.resize_window(&w, size[0], size[1]).unwrap();
+        assert_eq!(s.services.windows[&id].draw_rect(100, 50), rect);
+        let x = rect[0] + rect[2] * 40 / 100;
+        let y = rect[1] + rect[3] * 20 / 50;
+        s.input(
+            &w,
+            InputEvent::PointerDown {
+                x,
+                y,
+                button: 0,
+                shift: 0,
+            },
+        )
+        .unwrap();
+        s.input(
+            &w,
+            InputEvent::PointerUp {
+                x,
+                y,
+                button: 0,
+                shift: 0,
+            },
+        )
+        .unwrap();
+    }
+    assert_eq!(
+        s.evaluate("log.join('|')").unwrap(),
+        Value::string("10,10|10,10|10,10")
+    );
+    assert_eq!(
+        s.evaluate("p.width+','+p.height").unwrap(),
+        Value::string("100,50")
+    );
+    // Full screen must fit the canvas, even after a resize changed the client aspect.
+    s.resize_window(&w, 100, 100).unwrap();
+    s.evaluate("w.fullScreen=true").unwrap();
+    assert_eq!(
+        s.services.windows[&id].draw_rect(100, 50),
+        [0, 40, 1280, 640]
+    );
+    s.evaluate("w.fullScreen=false").unwrap();
+    assert_eq!(s.services.windows[&id].draw_rect(100, 50), [0, 25, 100, 50]);
+}
+
+#[test]
 fn modal_layers_isolate_clicks_and_preserve_original_capture_and_focus_dispatch() {
     let (_project, _saves, mut s, w) = session(
         r#"

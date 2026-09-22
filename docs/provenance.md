@@ -171,6 +171,10 @@ linked or executed by the Rust engine. Synthetic tests compare the installed
 DLL's behavior. Keyboard names in those tests are controlled because the source
 uses Windows keyboard-layout APIs. Bound callback identity and string-escape
 corrections follow Kirikiri Z `tjsInterCodeExec.cpp` and `tjsLex.cpp`.
+Built-in registration of `MenuItem`, `Window.menu` and `KAGParser` follows the Kirikiri 2
+compatibility surface in the pinned Kirikiroid2 `src/core/base/ScriptMgnIntf.cpp`.
+The first explicit menu plugin link adopts these existing classes; subsequent
+links under different spellings retain the tested re-registration behavior.
 
 The dialog source reference is `wtnbgo/win32dialog` revision
 `9658169f6af0159adb2739d22d9a6ebb8cec4981`, by miahmie, under the Kirikiri

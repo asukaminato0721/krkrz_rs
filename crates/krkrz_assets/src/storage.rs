@@ -130,7 +130,7 @@ impl Storage {
         self.resolutions.get_mut().clear();
         Ok(())
     }
-    /// Select a known cipher only after decrypted bytes pass the archive's
+    /// Detect protected plaintext or select a known cipher using the archive's
     /// checksum. Renaming a game directory or executable does not affect this.
     pub fn detect_cipher(&mut self) -> Result<Option<&'static str>> {
         let probe =
@@ -152,6 +152,13 @@ impl Storage {
             );
             return Ok(None);
         };
+        // The XP3 protected bit is not proof of encryption. Some repacks keep
+        // it after decrypting their payloads. Reads without a cipher verify
+        // every protected entry independently before returning plaintext.
+        if self.archives[index].verify(&name, None).is_ok() {
+            self.cipher = None;
+            return Ok(Some("plaintext"));
+        }
         for &(label, json) in crate::cx::BUILTIN_PROFILES {
             let cipher = CxEncryption::from_json(json)?;
             if self.archives[index].verify(&name, Some(&cipher)).is_ok() {

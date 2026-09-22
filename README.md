@@ -170,6 +170,9 @@ cargo run --release -p krkrz_cli --bin krkrz_engine -- \
 in `--help`.
 Automatic selection checks decrypted archive contents against their stored
 checksums; it does not depend on the game's directory or executable name.
+Repacked archives that retain the protected flag on plaintext are also detected.
+With no cipher selected, each protected resource must pass its full stored
+checksum before any bytes are returned, including for partial reads.
 One Cx data profile from GARbro is bundled. Other Cx profiles can be supplied
 with `--cx-profile /path/to/profile.json`; see the bundled JSON in
 [asset profile data](crates/krkrz_assets/data/) for the schema. This does not add
@@ -217,7 +220,10 @@ outside the installation.
 
 The native host presents CPU-composited frames through wgpu and forwards winit
 input into the shared session. Use `--no-audio` to disable device output and
-`--epoch-ms` to fix the script clock origin. CPAL plays the session's 48 kHz stereo
+`--epoch-ms` to fix the script clock origin. Fixed `bsSingle` game windows support
+desktop resizing: the host centers and scales the canvas with its aspect ratio
+preserved, and maps pointer input through the same rectangle. Script zoom values
+remain unchanged. CPAL plays the session's 48 kHz stereo
 mix, including gain, pan, resampling, SLI labels and EOF callbacks. The separate
 `Session::render_sound_source` API returns source-rate unscaled PCM for inspection.
 The getSample replacement adds lazy sample settings and peak-square/legacy
@@ -320,10 +326,14 @@ movies (`setNextMovieFile`) remain an explicit unsupported operation.
 `krkrz_tool amv NAME` inspects the container and rectangle-packet index.
 
 The menu binding follows the public `krkrz/menu` source and original-DLL probes.
+`MenuItem`, `Window.menu` and `KAGParser` are available at startup for Kirikiri 2/KAG scripts;
+an explicit first `Plugins.link('menu.dll')` preserves these classes and objects.
 It supports item properties, insertion and display ordering, radio groups, child
 array caching, shortcut conversion, and deferred click callbacks. Native menu
 bars, popups and OS shortcut delivery are not implemented. Shortcut name tables
 use stable English defaults until a platform keyboard adapter is available.
+
+`Plugins.link('krmovie.dll')` uses the existing built-in `VideoOverlay` decoder.
 
 The WIN32Dialog binding registers the installed plugin's observed constants and
 interfaces. It supports Header/Items storage, copied binary templates, bounded

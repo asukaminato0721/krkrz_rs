@@ -231,10 +231,15 @@ impl State {
         if self.links.contains(spelling) {
             return Ok(());
         }
-        let new = register(vm)?;
-        self.root_class = new.root_class;
-        self.text_to_key = new.text_to_key;
-        self.key_to_text = new.key_to_text;
+        // The first explicit link adopts the built-in classes so existing
+        // subclasses, roots and shortcut tables remain valid. Further links
+        // under distinct spellings retain the plugin's re-registration behavior.
+        if self.root_class.is_none() || !self.links.is_empty() {
+            let new = register(vm)?;
+            self.root_class = new.root_class;
+            self.text_to_key = new.text_to_key;
+            self.key_to_text = new.key_to_text;
+        }
         self.links.insert(spelling.into());
         Ok(())
     }

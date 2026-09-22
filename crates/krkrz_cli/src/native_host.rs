@@ -212,6 +212,12 @@ impl Host<'_> {
     fn sync_windows(&mut self, event_loop: &dyn ActiveEventLoop) -> Result<()> {
         self.windows
             .retain(|id, _| self.session.services.windows.contains_key(id));
+        for state in self.session.services.windows.values_mut() {
+            // KAG commonly uses bsSingle for its fixed-resolution game canvas.
+            // Let desktop users resize it, keeping drawing and hit testing in sync.
+            // Dialogs and tool windows retain their script-selected behavior.
+            state.fit_to_client = state.border_style == 1;
+        }
         for (&id, state) in &self.session.services.windows {
             if !state.constructed {
                 continue;
@@ -227,7 +233,7 @@ impl Host<'_> {
                     ))
                     .with_position(PhysicalPosition::new(state.left, state.top))
                     .with_decorations(state.border_style != 0)
-                    .with_resizable(matches!(state.border_style, 2 | 5));
+                    .with_resizable(matches!(state.border_style, 1 | 2 | 5));
                 let window: Arc<dyn Window> = Arc::from(event_loop.create_window(attributes)?);
                 let presenter = Presenter::new(window.clone())?;
                 let request =
@@ -275,7 +281,7 @@ impl Host<'_> {
                 native.window.set_decorations(state.border_style != 0);
                 native
                     .window
-                    .set_resizable(matches!(state.border_style, 2 | 5));
+                    .set_resizable(matches!(state.border_style, 1 | 2 | 5));
             }
             if state.is_full_screen() != native.state.is_full_screen() {
                 native.window.set_fullscreen(

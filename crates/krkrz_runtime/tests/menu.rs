@@ -17,13 +17,58 @@ fn execute(source: &str) -> anyhow::Result<Value> {
 fn original_menu_model_corpus() {
     let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/menu.json")).unwrap();
     for c in cases {
-        assert_eq!(
-            execute(&c.source).unwrap_or_else(|e| panic!("{}: {e:#}", c.name)),
-            c.expected,
-            "{}",
-            c.name
-        );
+        let mut modes = vec![("plugin", c.source.as_str())];
+        // Relink cases require a preceding explicit link; the remaining model
+        // corpus also applies to legacy scripts using built-in menus directly.
+        if let Some(core) = c.source.strip_prefix("Plugins.link('menu.dll');")
+            && !core.contains("Plugins.link(")
+        {
+            modes.push(("built-in", core));
+        }
+        for (mode, source) in modes {
+            assert_eq!(
+                execute(source).unwrap_or_else(|e| panic!("{} ({mode}): {e:#}", c.name)),
+                c.expected,
+                "{} ({mode})",
+                c.name
+            );
+        }
     }
+}
+
+#[test]
+fn builtin_menus_support_kag_subclasses_and_explicit_linking() {
+    assert_eq!(
+        execute(
+            r#"
+        class GameMenu extends MenuItem {
+            var _enabled = true;
+            function GameMenu(w, caption) { super.MenuItem(w, caption); }
+            property enabled {
+                getter { return _enabled; }
+                setter(v) { _enabled = v; super.enabled = v; }
+            }
+        }
+        class GameWindow extends Window {
+            var item;
+            function GameWindow() {
+                super.Window();
+                menu.add(item = new GameMenu(this, 'System'));
+            }
+        }
+        var w = new GameWindow(), root = w.menu, original = MenuItem;
+        w.item.enabled = false;
+        var table = MenuItem.textToKeycode;
+        var initiallyEmpty = Plugins.getList().count == 0;
+        Plugins.link('menu.dll');
+        return [initiallyEmpty, MenuItem === original, table === MenuItem.textToKeycode,
+            w.menu === root, root.children[0] === w.item, w.item.parent === root,
+            w.item.enabled, Plugins.getList().join(',')].join('|');
+    "#
+        )
+        .unwrap(),
+        Value::string("1|1|1|1|1|1|0|menu.dll")
+    );
 }
 #[test]
 fn pending_clicks_are_batched_and_cancelled_on_invalidation() {

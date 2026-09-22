@@ -103,6 +103,23 @@ fn overlay_frames_clip_to_window_bounds_and_respect_visibility() {
 }
 
 #[test]
+fn layer_movie_expands_placeholder_layers_to_the_decoded_frame_size() {
+    let (mut session, _project, _saves) = movie_session();
+    session.evaluate("Scripts.exec('v.close();v.layer1=null;l.setSize(64,48);l.fillRect(0,0,64,48,0xff00ff00);global.a=new Layer(w,l);global.b=new Layer(w,l);a.setSize(8,8);b.setSize(4,4);a.setPos(4,3);b.setPos(28,24);a.visible=b.visible=true;v.layer1=a;v.layer2=b;v.open(\"movie.mpg\");v.play();')").unwrap();
+    session.tick(120).unwrap();
+    assert_eq!(session.evaluate("[a.width,a.height,a.imageWidth,a.imageHeight,b.width,b.height,a.left,a.top,b.left,b.top].join(',')").unwrap(), Value::string("32,24,32,24,32,24,4,3,28,24"));
+    let window = session.evaluate("w").unwrap();
+    let image = session.capture_window(&window).unwrap();
+    let pixel = |x: usize, y: usize| &image.rgba[(y * 64 + x) * 4..(y * 64 + x + 1) * 4];
+    // Both movies extend beyond their placeholder bounds and keep their position.
+    for (x, y) in [(20, 15), (59, 47)] {
+        assert!(pixel(x, y)[0] > 240 && pixel(x, y)[1] < 16);
+    }
+    assert_eq!(pixel(3, 3), &[0, 255, 0, 255]);
+    assert_eq!(pixel(60, 47), &[0, 255, 0, 255]);
+}
+
+#[test]
 fn movie_frames_pcm_pause_seek_and_eof_use_session_clock() {
     let (mut session, _project, _saves) = movie_session();
     assert_eq!(

@@ -28,6 +28,9 @@ pub struct WindowState {
     pub frame_insets: [i32; 4],
     pub zoom_numer: i32,
     pub zoom_denom: i32,
+    /// Native hosts can make a fixed game canvas resizable without changing
+    /// script zoom. Presentation and input then share an aspect-preserving fit.
+    pub fit_to_client: bool,
     full_screen: Option<WindowedBounds>,
     pub left: i32,
     pub top: i32,
@@ -65,6 +68,7 @@ impl Default for WindowState {
             frame_insets: [0; 4],
             zoom_numer: 1,
             zoom_denom: 1,
+            fit_to_client: false,
             full_screen: None,
             left: 0,
             top: 0,
@@ -235,6 +239,24 @@ impl WindowState {
     /// Destination rectangle for the primary layer in physical client pixels.
     /// A native presenter uses this same layout as a headless frame capture.
     pub fn draw_rect(&self, width: i32, height: i32) -> [i32; 4] {
+        if self.fit_to_client {
+            let (width, height) = (i64::from(width.max(1)), i64::from(height.max(1)));
+            let (cw, ch) = (
+                i64::from(self.inner_width.max(1)),
+                i64::from(self.inner_height.max(1)),
+            );
+            let (w, h) = if cw * height <= ch * width {
+                (cw, (cw * height / width).max(1))
+            } else {
+                ((ch * width / height).max(1), ch)
+            };
+            return [
+                ((cw - w) / 2) as i32,
+                ((ch - h) / 2) as i32,
+                w as i32,
+                h as i32,
+            ];
+        }
         let (scale, origin) = self
             .full_screen
             .as_ref()

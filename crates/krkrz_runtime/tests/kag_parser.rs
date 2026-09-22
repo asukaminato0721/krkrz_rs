@@ -137,16 +137,24 @@ fn standard_parser_plugin_and_extended_alias_keep_existing_instances() {
             "[jump target=*next]\n*next\nHello[p]",
         )
         .unwrap();
-        s.evaluate(&format!("Plugins.link('{}')", plugins[0]))
+        s.evaluate("Scripts.exec('global.parserClass=KAGParser;global.p=new KAGParser();p.loadScenario(\"story.ks\");')")
             .unwrap();
-        s.evaluate("Scripts.exec('global.p=new KAGParser();p.loadScenario(\"story.ks\");')")
-            .unwrap();
+        assert_eq!(
+            s.evaluate("Plugins.getList().count").unwrap(),
+            Value::Integer(0)
+        );
         assert_eq!(
             s.evaluate("p.getNextTag().text").unwrap(),
             Value::string("H")
         );
+        s.evaluate(&format!("Plugins.link('{}')", plugins[0]))
+            .unwrap();
         s.evaluate(&format!("Plugins.link('{}')", plugins[1]))
             .unwrap();
+        assert_eq!(
+            s.evaluate("KAGParser === parserClass").unwrap(),
+            Value::Integer(1)
+        );
         assert_eq!(
             s.evaluate("p.getNextTag().text").unwrap(),
             Value::string("e")
