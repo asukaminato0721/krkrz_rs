@@ -1,7 +1,7 @@
 [
   {
     "name": "window_rects",
-    "source": "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');var w=new Window(),a=[];w.borderStyle=0;w.setInnerSize(320,240);w.setPos(30,40);var r=w.getWindowRect(),n=w.getNormalRect(),c=w.getClientRect();a.add([r.x,r.y,r.w,r.h,n.x==r.x,n.y==r.y,n.w==r.w,n.h==r.h,c.x==r.x,c.y==r.y,c.w==r.w,c.h==r.h].join(','));return a.join('|');",
+    "source": "Plugins.link('menu.dll');if(typeof global.Pad=='undefined')global.Pad=%[];if(typeof Debug.console=='undefined')Debug.console=%[];Plugins.link('windowEx.dll');var w=new Window(),a=[];w.borderStyle=0;w.setInnerSize(320,240);w.setPos(30,40);var r=w.getWindowRect(),n=w.getNormalRect(),c=w.getClientRect();a.add([r.x,r.y,r.w,r.h,n.x==r.x,n.y==r.y,n.w==r.w,n.h==r.h,c.x==r.x,c.y==r.y,c.w==r.w,c.h==r.h].join(','));return a.join('|');",
     "expected": {
       "String": [
         51,

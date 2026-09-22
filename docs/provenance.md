@@ -175,6 +175,19 @@ Built-in registration of `MenuItem`, `Window.menu` and `KAGParser` follows the K
 compatibility surface in the pinned Kirikiroid2 `src/core/base/ScriptMgnIntf.cpp`.
 The first explicit menu plugin link adopts these existing classes; subsequent
 links under different spellings retain the tested re-registration behavior.
+Built-in ordinary menu items accept any object (including null) as their action
+owner, following Kirikiroid2 `src/core/visual/MenuItemIntf.cpp`; a root's second
+argument must be a Window. Explicitly linking menu.dll retains that plugin's
+additional Window requirement for ordinary action owners.
+
+The legacy read-only `Debug.console` accessor and its nested `Console` class
+follow Kirikiroid2 `src/core/utils/win32/DebugImpl.cpp`. As in that port, `visible`
+always reads false and accepts writes without opening a native console window.
+The runtime also declares the legacy `Pad` class so windowEx can register its
+extensions; constructing a Pad editor remains explicitly unsupported. WindowEx
+resolves nested accessors before registering extensions. Synthetic fixtures use
+conditional Pad/console fallbacks so they work with both this core surface and
+the original Kirikiri Z reference that needs compatibility placeholders.
 
 The dialog source reference is `wtnbgo/win32dialog` revision
 `9658169f6af0159adb2739d22d9a6ebb8cec4981`, by miahmie, under the Kirikiri

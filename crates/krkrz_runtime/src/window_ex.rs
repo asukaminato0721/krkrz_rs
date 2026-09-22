@@ -176,14 +176,19 @@ impl Default for State {
         }
     }
 }
-impl State {
-    pub(crate) fn link(&mut self, vm: &mut Vm, spelling: &str) -> Result<()> {
-        if let Some(old) = &self.spelling {
+impl Services {
+    pub(crate) fn link_window_ex(
+        &mut self,
+        vm: &mut Vm,
+        spelling: &str,
+        budget: &mut u64,
+    ) -> Result<()> {
+        if let Some(old) = &self.window_ex.spelling {
             ensure!(old == spelling, "Already registerd class:");
             return Ok(());
         }
-        // The installed version needs the game's k2compat Pad/console objects.
-        // Resolve every receiver before changing registrations.
+        // Resolve every receiver before changing registrations, including the
+        // legacy Debug.console accessor (or a game's replacement accessor).
         let api = interface()?;
         let mut receivers = BTreeMap::new();
         for namespace in api.exports.keys() {
@@ -194,7 +199,8 @@ impl State {
                 .cloned()
                 .context("Cannot convert the variable type ((void) to Object)")?;
             for part in parts {
-                object = vm.get_member(&object, &Value::string(part), false)?;
+                object =
+                    vm.get_property(&object, &Value::string(part), false, false, self, budget)?;
             }
             ensure!(
                 matches!(object, Value::Object(r) if r.object.is_some()),
@@ -226,7 +232,7 @@ impl State {
                 )?;
             }
         }
-        self.spelling = Some(spelling.into());
+        self.window_ex.spelling = Some(spelling.into());
         Ok(())
     }
 }

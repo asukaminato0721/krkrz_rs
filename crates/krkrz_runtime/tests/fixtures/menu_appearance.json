@@ -1,7 +1,7 @@
 [
   {
     "name": "menu_right_justify",
-    "source": "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');var w=new Window(),m=new MenuItem(w,'m'),a=[];try{a.add(m.rightJustify);}catch(e){a.add('error');}w.menu.add(m);a.add(m.rightJustify);m.rightJustify=true;a.add(m.rightJustify);m.visible=false;m.rightJustify=false;a.add(m.rightJustify);w.menu.remove(m);try{m.rightJustify=true;a.add('set');}catch(e){a.add('error');}try{a.add(m.rightJustify);}catch(e){a.add('error');}return a.join(',');",
+    "source": "Plugins.link('menu.dll');if(typeof global.Pad=='undefined')global.Pad=%[];if(typeof Debug.console=='undefined')Debug.console=%[];Plugins.link('windowEx.dll');var w=new Window(),m=new MenuItem(w,'m'),a=[];try{a.add(m.rightJustify);}catch(e){a.add('error');}w.menu.add(m);a.add(m.rightJustify);m.rightJustify=true;a.add(m.rightJustify);m.visible=false;m.rightJustify=false;a.add(m.rightJustify);w.menu.remove(m);try{m.rightJustify=true;a.add('set');}catch(e){a.add('error');}try{a.add(m.rightJustify);}catch(e){a.add('error');}return a.join(',');",
     "expected": {
       "String": [
         101,
@@ -28,7 +28,7 @@
   },
   {
     "name": "menu_bitmaps",
-    "source": "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');var w=new Window(),m=new MenuItem(w,'m'),a=[];w.menu.add(m);a.add([m.bmpItem,m.bmpChecked,m.bmpUnchecked].join(','));m.bmpItem=MenuItem.biPopupClose;m.bmpChecked='3';m.bmpUnchecked=7;a.add([m.bmpItem,m.bmpChecked,m.bmpUnchecked].join(','));m.bmpItem=3.5;a.add(m.bmpItem);try{m.bmpItem=null;}catch(e){a.add('error');}a.add(m.bmpItem);var p=new Layer(w,null);p.setSize(2,1);p.setImageSize(2,1);m.bmpItem=p;a.add(m.bmpItem);m.bmpItem=void;a.add(m.bmpItem);w.menu.remove(m);try{m.bmpItem=5;}catch(e){a.add('error');}a.add(m.bmpItem);return a.join('|');",
+    "source": "Plugins.link('menu.dll');if(typeof global.Pad=='undefined')global.Pad=%[];if(typeof Debug.console=='undefined')Debug.console=%[];Plugins.link('windowEx.dll');var w=new Window(),m=new MenuItem(w,'m'),a=[];w.menu.add(m);a.add([m.bmpItem,m.bmpChecked,m.bmpUnchecked].join(','));m.bmpItem=MenuItem.biPopupClose;m.bmpChecked='3';m.bmpUnchecked=7;a.add([m.bmpItem,m.bmpChecked,m.bmpUnchecked].join(','));m.bmpItem=3.5;a.add(m.bmpItem);try{m.bmpItem=null;}catch(e){a.add('error');}a.add(m.bmpItem);var p=new Layer(w,null);p.setSize(2,1);p.setImageSize(2,1);m.bmpItem=p;a.add(m.bmpItem);m.bmpItem=void;a.add(m.bmpItem);w.menu.remove(m);try{m.bmpItem=5;}catch(e){a.add('error');}a.add(m.bmpItem);return a.join('|');",
     "expected": {
       "String": [
         48,

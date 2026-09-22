@@ -71,6 +71,41 @@ fn builtin_menus_support_kag_subclasses_and_explicit_linking() {
     );
 }
 #[test]
+fn builtin_menu_action_owner_need_not_be_a_window() {
+    assert_eq!(
+        execute(
+            r#"
+        Plugins.link('windowEx.dll');
+        class ResizeController {
+            var item, clicks = 0;
+            function ResizeController(w) {
+                w.menu.add(item = new MenuItem(this, 'Resize'));
+            }
+            function action(event) {
+                if(event.type == 'onClick' && event.target === item) clicks++;
+            }
+        }
+        var w = new Window(), controller = new ResizeController(w);
+        controller.item.onClick();
+        var empty = new MenuItem(null, '-');
+        empty.onClick();
+        var root = new MenuItem(controller, w), errors = 0;
+        try { new MenuItem(controller, %[]); } catch(e) { errors++; }
+        try { new MenuItem(1, 'invalid'); } catch(e) { errors++; }
+        Plugins.link('menu.dll');
+        try { new MenuItem(controller, 'plugin'); } catch(e) { errors++; }
+        controller.item.onClick();
+        return [controller.clicks, controller.item.parent === w.menu,
+            controller.item.window === null, controller.item.caption,
+            empty.caption, root.window === w, errors].join('|');
+    "#
+        )
+        .unwrap(),
+        Value::string("2|1|1|Resize|-|1|3")
+    );
+}
+
+#[test]
 fn pending_clicks_are_batched_and_cancelled_on_invalidation() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();

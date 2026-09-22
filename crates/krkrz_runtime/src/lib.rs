@@ -66,6 +66,7 @@ pub struct Services {
     pub windows: BTreeMap<usize, window::WindowState>,
     main_window: Option<usize>,
     draw_devices: draw_device::Devices,
+    debug_console: Value,
     /// The headless display size. A native host replaces it before startup.
     pub screen_size: (u32, u32),
     displays: Vec<display::Monitor>,
@@ -162,6 +163,7 @@ impl Host for Services {
         // Native window lists and mainWindow are weak references in Kirikiri.
         // An embedding host must explicitly retain any window handles it owns.
         let mut roots = Vec::new();
+        roots.push(self.debug_console.clone());
         roots.extend(self.continuous_handlers.iter().flatten().cloned());
         roots.extend(self.draw_devices.class.iter().cloned());
         roots.push(self.wave_flags_class.clone());
@@ -490,6 +492,17 @@ impl Host for Services {
                     .push(args.iter().map(Value::text).collect::<Vec<_>>().join(" "));
                 Ok(Value::Void)
             }
+            "Debug.get:console" => Ok(self.debug_console.clone()),
+            // There is no separate native console window on this host.
+            "Console.get:visible" => Ok(Value::Integer(0)),
+            "Console.set:visible" => {
+                arg(0)?.truth()?;
+                Ok(Value::Void)
+            }
+            "Console.@initialize"
+            | "Console.@invalidate"
+            | "Console.Console"
+            | "Console.finalize" => Ok(Value::Void),
             "Plugins.link" => {
                 let spelling = arg(0)?.unary("string")?.text();
                 if self.plugin_names.contains(&spelling) {
@@ -586,8 +599,7 @@ impl Host for Services {
                         Ok(Value::Void)
                     }
                     "windowex.dll" => {
-                        self.window_ex
-                            .link(vm, path.rsplit('/').next().unwrap_or(""))?;
+                        self.link_window_ex(vm, path.rsplit('/').next().unwrap_or(""), budget)?;
                         Ok(Value::Void)
                     }
                     "menu.dll" => {
@@ -917,6 +929,21 @@ impl Session {
         // Kirikiri 2 exposes MenuItem and Window.menu without loading menu.dll.
         // Keep that core surface available to legacy KAG scripts as well.
         let menus = menu::register(&mut vm)?;
+        // Legacy plugins extend Pad even when the game never opens an editor.
+        // Constructing a Pad remains explicitly unsupported by this host.
+        vm.register_native_class("Pad")?;
+        let debug = vm.register_namespace("Debug")?;
+        let debug_console = vm.new_native_class("Console", "Console.@initialize")?;
+        vm.register_native_static_property(
+            &debug_console,
+            "visible",
+            Some("Console.get:visible"),
+            Some("Console.set:visible"),
+        )?;
+        for method in ["Console", "finalize"] {
+            vm.register_native_method(&debug_console, method, &format!("Console.{method}"))?;
+        }
+        vm.register_native_property(&debug, "console", Some("Debug.get:console"), None)?;
         kag_parser::register(&mut vm)?;
         let draw_device_class = draw_device::register(&mut vm)?;
         async_trigger::register(&mut vm)?;
@@ -1006,6 +1033,7 @@ impl Session {
                 windows: BTreeMap::new(),
                 main_window: None,
                 draw_devices: draw_device::Devices::new(draw_device_class),
+                debug_console,
                 screen_size: (1280, 720),
                 displays: Vec::new(),
                 image_cache: graphics::ImageCache::new(graphics::automatic_limit()),

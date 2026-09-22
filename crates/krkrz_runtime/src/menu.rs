@@ -559,16 +559,27 @@ impl Services {
                 "context has no MenuItem native instance"
             );
             let owner = arg(0)?.clone();
+            ensure!(
+                matches!(owner, Value::Object(_)),
+                "MenuItem requires an object action owner"
+            );
             let root = args
                 .get(1)
                 .filter(|v| matches!(v, Value::Object(_)))
                 .cloned();
-            let window = root.as_ref().unwrap_or(&owner);
-            let window_id = crate::menu::id(window)?;
-            ensure!(
-                self.windows.get(&window_id).is_some_and(|w| w.constructed),
-                "MenuItem requires a constructed Window"
-            );
+            // Kirikiri 2 accepts any object as an ordinary item's action owner.
+            // Only a root's second argument must be a Window. The standalone
+            // menu.dll additionally requires an ordinary owner's window handle.
+            let window_id = if root.is_some() || !self.menus.links.is_empty() {
+                let window_id = crate::menu::id(root.as_ref().unwrap_or(&owner))?;
+                ensure!(
+                    self.windows.get(&window_id).is_some_and(|w| w.constructed),
+                    "MenuItem requires a constructed Window"
+                );
+                Some(window_id)
+            } else {
+                None
+            };
             let caption = if root.is_none() {
                 args.get(1)
                     .cloned()
@@ -599,7 +610,7 @@ impl Services {
                     constructed: true,
                     action_owner: owner,
                     window: if root.is_some() {
-                        bound(window_id)
+                        bound(window_id.unwrap())
                     } else {
                         Value::NULL
                     },

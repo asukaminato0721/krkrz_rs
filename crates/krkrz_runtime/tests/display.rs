@@ -1,7 +1,6 @@
 use krkrz_runtime::{Session, display::Monitor};
 use krkrz_tjs::Value;
-const SETUP: &str =
-    "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');";
+const SETUP: &str = "Plugins.link('menu.dll');if(typeof global.Pad=='undefined')global.Pad=%[];if(typeof Debug.console=='undefined')Debug.console=%[];Plugins.link('windowEx.dll');";
 fn session() -> (tempfile::TempDir, tempfile::TempDir, Session) {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();

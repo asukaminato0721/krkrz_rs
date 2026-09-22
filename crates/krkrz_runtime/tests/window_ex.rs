@@ -33,8 +33,7 @@ fn original_window_ex_corpus() {
         );
     }
 }
-const SETUP: &str =
-    "Plugins.link('menu.dll');global.Pad=%[];Debug.console=%[];Plugins.link('windowEx.dll');";
+const SETUP: &str = "Plugins.link('menu.dll');if(typeof global.Pad=='undefined')global.Pad=%[];if(typeof Debug.console=='undefined')Debug.console=%[];Plugins.link('windowEx.dll');";
 
 #[test]
 fn deferred_maximize_minimize_restore_and_query_veto() {
