@@ -453,6 +453,32 @@ fn original_affine_copy_pixels() {
 }
 
 #[test]
+fn operate_affine_blends_transformed_pixels() {
+    let (project, _saves, mut session) = session(
+        "var w=new Window(),p=new Layer(w,null),s=new Layer(w,p),d=new Layer(w,p),e=new Layer(w,p);s.type=ltAlpha;d.type=ltAlpha;e.type=ltAlpha;s.setImageSize(3,3);d.setImageSize(6,6);e.setImageSize(6,6);for(var y=0;y<3;y++)for(var x=0;x<3;x++){s.setMainPixel(x,y,0x102030+x*0x101+y);s.setMaskPixel(x,y,64+x*40+y*20);}d.fillRect(0,0,6,6,0x80405060);e.fillRect(0,0,6,6,0x80405060);",
+        100_000,
+    );
+    session
+        .evaluate("d.operateAffine(s,0,0,3,3,'true',1,0,0,1,1,2,omAuto,173,stNearest)")
+        .unwrap();
+    session
+        .evaluate("e.operateRect(1,2,s,0,0,3,3,omAuto,173)")
+        .unwrap();
+    std::fs::write(project.path().join("compare.tjs"), "var same=true;for(var y=0;y<6;y++)for(var x=0;x<6;x++)if(d.getMainPixel(x,y)!=e.getMainPixel(x,y)||d.getMaskPixel(x,y)!=e.getMaskPixel(x,y))same=false;return same;").unwrap();
+    assert_eq!(
+        session.execute_storage("compare.tjs").unwrap(),
+        Value::Integer(1)
+    );
+    let error = format!(
+        "{:#}",
+        session
+            .evaluate("d.operateAffine(s,0,0,3,3,true,1,0,0,1,0,0,omAdditive,255,stNearest)")
+            .unwrap_err()
+    );
+    assert!(error.contains("Layer.operateAffine blend mode"));
+}
+
+#[test]
 fn saved_thumbnail_reloads_after_restart_and_prefetch_respects_limits() {
     let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/layer_save.json")).unwrap();
     let (project, saves, mut original) = session(&cases[0].source, 1_000_000);

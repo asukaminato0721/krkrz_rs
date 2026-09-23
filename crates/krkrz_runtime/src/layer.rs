@@ -1101,6 +1101,9 @@ impl Services {
         if op == "affineCopy" {
             return self.layer_affine_copy(id, args, budget);
         }
+        if op == "operateAffine" {
+            return self.layer_operate_affine(id, args, budget);
+        }
         if matches!(op, "stretchCopy" | "operateStretch") {
             return self.layer_stretch(id, op, args, budget);
         }

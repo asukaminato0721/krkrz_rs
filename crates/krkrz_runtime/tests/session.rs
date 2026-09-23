@@ -118,7 +118,10 @@ fn perspective_plugin_registers_layer_method_without_replacing_layer() {
         session.startup().unwrap(),
         Value::string("1|Object|perspective.dll")
     );
-    let error = format!("{:#}", session.evaluate("layer.perspectiveCopy()").unwrap_err());
+    let error = format!(
+        "{:#}",
+        session.evaluate("layer.perspectiveCopy()").unwrap_err()
+    );
     assert!(error.contains("unsupported Layer operation: perspectiveCopy"));
 }
 #[test]

@@ -6,6 +6,46 @@ use tiny_skia::{
 };
 
 impl Services {
+    pub(super) fn layer_operate_affine(
+        &mut self,
+        id: usize,
+        args: &[Value],
+        budget: &mut u64,
+    ) -> Result<Value> {
+        ensure!(args.len() >= 12, "Layer.operateAffine: missing arguments");
+        let source = object(&args[0])?.context("operateAffine source is null")?;
+        let source = self
+            .layers
+            .get(&source)
+            .context("operateAffine source is not a Layer")?;
+        let optional_int = |index, default| {
+            args.get(index)
+                .filter(|v| !matches!(v, Value::Void))
+                .map(int)
+                .transpose()
+                .map(|v| v.unwrap_or(default))
+        };
+        let mode = match optional_int(12, 128)? {
+            128 => match source.kind {
+                2..=5 | 8..=28 => source.kind,
+                _ => 1,
+            },
+            mode => mode,
+        };
+        if !matches!(mode, 1 | 2 | 12) {
+            return Err(unsupported(format!(
+                "Layer.operateAffine blend mode {mode}"
+            )));
+        }
+        let opacity = optional_int(13, 255)?.clamp(0, 255);
+        if opacity == 0 {
+            return Ok(Value::Void);
+        }
+        let mut affine = args[..12].to_vec();
+        affine.push(Value::Integer(optional_int(14, 0)?.into()));
+        self.layer_affine(id, &affine, Some((mode, opacity)), budget)
+    }
+
     pub(super) fn layer_affine_copy(
         &mut self,
         id: usize,
