@@ -560,6 +560,15 @@ impl Host for Services {
                         self.loaded_plugins.insert("layereximage.dll".into());
                         Ok(Value::Void)
                     }
+                    // The installed perspective plugin adds one Layer method.
+                    // Its rendering operation remains explicitly unsupported.
+                    "perspective.dll" => {
+                        if !self.loaded_plugins.contains("perspective.dll") {
+                            vm.register_native("Layer.perspectiveCopy")?;
+                            self.loaded_plugins.insert("perspective.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
                     "kagparser.dll" | "kagparserex.dll" => {
                         // Both plugin names use the built-in parser. Preserve
                         // classes and instances created by legacy KAG startup.

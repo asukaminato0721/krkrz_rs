@@ -105,6 +105,23 @@ fn movie_plugin_uses_builtin_video_overlay_without_replacing_objects() {
     );
 }
 #[test]
+fn perspective_plugin_registers_layer_method_without_replacing_layer() {
+    let dir = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("startup.tjs"),
+        "var klass=Layer;Plugins.link('perspective.dll');Plugins.link('perspective.dll');var w=new Window(),layer=new Layer(w,null);return [Layer===klass,typeof layer.perspectiveCopy,Plugins.getList().join(',')].join('|');",
+    )
+    .unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 10_000).unwrap();
+    assert_eq!(
+        session.startup().unwrap(),
+        Value::string("1|Object|perspective.dll")
+    );
+    let error = format!("{:#}", session.evaluate("layer.perspectiveCopy()").unwrap_err());
+    assert!(error.contains("unsupported Layer operation: perspectiveCopy"));
+}
+#[test]
 fn nested_scripts_cannot_reset_execution_budget() {
     let dir = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
