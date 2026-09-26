@@ -572,3 +572,137 @@ fn original_stretch_copy_pixels() {
         assert_resampled_pixels(&case.name, &value, &case.expected);
     }
 }
+
+#[test]
+fn ripple_blends_and_completes_with_the_native_transition_lifecycle() {
+    let (_project, _saves, mut s) = session(
+        "Plugins.link('extrans.dll');var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),clock=0,done=0;p.setSize(32,32);p.setImageSize(32,32);a.setSize(32,32);a.setImageSize(32,32);b.setSize(32,32);b.setImageSize(32,32);a.type=ltOpaque;b.type=ltOpaque;a.fillRect(0,0,32,32,0xff000000);b.fillRect(0,0,32,32,0xffffffff);a.visible=true;a.onTransitionCompleted=function(){done++;};a.beginTransition('ripple',true,b,%[time:100,maxdrift:8,selfupdate:true,callback:function(){return global.clock;}]);",
+        1_000_000,
+    );
+    let w = s.evaluate("w").unwrap();
+    assert_eq!(
+        s.capture_window(&w).unwrap().rgba,
+        [0, 0, 0, 255].repeat(32 * 32)
+    );
+    s.evaluate("clock=50").unwrap();
+    assert_eq!(
+        s.capture_window(&w).unwrap().rgba,
+        [126, 126, 126, 255].repeat(32 * 32)
+    );
+    s.evaluate("clock=100").unwrap();
+    assert_eq!(
+        s.capture_window(&w).unwrap().rgba,
+        [255, 255, 255, 255].repeat(32 * 32)
+    );
+    assert_eq!(s.evaluate("done").unwrap(), Value::Integer(1));
+}
+
+#[test]
+fn ripple_rejects_invalid_options_without_starting_a_transition() {
+    for option in [
+        "centerx:-1",
+        "centery:32",
+        "rwidth:17",
+        "roundness:0",
+        "maxdrift:32",
+        "maxdrift:-1",
+    ] {
+        let (project, _saves, mut s) = session(
+            "var w=new Window(),a=new Layer(w,null),b=new Layer(w,a);a.setSize(32,32);b.setSize(32,32);",
+            100_000,
+        );
+        std::fs::write(project.path().join("test.tjs"),format!("try{{a.beginTransition('ripple',true,b,%[time:100,{option}]);}}catch{{return 1;}}return 0;")).unwrap();
+        assert_eq!(
+            s.execute_storage("test.tjs").unwrap(),
+            Value::Integer(1),
+            "{option}"
+        );
+        assert!(
+            s.evaluate("a.beginTransition('ripple',true,b,%[time:100,maxdrift:0])")
+                .is_ok()
+        );
+    }
+}
+
+#[test]
+fn clipped_ripple_samples_pixels_outside_parent_bounds() {
+    for children in ["true", "false"] {
+        let (project, _saves, mut s) = session("", 1_000_000);
+        std::fs::write(project.path().join("test.tjs"),format!(
+            "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),clock=0;p.setSize(32,32);p.setImageSize(32,32);a.setSize(32,32);a.setImageSize(32,32);b.setSize(32,32);b.setImageSize(32,32);a.type=ltOpaque;b.type=ltOpaque;a.visible=true;for(var y=0;y<32;y++)for(var x=0;x<32;x++){{a.setMainPixel(x,y,(x*7+y*3)|((x*2+y*5)<<8)|((x+y*9)<<16));b.setMainPixel(x,y,(255-x*3-y*2)|((x*8+y)<<8)|((255-x-y*4)<<16));}}a.beginTransition('ripple',{children},b,%[time:100,centerx:9,centery:7,rwidth:16,roundness:1.5,maxdrift:8,selfupdate:true,callback:function(){{return global.clock;}}]);"
+        )).unwrap();
+        s.execute_storage("test.tjs").unwrap();
+        let w = s.evaluate("w").unwrap();
+        s.capture_window(&w).unwrap();
+        s.evaluate("clock=50").unwrap();
+        let full = s.capture_window(&w).unwrap();
+        s.evaluate("Scripts.exec('p.setSize(16,16);p.setImageSize(16,16);')")
+            .unwrap();
+        let cropped = s.capture_window(&w).unwrap();
+        assert_eq!((cropped.width, cropped.height), (16, 16));
+        for y in 0..16 {
+            assert_eq!(
+                &cropped.rgba[y * 16 * 4..(y + 1) * 16 * 4],
+                &full.rgba[y * 32 * 4..(y * 32 + 16) * 4],
+                "with children {children}, row {y}"
+            );
+        }
+    }
+}
+
+#[test]
+fn photoshop_multiply_composes_with_opacity_clipping_and_nested_alpha() {
+    for (kind, alpha) in [
+        ("ltOpaque", 0),
+        ("ltAlpha", 93),
+        ("ltAddAlpha", 93),
+        ("ltPsMultiplicative", 93),
+    ] {
+        let (_project, _saves, mut s) = session(
+            &format!(
+                "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p);p.setSize(3,1);p.setImageSize(3,1);p.type={kind};p.fillRect(0,0,3,1,0x5dc850ff);a.setSize(3,1);a.setImageSize(3,1);a.type=ltPsMultiplicative;a.fillRect(0,0,3,1,0x8080ff40);a.left=1;a.opacity=173;a.visible=true;"
+            ),
+            100_000,
+        );
+        let w = s.evaluate("w").unwrap();
+        let image = s.capture_window(&w).unwrap();
+        assert_eq!(
+            image.rgba,
+            [200, 80, 255, 93, 166, 79, 190, alpha, 166, 79, 190, alpha],
+            "target {kind}"
+        );
+        s.evaluate("a.opacity=0").unwrap();
+        assert_eq!(
+            s.capture_window(&w).unwrap().rgba,
+            [200, 80, 255, 93].repeat(3)
+        );
+    }
+}
+
+#[test]
+fn photoshop_multiply_drawing_operations_share_alpha_and_opacity_rules() {
+    for operation in [
+        "d.operateRect(0,0,a,0,0,2,1,omAuto,173)",
+        "d.operateStretch(0,0,2,1,a,0,0,2,1,omPsMultiplicative,173)",
+        "d.operateAffine(a,0,0,2,1,true,1,0,0,1,0,0,omPsMultiplicative,173)",
+    ] {
+        for hold in [false, true] {
+            let (_project, _saves, mut s) = session(
+                &format!(
+                    "var w=new Window(),d=new Layer(w,null),a=new Layer(w,d);d.setSize(2,1);d.setImageSize(2,1);d.type=ltAlpha;d.holdAlpha={hold};d.fillRect(0,0,2,1,0x5dc850ff);a.setSize(2,1);a.setImageSize(2,1);a.type=ltPsMultiplicative;a.fillRect(0,0,2,1,0x8080ff40);{operation};"
+                ),
+                100_000,
+            );
+            assert_eq!(
+                s.evaluate("d.getMainPixel(0,0)").unwrap(),
+                Value::Integer(0xa64fbe),
+                "{operation}, hold={hold}"
+            );
+            assert_eq!(
+                s.evaluate("d.getMaskPixel(0,0)").unwrap(),
+                Value::Integer(if hold { 93 } else { 0 }),
+                "{operation}, hold={hold}"
+            );
+        }
+    }
+}

@@ -290,10 +290,16 @@ through this interface. Stale views fail safely after their owner is invalidated
 This does not establish story playback or original save compatibility.
 
 Legacy `Layer.pileRect` performs pixel-alpha blending with optional opacity.
-`Layer.operateStretch` supports opaque, alpha and additive-alpha blending with
-scaling, destination clipping and flipped destination rectangles. It shares
+`Layer.operateStretch` supports opaque, alpha, additive-alpha and Photoshop
+multiply blending with scaling, destination clipping and flipped destination
+rectangles. It shares
 the existing resampling accuracy limits of `stretchCopy`. TJS `string.escape()`
 provides C-style escaping for scripts that construct expressions dynamically.
+
+Layer composition and `operateRect`, `operateStretch`, and `operateAffine`
+support `ltPsMultiplicative` / `omPsMultiplicative` (type 16, `psmul`). Multiply
+uses Kirikiri's scalar rounding and source alpha; composition preserves the
+destination alpha on alpha and additive-alpha surfaces.
 
 System constants match the installed engine, including its older stretch-mode
 exports. Graphic-cache limits are bytes and affect a bounded LRU cache; Layer
@@ -354,6 +360,19 @@ bars, popups and OS shortcut delivery are not implemented. Shortcut name tables
 use stable English defaults until a platform keyboard adapter is available.
 
 `Plugins.link('krmovie.dll')` uses the existing built-in `VideoOverlay` decoder.
+
+`Plugins.link('ktsndopt.dll')` provides the volume-dialog functions observed in
+Route of AYANO's `Override.tjs`. The native host shows music, sound-effect and
+voice volume sliders plus optional voice-playback reduction controls. OK returns
+a nine-byte settings octet; Cancel leaves the game's settings unchanged.
+Headless calls require an input-dialog handler.
+
+The `ripple` transition follows SamplePlugin's scalar displacement tables,
+wave timing, reflected image borders and RGB blending. Its options include
+`centerx`, `centery`, `rwidth`, `roundness`, `speed`, and `maxdrift`. It shares
+the existing transition callbacks and final layer exchange. Ripple is intended
+for opaque surfaces, as in the original plugin; alpha-aware distortion is not
+implemented.
 
 The WIN32Dialog binding registers the installed plugin's observed constants and
 interfaces. It supports Header/Items storage, copied binary templates, bounded

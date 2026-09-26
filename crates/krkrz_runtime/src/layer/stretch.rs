@@ -105,7 +105,7 @@ impl Services {
         let face = dst.draw_face();
         ensure!(matches!(face, 0 | 1 | 4), "Layer.{op}: invalid draw face");
         if let Some((mode, opacity)) = operation {
-            if !matches!(mode, 1 | 2 | 12) {
+            if !matches!(mode, 1 | 2 | 12 | 16) {
                 return Err(unsupported(format!(
                     "Layer.operateStretch blend mode {mode}"
                 )));

@@ -105,6 +105,31 @@ fn movie_plugin_uses_builtin_video_overlay_without_replacing_objects() {
     );
 }
 #[test]
+fn sound_options_plugin_declares_dialog_api_and_preserves_relinks() {
+    let dir = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 10_000).unwrap();
+    std::fs::write(
+        dir.path().join("startup.tjs"),
+        r#"Plugins.link('plugin\\KTSNDOPT.DLL');
+                var init=ktSndOptDlg_Init;
+                Plugins.link('plugin\\KTSNDOPT.DLL');Plugins.link('ktsndopt.dll');
+                return [init===ktSndOptDlg_Init,typeof ktSndOptDlg_GetState,
+                    typeof ktSndOptDlg_Final,Plugins.getList().join(',')].join('|');"#,
+    )
+    .unwrap();
+    assert_eq!(
+        session.startup().unwrap(),
+        Value::string("1|Object|Object|plugin\\KTSNDOPT.DLL,ktsndopt.dll")
+    );
+    let error = session
+        .evaluate("ktSndOptDlg_Init(1,100,1,0,50,1,100,1,0,50,1,100,0,0,50)")
+        .unwrap_err();
+    assert!(error.downcast_ref::<krkrz_tjs::VmAbort>().is_some());
+    assert!(format!("{error:#}").contains("requires a host UI or replay handler"));
+}
+
+#[test]
 fn perspective_plugin_registers_layer_method_without_replacing_layer() {
     let dir = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();

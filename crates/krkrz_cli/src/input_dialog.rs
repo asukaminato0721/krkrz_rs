@@ -191,6 +191,23 @@ impl eframe::App for DialogApp {
                 .max_height((ui.available_height() - 48.0).max(60.0))
                 .show(ui, |ui| {
                     for (index, field) in self.request.fields.iter().enumerate() {
+                        if field.checkbox {
+                            let mut checked = self.values[index] == "1";
+                            ui.checkbox(&mut checked, &field.label);
+                            self.values[index] = if checked { "1" } else { "0" }.into();
+                            ui.add_space(8.0);
+                            continue;
+                        }
+                        if let Some([min, max]) = field.range {
+                            let mut value = self.values[index]
+                                .parse::<i32>()
+                                .unwrap_or(min)
+                                .clamp(min, max);
+                            ui.add(egui::Slider::new(&mut value, min..=max).text(&field.label));
+                            self.values[index] = value.to_string();
+                            ui.add_space(8.0);
+                            continue;
+                        }
                         if !field.label.is_empty() {
                             ui.label(&field.label);
                         }

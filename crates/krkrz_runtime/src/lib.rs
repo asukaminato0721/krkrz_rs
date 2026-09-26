@@ -28,6 +28,7 @@ pub mod scheduler;
 mod shell_execute;
 mod sound;
 mod sound_flags;
+mod sound_options;
 mod sound_stream;
 mod text_render;
 mod timer;
@@ -95,6 +96,7 @@ pub struct Services {
     layer_draw: layer_draw::State,
     menus: menu::State,
     dialogs: dialog::State,
+    sound_options: Option<Vec<u8>>,
     window_ex: window_ex::State,
     alpha_movies: BTreeMap<usize, alpha_movie::Player>,
     alpha_movie_links: BTreeSet<String>,
@@ -660,6 +662,21 @@ impl Host for Services {
                         }
                         Ok(Value::Void)
                     }
+                    "ktsndopt.dll" => {
+                        // The game's Override.tjs uses this plugin for a modal
+                        // volume dialog, not decoding. Register its observed API.
+                        if !self.loaded_plugins.contains("ktsndopt.dll") {
+                            for name in [
+                                "ktSndOptDlg_Init",
+                                "ktSndOptDlg_GetState",
+                                "ktSndOptDlg_Final",
+                            ] {
+                                vm.register_native(name)?;
+                            }
+                            self.loaded_plugins.insert("ktsndopt.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
                     _ => Err(unsupported(format!(
                         "unsupported Kirikiri native operation: Plugins.link({path})"
                     ))),
@@ -671,6 +688,9 @@ impl Host for Services {
             }
             "Plugins.getList" => {
                 vm.new_native_array(self.plugin_names.iter().map(|s| Value::string(s)).collect())
+            }
+            "ktSndOptDlg_Init" | "ktSndOptDlg_GetState" | "ktSndOptDlg_Final" => {
+                self.sound_options_call(name, args)
             }
             "drawFFTGraph" => self.draw_fft_graph(vm, args, budget),
             "System.getKeyState" => {
@@ -1079,6 +1099,7 @@ impl Session {
                 layer_draw: layer_draw::State::default(),
                 menus,
                 dialogs: dialog::State::default(),
+                sound_options: None,
                 window_ex: window_ex::State::default(),
                 alpha_movies: BTreeMap::new(),
                 alpha_movie_links: BTreeSet::new(),

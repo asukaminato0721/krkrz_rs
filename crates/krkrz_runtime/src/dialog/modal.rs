@@ -20,6 +20,10 @@ pub struct InputField {
     pub max_length: usize,
     pub selection: Option<[i32; 2]>,
     pub focused: bool,
+    #[serde(default)]
+    pub range: Option<[i32; 2]>,
+    #[serde(default)]
+    pub checkbox: bool,
 }
 pub(super) type InputHandler = Box<dyn FnMut(&InputDialog) -> Result<Option<Vec<String>>>>;
 #[derive(Clone, Default)]
@@ -100,6 +104,8 @@ impl Dialog {
                         max_length: options.max_length.unwrap_or(1_000_000),
                         selection: options.selection,
                         focused: self.focused == Some(control_id),
+                        range: None,
+                        checkbox: false,
                     });
                     labels.clear();
                     indices.push(index);
@@ -163,6 +169,16 @@ impl Services {
         F: FnMut(&InputDialog) -> Result<Option<Vec<String>>> + 'static,
     {
         self.dialogs.input_handler = Some(Box::new(handler));
+    }
+
+    pub(crate) fn show_input_dialog(
+        &mut self,
+        request: &InputDialog,
+    ) -> Result<Option<Vec<String>>> {
+        let handler = self.dialogs.input_handler.as_mut().ok_or_else(|| {
+            unsupported("native input dialog requires a host UI or replay handler")
+        })?;
+        handler(request)
     }
 
     fn modal(&self, object_id: usize) -> Result<&Dialog> {

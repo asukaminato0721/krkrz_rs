@@ -32,7 +32,7 @@ impl Services {
             },
             mode => mode,
         };
-        if !matches!(mode, 1 | 2 | 12) {
+        if !matches!(mode, 1 | 2 | 12 | 16) {
             return Err(unsupported(format!(
                 "Layer.operateAffine blend mode {mode}"
             )));

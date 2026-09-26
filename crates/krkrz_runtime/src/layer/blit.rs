@@ -63,7 +63,7 @@ impl Services {
         }
         if op == "operateRect" {
             ensure!(matches!(face, 0 | 1 | 4), "invalid operateRect draw face");
-            if !matches!(mode, 1 | 2 | 12) {
+            if !matches!(mode, 1 | 2 | 12 | 16) {
                 return Err(unsupported(format!("Layer.operateRect blend mode {mode}")));
             }
             if opacity == 0 {
@@ -219,6 +219,24 @@ pub(super) fn blend_row(
 }
 
 fn blend(d: &mut [u8], mut s: [u8; 4], face: i32, mode: i32, opacity: i32, hold: bool) {
+    if mode == 16 {
+        // TVPPsMulBlend: multiply first, then interpolate with source alpha.
+        // Both stages divide by 256, including at full opacity. Unlike normal
+        // alpha blending, Photoshop modes only retain alpha when HDA is set.
+        let alpha = if opacity == 255 {
+            s[3] as i32
+        } else {
+            (s[3] as i32 * opacity) >> 8
+        };
+        for c in 0..3 {
+            let multiplied = (d[c] as i32 * s[c] as i32) >> 8;
+            d[c] = (d[c] as i32 + (((multiplied - d[c] as i32) * alpha) >> 8)) as u8;
+        }
+        if !hold {
+            d[3] = 0;
+        }
+        return;
+    }
     let opacity = if mode == 12 && face == 1 && !hold && opacity != 255 {
         opacity + (opacity >> 7)
     } else {
@@ -286,6 +304,56 @@ fn blend(d: &mut [u8], mut s: [u8; 4], face: i32, mode: i32, opacity: i32, hold:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn photoshop_multiply_matches_original_packed_scalar() {
+        // Independently use tvpps.c's packed unsigned arithmetic, including
+        // wraparound between the red/blue lanes, as the reference for RGBA.
+        fn reference(d: u32, s: u32, opacity: u32, hold: bool) -> u32 {
+            let a = if opacity == 255 {
+                s >> 24
+            } else {
+                ((s >> 24) * opacity) >> 8
+            };
+            let s = ((((d >> 16) & 255) * (s & 0xff0000) & 0xff000000)
+                | (((d >> 8) & 255) * (s & 0xff00) & 0xff0000)
+                | ((d & 255) * (s & 255)))
+                >> 8;
+            let d1 = d & 0xff00ff;
+            let d2 = d & 0xff00;
+            let rgb = (((s & 0xff00ff).wrapping_sub(d1).wrapping_mul(a) >> 8).wrapping_add(d1)
+                & 0xff00ff)
+                | (((s & 0xff00).wrapping_sub(d2).wrapping_mul(a) >> 8).wrapping_add(d2) & 0xff00);
+            rgb | if hold { d & 0xff000000 } else { 0 }
+        }
+        for opacity in 0..=255 {
+            for hold in [false, true] {
+                let src: Vec<_> = (0..=255u32)
+                    .flat_map(|alpha| [alpha as u8, (255 - alpha) as u8, 255, alpha as u8])
+                    .collect();
+                let mut dst: Vec<_> = (0..=255u32)
+                    .flat_map(|v| [(255 - v) as u8, v as u8, 255, 93])
+                    .collect();
+                let expected: Vec<_> = dst
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .zip(src.as_chunks::<4>().0)
+                    .flat_map(|(d, s)| {
+                        reference(
+                            u32::from_le_bytes(*d),
+                            u32::from_le_bytes(*s),
+                            opacity,
+                            hold,
+                        )
+                        .to_le_bytes()
+                    })
+                    .collect();
+                blend_row(&mut dst, &src, 1, 1, 16, opacity as i32, hold);
+                assert_eq!(dst, expected, "opacity={opacity}, hold={hold}");
+            }
+        }
+    }
 
     #[test]
     fn opaque_target_fast_rows_match_scalar_rounding() {

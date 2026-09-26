@@ -118,6 +118,55 @@ impl Services {
         depth: usize,
         live_bytes: usize,
     ) -> Result<Image> {
+        // Ripple samples neighboring pixels. Complete the whole transition
+        // surface before cropping a partial parent/dirty rectangle.
+        let layer = &self.layers[&id];
+        if let Some(t) = &layer.transition
+            && t.ripple.is_some()
+        {
+            let full = if t.with_children {
+                Rect {
+                    x: 0,
+                    y: 0,
+                    w: layer.width as i64,
+                    h: layer.height as i64,
+                }
+            } else {
+                let image = layer.bitmap()?;
+                Rect {
+                    x: layer.image_left as i64,
+                    y: layer.image_top as i64,
+                    w: image.width as i64,
+                    h: image.height as i64,
+                }
+            };
+            if [rect.x, rect.y, rect.w, rect.h] != [full.x, full.y, full.w, full.h] {
+                let complete = self.layer_complete(id, full, budget, depth + 1, live_bytes)?;
+                let mut result = self.layer_self_image(
+                    id,
+                    rect,
+                    budget,
+                    depth,
+                    live_bytes + complete.rgba.len(),
+                )?;
+                for y in 0..rect.h {
+                    let sy = rect.y + y - full.y;
+                    if sy < 0 || sy >= full.h {
+                        continue;
+                    }
+                    let left = (full.x - rect.x).max(0);
+                    let right = (full.x + full.w - rect.x).min(rect.w);
+                    if right <= left {
+                        continue;
+                    }
+                    let src = ((sy * full.w) + (rect.x + left - full.x)) as usize * 4;
+                    let dst = (y * rect.w + left) as usize * 4;
+                    let len = (right - left) as usize * 4;
+                    result.rgba[dst..dst + len].copy_from_slice(&complete.rgba[src..src + len]);
+                }
+                return Ok(result);
+            }
+        }
         let mut result = self.layer_self_image(id, rect, budget, depth, live_bytes)?;
         let layer = &self.layers[&id];
         let bytes = live_bytes + result.rgba.len();
@@ -244,7 +293,7 @@ impl Services {
                 );
                 continue;
             }
-            if !matches!(layer.kind, 1 | 2 | 12) {
+            if !matches!(layer.kind, 1 | 2 | 12 | 16) {
                 return Err(unsupported(format!(
                     "layer composition blend type {}",
                     layer.kind
@@ -252,7 +301,7 @@ impl Services {
             }
             let source = self.layer_complete(*child, local, budget, depth + 1, live_bytes)?;
             let face = match target_kind {
-                2 | 13 => 0,
+                2 | 13 | 16 => 0,
                 12 => 4,
                 _ => 1,
             };
@@ -268,7 +317,7 @@ impl Services {
                     face,
                     layer.kind,
                     layer.opacity,
-                    false,
+                    layer.kind == 16 && face != 1,
                 );
             }
         }

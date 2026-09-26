@@ -1,11 +1,13 @@
 //! Crossfade provider and Layer transition lifecycle from LayerIntf/TransIntf.
 use super::*;
+mod ripple;
 
 pub(super) struct Transition {
     pub source: usize,
     pub with_children: bool,
     pub phase: i32,
     rule: Option<Rule>,
+    pub(super) ripple: Option<ripple::Ripple>,
     duration: u64,
     tick: u64,
     identity: std::rc::Rc<()>,
@@ -43,7 +45,7 @@ impl Services {
             "Layer is already in a transition"
         );
         let name = args[0].text();
-        if !matches!(name.as_str(), "crossfade" | "universal") {
+        if !matches!(name.as_str(), "crossfade" | "universal" | "ripple") {
             return Err(unsupported(format!("transition provider {name}")));
         }
         let with_children = args
@@ -79,6 +81,7 @@ impl Services {
             dimensions(src)? == dimensions(dst)?,
             "transition layer sizes do not match"
         );
+        let size = dimensions(dst)?;
         let options = args.get(3).context("transition requires a time option")?;
         let time = vm.get_property(options, &Value::string("time"), true, false, self, budget)?;
         ensure!(
@@ -86,6 +89,11 @@ impl Services {
             "transition requires a time option"
         );
         let duration = time.integer()?.max(2) as u64;
+        let ripple = if name == "ripple" {
+            Some(ripple::Ripple::new(vm, self, options, size, budget)?)
+        } else {
+            None
+        };
         let rule = if name == "universal" {
             let vague =
                 vm.get_property(options, &Value::string("vague"), true, false, self, budget)?;
@@ -182,6 +190,7 @@ impl Services {
             with_children,
             phase: 0,
             rule,
+            ripple,
             duration,
             tick: if callback.is_some() { 0 } else { self.time_ms },
             identity: std::rc::Rc::new(()),
@@ -508,6 +517,16 @@ impl Transition {
         kind: i32,
         origin: [i64; 2],
     ) {
+        if let Some(ripple) = &self.ripple {
+            ripple.blend(
+                destination,
+                source,
+                origin,
+                self.tick.wrapping_sub(self.start.unwrap_or(self.tick)),
+                self.duration,
+            );
+            return;
+        }
         let Some(rule) = &self.rule else {
             crossfade(destination, source, kind, self.phase);
             return;
