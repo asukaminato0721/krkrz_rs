@@ -91,3 +91,40 @@ fn missing_sound_is_a_script_exception() {
     let mut session = Session::open(project.path(), Some(saves.path()), None, 1000).unwrap();
     assert_eq!(session.startup().unwrap(), Value::string("unload"));
 }
+
+#[test]
+fn fade_replacement_volume_changes_and_late_completion_keep_callbacks() {
+    let project = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    std::fs::write(
+        project.path().join("startup.tjs"),
+        r#"
+        var events="";
+        var s=new WaveSoundBuffer(null);
+        s.onFadeCompleted=function(){events+=s.volume+",";};
+        s.fade(0,240);
+    "#,
+    )
+    .unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 10_000).unwrap();
+    session.startup().unwrap();
+    session.advance_clock(60).unwrap();
+    assert_eq!(session.evaluate("s.volume").unwrap(), Value::Integer(75000));
+    session.evaluate("s.volume=50000").unwrap();
+    session.advance_clock(120).unwrap();
+    assert_eq!(session.evaluate("s.volume").unwrap(), Value::Integer(25000));
+    session.evaluate("s.fade(100000,120)").unwrap();
+    assert_eq!(session.evaluate("events").unwrap(), Value::string("25000,"));
+    session.advance_clock(180).unwrap();
+    assert_eq!(session.evaluate("s.volume").unwrap(), Value::Integer(62500));
+    session.advance_clock(10000).unwrap();
+    assert_eq!(
+        session.evaluate("events").unwrap(),
+        Value::string("25000,100000,")
+    );
+    session.advance_clock(20000).unwrap();
+    assert_eq!(
+        session.evaluate("events").unwrap(),
+        Value::string("25000,100000,")
+    );
+}

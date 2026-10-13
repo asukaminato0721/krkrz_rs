@@ -122,3 +122,48 @@ fn timer_callback_execution_uses_session_budget() {
     let error = session.advance_clock(2).unwrap_err();
     assert!(error.downcast_ref::<VmAbort>().is_some(), "{error:#}");
 }
+
+#[test]
+fn simultaneous_timer_wakes_keep_object_order_after_rearming() {
+    let (_project, _saves, mut session) = session(
+        "global.log=[];global.a=new Timer(function(){log.add('a');},'');global.b=new Timer(function(){log.add('b');},'');a.capacity=1;b.capacity=1;a.interval=20;b.interval=10;b.enabled=true;a.enabled=true;",
+        100_000,
+    );
+    session.advance_clock(31).unwrap();
+    assert_eq!(
+        session.evaluate("log.join(',')").unwrap(),
+        Value::string("a,b")
+    );
+    session.evaluate("(b.enabled=true,a.enabled=true)").unwrap();
+    session.advance_clock(52).unwrap();
+    assert_eq!(
+        session.evaluate("log.join(',')").unwrap(),
+        Value::string("a,b,a,b")
+    );
+    session
+        .evaluate("a.onTimer=function(){log.add('a');b.enabled=false;}")
+        .unwrap();
+    session.advance_clock(72).unwrap();
+    assert_eq!(
+        session.evaluate("log.join(',')").unwrap(),
+        Value::string("a,b,a,b,a")
+    );
+}
+
+#[test]
+fn timer_waits_cancel_before_start_after_registration_and_on_invalidation() {
+    let (_project, _saves, mut session) = session(COUNT, 100_000);
+    session
+        .evaluate("(t.enabled=false,t.interval=20,t.enabled=true)")
+        .unwrap();
+    session.advance_clock(0).unwrap(); // Register the new wait.
+    session.evaluate("t.interval=30").unwrap();
+    session.advance_clock(21).unwrap();
+    assert_eq!(session.evaluate("n").unwrap(), Value::Integer(0));
+    session.advance_clock(31).unwrap();
+    assert_eq!(session.evaluate("n").unwrap(), Value::Integer(1));
+    session.advance_clock(32).unwrap(); // Register the next wait.
+    session.evaluate("invalidate t").unwrap();
+    session.advance_clock(1000).unwrap();
+    assert_eq!(session.evaluate("n").unwrap(), Value::Integer(1));
+}

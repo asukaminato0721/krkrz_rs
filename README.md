@@ -59,6 +59,26 @@ Successful branch pushes update the rolling `pre-release` release.
 Gameplay validation currently focuses on Linux; the other platforms have build
 coverage only. Mobile and browser packages are not available yet.
 
+## Native task scheduling
+
+Native tasks use `async-executor::LocalExecutor` through the host clock adapter
+in `krkrz_runtime::coroutine`. Rust `async` tasks suspend with
+`wait_until(deadline).await`, `next_step().await`, or `wait_event(id).await`.
+The host advances the executor with the session clock. Each task runs at most
+once per batch. Commands are applied in task creation order. Cancellation drops
+the engine future and removes its wait registrations immediately.
+
+Timers, sound fades, video playback, transition completion, and native host frame
+waits use this adapter. Timer clocks retain Kirikiri's 16.16 millisecond precision.
+Timer callbacks retain object order, priorities, capacity, and late wakeup rules.
+Sound fades retain 60 ms beats. Paused videos have no playback task. Transition
+completion waits for the final rendered frame before calling the script.
+
+Rendering, audio sample processing, and continuous handlers still perform work
+on host ticks. TJS calls retain synchronous semantics. TextRenderBase uses the
+time supplied by scripts. AlphaMovie advances when scripts request an image.
+Native coroutine stacks are not stored in game saves.
+
 ## Developer tools
 
 The following examples read the existing installation without modifying it.

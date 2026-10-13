@@ -188,7 +188,7 @@ impl Ripple {
                 for c in 0..3 {
                     let a = original[from + c] as i32;
                     let b = src.rgba[from + c] as i32;
-                    dst.rgba[to + c] = (a + ((b - a) * ratio >> 8)) as u8;
+                    dst.rgba[to + c] = (a + (((b - a) * ratio) >> 8)) as u8;
                 }
                 dst.rgba[to + 3] = 255;
             }

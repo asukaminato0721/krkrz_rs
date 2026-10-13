@@ -10,6 +10,7 @@ license = "MIT"
 [workspace.dependencies]
 adler2 = "2"
 anyhow = "1"
+async-executor = "1.14"
 audioadapter-buffers = "5.2"
 bitstream-io = "4.10"
 byteorder = "1"

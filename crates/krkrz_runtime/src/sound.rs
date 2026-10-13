@@ -1,5 +1,6 @@
 //! Sound control and fade timing from Kirikiri SoundBufferBaseIntf.cpp.
 //! Decoding and source-rate pulls share the headless session; device mixing is separate.
+use crate::coroutine::TaskId;
 use crate::{Services, audio::SoundStream};
 use anyhow::{Context, Result, ensure};
 use krkrz_assets::media::Audio;
@@ -10,9 +11,15 @@ const BEAT_MS: u64 = 60;
 
 struct Fade {
     target: i32,
+    task: Option<TaskId>,
+}
+
+pub(crate) struct FadeStep {
+    id: usize,
+    target: i32,
     delta: i32,
-    remaining: u64,
-    delay: u64,
+    beats: u64,
+    completed: bool,
 }
 
 pub(crate) struct Loaded {
@@ -131,29 +138,6 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
     Ok(())
 }
 
-impl Sound {
-    pub(crate) fn beat(&mut self, mut beats: u64) {
-        let Some(fade) = &mut self.fade else { return };
-        let delay_beats = fade.delay.div_ceil(BEAT_MS).min(beats);
-        fade.delay = fade.delay.saturating_sub(delay_beats * BEAT_MS);
-        beats -= delay_beats;
-        if beats == 0 || fade.remaining == 0 {
-            // Upstream leaves a fade shorter than one beat pending forever if
-            // it had a delay. stopFade can still finish it explicitly.
-            return;
-        }
-        if beats >= fade.remaining {
-            self.volume = fade.target.clamp(0, 100_000);
-            self.fade = None;
-            self.fade_pending = true;
-        } else {
-            self.volume =
-                (self.volume as i64 + fade.delta as i64 * beats as i64).clamp(0, 100_000) as i32;
-            fade.remaining -= beats;
-        }
-    }
-}
-
 impl Services {
     pub(crate) fn sound_call(
         &mut self,
@@ -211,10 +195,13 @@ impl Services {
             return Ok(Value::Void);
         }
         if operation == "@invalidate" {
-            if let Some(sound) = self.sounds.remove(&id)
-                && let Some(labels) = sound.labels_object
-            {
-                vm.invalidate(&labels, self, budget)?;
+            if let Some(sound) = self.sounds.remove(&id) {
+                if let Some(task) = sound.fade.and_then(|fade| fade.task) {
+                    self.fade_tasks.cancel(task);
+                }
+                if let Some(labels) = sound.labels_object {
+                    vm.invalidate(&labels, self, budget)?;
+                }
             }
             self.sample_plugin.instances.remove(&id);
             return Ok(Value::Void);
@@ -385,6 +372,9 @@ impl Services {
             "stopFade" => {
                 if let Some(fade) = sound.fade.take() {
                     sound.volume = fade.target.clamp(0, 100_000);
+                    if let Some(task) = fade.task {
+                        self.fade_tasks.cancel(task);
+                    }
                     self.sound_event(vm, context, "onFadeCompleted", &[], budget)?;
                 }
             }
@@ -396,23 +386,15 @@ impl Services {
                     duration > 0 && delay >= 0,
                     "invalid sound fade duration or delay"
                 );
-                if sound.fade.take().is_some() {
+                if let Some(fade) = sound.fade.take() {
+                    if let Some(task) = fade.task {
+                        self.fade_tasks.cancel(task);
+                    }
                     self.sound_event(vm, context, "onFadeCompleted", &[], budget)?;
                 }
-                let sound = self
-                    .sounds
-                    .get_mut(&id)
-                    .context("sound invalidated during fade callback")?;
-                sound.fade = Some(Fade {
-                    target,
-                    delta: target
-                        .wrapping_sub(sound.volume)
-                        .wrapping_mul(BEAT_MS as i32)
-                        / duration,
-                    remaining: duration as u64 / BEAT_MS,
-                    delay: delay as u64,
-                });
+                self.start_sound_fade(id, target, duration as u64, delay as u64)?;
                 if duration < BEAT_MS as i32 && delay == 0 {
+                    let sound = self.sounds.get_mut(&id).unwrap();
                     sound.fade = None;
                     sound.volume = target.clamp(0, 100_000);
                     self.sound_event(vm, context, "onFadeCompleted", &[], budget)?;
@@ -468,11 +450,75 @@ impl Services {
         Ok(())
     }
 
-    pub(crate) fn sound_advance(&mut self, time_ms: u64) {
-        let beats = time_ms / BEAT_MS - self.time_ms / BEAT_MS;
-        for sound in self.sounds.values_mut() {
-            sound.beat(beats);
+    fn start_sound_fade(
+        &mut self,
+        id: usize,
+        target: i32,
+        duration: u64,
+        delay: u64,
+    ) -> Result<()> {
+        let sound = self
+            .sounds
+            .get_mut(&id)
+            .context("sound invalidated during fade callback")?;
+        // A completion callback can create another fade before this call resumes.
+        if let Some(task) = sound.fade.take().and_then(|fade| fade.task) {
+            self.fade_tasks.cancel(task);
         }
+        let delta = target
+            .wrapping_sub(sound.volume)
+            .wrapping_mul(BEAT_MS as i32)
+            / duration as i32;
+        let mut remaining = duration / BEAT_MS;
+        let mut last = self.time_ms / BEAT_MS + delay.div_ceil(BEAT_MS);
+        // Delayed sub-beat fades remain pending until stopFade, as upstream does.
+        let task = if remaining == 0 {
+            None
+        } else {
+            Some(self.fade_tasks.spawn_routine(move |cx, out| async move {
+                loop {
+                    cx.wait_until(last + 1).await;
+                    let beats = cx.now() - last;
+                    last = cx.now();
+                    let completed = beats >= remaining;
+                    out.emit(FadeStep {
+                        id,
+                        target,
+                        delta,
+                        beats,
+                        completed,
+                    });
+                    if completed {
+                        return;
+                    }
+                    remaining -= beats;
+                }
+            })?)
+        };
+        sound.fade = Some(Fade { target, task });
+        Ok(())
+    }
+
+    pub(crate) fn sound_advance(&mut self, time_ms: u64) -> Result<()> {
+        let mut commands = self.fade_tasks.advance(time_ms / BEAT_MS)?;
+        commands.sort_by_key(|(_, step)| step.id);
+        for (task, step) in commands {
+            let Some(sound) = self.sounds.get_mut(&step.id) else {
+                continue;
+            };
+            if sound.fade.as_ref().and_then(|fade| fade.task) != Some(task) {
+                continue;
+            }
+            if step.completed {
+                sound.volume = step.target.clamp(0, 100_000);
+                sound.fade = None;
+                sound.fade_pending = true;
+            } else {
+                sound.volume = (sound.volume as i128 + step.delta as i128 * step.beats as i128)
+                    .clamp(0, 100_000) as i32;
+            }
+        }
+        Ok(())
     }
 }
 

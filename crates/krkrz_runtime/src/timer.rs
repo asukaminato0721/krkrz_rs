@@ -1,4 +1,5 @@
 //! Timer bindings and 16.16 millisecond deadlines, following Kirikiri TimerIntf/Impl.
+use crate::coroutine::TaskId;
 use crate::{Services, scheduler::EventKind};
 use anyhow::{Context, Result, ensure};
 use krkrz_tjs::{ObjectRef, Value, Vm, unsupported};
@@ -13,6 +14,7 @@ pub(crate) struct Timer {
     enabled: bool,
     capacity: i32,
     mode: i32,
+    task: Option<TaskId>,
 }
 impl Default for Timer {
     fn default() -> Self {
@@ -25,6 +27,7 @@ impl Default for Timer {
             enabled: false,
             capacity: 6,
             mode: 0,
+            task: None,
         }
     }
 }
@@ -69,7 +72,11 @@ impl Services {
         }
         if operation == "@invalidate" {
             self.events.cancel(id, EventKind::Timer);
-            self.timers.remove(&id);
+            if let Some(timer) = self.timers.remove(&id)
+                && let Some(task) = timer.task
+            {
+                self.timer_tasks.cancel(task);
+            }
             return Ok(Value::Void);
         }
         let timer = self
@@ -80,6 +87,7 @@ impl Services {
             args.get(index)
                 .with_context(|| format!("Timer.{operation}: missing argument {index}"))
         };
+        let mut rearm = false;
         if operation == "finalize" {
             return Ok(Value::Void);
         }
@@ -118,6 +126,7 @@ impl Services {
                 if timer.enabled {
                     self.events.cancel(id, EventKind::Timer);
                     timer.next = ticks(self.time_ms)?.wrapping_add(timer.interval);
+                    rearm = true;
                 }
             }
             "set:enabled" => {
@@ -127,6 +136,7 @@ impl Services {
                 } else {
                     self.events.cancel(id, EventKind::Timer);
                 }
+                rearm = true;
             }
             "set:capacity" => timer.capacity = arg(0)?.integer()? as i32,
             "set:mode" => timer.mode = arg(0)?.integer()? as i32,
@@ -158,38 +168,77 @@ impl Services {
             }
             _ => return Err(unsupported(format!("Timer.{operation}"))),
         }
+        if rearm {
+            self.arm_timer(id)?;
+        }
         Ok(Value::Void)
+    }
+
+    fn arm_timer(&mut self, id: usize) -> Result<()> {
+        let timer = self.timers.get_mut(&id).context("timer no longer exists")?;
+        if let Some(task) = timer.task.take() {
+            self.timer_tasks.cancel(task);
+        }
+        if timer.constructed && timer.enabled && timer.interval != 0 {
+            // Kirikiri fires strictly after the 16.16 deadline, not at equality.
+            let deadline = timer.next.saturating_add(1);
+            timer.task = Some(self.timer_tasks.spawn(move |cx| async move {
+                cx.wait_until(deadline).await;
+                id
+            })?);
+        }
+        Ok(())
     }
 
     /// Sample the native timer thread at the host's deterministic clock value.
     pub(crate) fn advance_timers(&mut self, time_ms: u64) -> Result<()> {
         let now = ticks(time_ms)?;
         let lax = self.arguments.get("-laxtimer").is_some_and(|v| v == "yes");
-        for (&id, timer) in &mut self.timers {
-            if !timer.constructed || !timer.enabled || timer.interval == 0 || timer.next >= now {
-                continue;
+        // Preserve object order for simultaneous timers, regardless of task order.
+        let mut due = self.timer_tasks.advance(now)?;
+        due.sort_unstable_by_key(|(_, id)| *id);
+        let mut due = due.into_iter();
+        while let Some((_, id)) = due.next() {
+            if let Err(error) = self.post_due_timer(id, now, lax) {
+                // An event queue error must not discard other completed waits.
+                // Recreate those waits with their unchanged timer deadlines.
+                for (_, id) in due {
+                    self.arm_timer(id)?;
+                }
+                return Err(error);
             }
-            let missed = (now - timer.next) as u128 / timer.interval as u128 + 1;
-            let count = if missed > 40 {
-                timer.next = now.wrapping_add(timer.interval);
-                1
-            } else {
-                timer.next = timer
-                    .next
-                    .wrapping_add((missed as u64).wrapping_mul(timer.interval));
-                missed as usize
-            };
-            let capacity = if lax {
-                1
-            } else if timer.capacity == 0 {
-                65535
-            } else {
-                timer.capacity.max(0) as usize
-            };
-            let available = capacity.saturating_sub(self.events.count(id, EventKind::Timer));
-            for _ in 0..count.min(available) {
-                self.events.post(id, EventKind::Timer, timer.mode)?;
-            }
+        }
+        Ok(())
+    }
+
+    fn post_due_timer(&mut self, id: usize, now: u64, lax: bool) -> Result<()> {
+        let timer = self
+            .timers
+            .get_mut(&id)
+            .context("timer task has no owner")?;
+        timer.task = None;
+        let missed = (now - timer.next) as u128 / timer.interval as u128 + 1;
+        let count = if missed > 40 {
+            timer.next = now.wrapping_add(timer.interval);
+            1
+        } else {
+            timer.next = timer
+                .next
+                .wrapping_add((missed as u64).wrapping_mul(timer.interval));
+            missed as usize
+        };
+        let capacity = if lax {
+            1
+        } else if timer.capacity == 0 {
+            65535
+        } else {
+            timer.capacity.max(0) as usize
+        };
+        let available = capacity.saturating_sub(self.events.count(id, EventKind::Timer));
+        let mode = timer.mode;
+        self.arm_timer(id)?;
+        for _ in 0..count.min(available) {
+            self.events.post(id, EventKind::Timer, mode)?;
         }
         Ok(())
     }
@@ -198,5 +247,44 @@ impl Services {
 impl Timer {
     pub(crate) fn gc_trace(&self, out: &mut Vec<Value>) {
         out.extend([self.owner.clone(), self.action.clone()]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Session;
+
+    #[test]
+    fn event_queue_failure_keeps_unprocessed_timer_waits() {
+        let project = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
+        session.evaluate(
+            "(global.a=new Timer(null),global.b=new Timer(null),a.interval=1,b.interval=1,a.enabled=true,b.enabled=true)",
+        ).unwrap();
+        let ids: Vec<_> = session.services.timers.keys().copied().collect();
+        for _ in 0..100_000 {
+            session
+                .services
+                .events
+                .post(usize::MAX, EventKind::Trigger, 0)
+                .unwrap();
+        }
+        assert!(
+            session
+                .services
+                .advance_timers(2)
+                .unwrap_err()
+                .to_string()
+                .contains("pending event limit")
+        );
+        session
+            .services
+            .events
+            .cancel(usize::MAX, EventKind::Trigger);
+        session.services.advance_timers(2).unwrap();
+        assert_eq!(session.services.events.count(ids[0], EventKind::Timer), 0);
+        assert_eq!(session.services.events.count(ids[1], EventKind::Timer), 2);
     }
 }

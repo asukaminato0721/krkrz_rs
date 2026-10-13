@@ -6,6 +6,7 @@ pub mod audio;
 mod audio_mixer;
 pub mod compositor;
 mod continuous;
+pub mod coroutine;
 mod csv;
 pub mod dialog;
 pub mod display;
@@ -81,16 +82,20 @@ pub struct Services {
     continuous_handlers: Vec<Option<Value>>,
     events: scheduler::EventQueue,
     timers: BTreeMap<usize, timer::Timer>,
+    timer_tasks: coroutine::CoroutineScheduler<usize>,
     layers: BTreeMap<usize, layer::Layer>,
+    transition_tasks: coroutine::CoroutineScheduler<usize>,
     layer_managers: BTreeMap<usize, layer::Manager>,
     font_objects: BTreeMap<usize, font::Font>,
     kag_parsers: BTreeMap<usize, std::rc::Rc<std::cell::RefCell<kag_parser::Parser>>>,
     csv_parsers: BTreeMap<usize, csv::Parser>,
     sounds: BTreeMap<usize, sound::Sound>,
+    fade_tasks: coroutine::CoroutineScheduler<sound::FadeStep>,
     wave_flags_class: Value,
     wave_flags: BTreeMap<usize, Option<usize>>,
     vocoders: BTreeMap<usize, phase_vocoder::Settings>,
     videos: BTreeMap<usize, video_overlay::Video>,
+    video_tasks: coroutine::CoroutineScheduler<usize>,
     psb_files: BTreeMap<usize, Option<psb_file::File>>,
     text_renderers: BTreeMap<usize, text_render::Renderer>,
     layer_draw: layer_draw::State,
@@ -1083,17 +1088,21 @@ impl Session {
                 continuous_handlers: Vec::new(),
                 events: scheduler::EventQueue::default(),
                 timers: BTreeMap::new(),
+                timer_tasks: coroutine::CoroutineScheduler::default(),
                 layers: BTreeMap::new(),
+                transition_tasks: coroutine::CoroutineScheduler::default(),
                 layer_managers: BTreeMap::new(),
                 font_objects: BTreeMap::new(),
                 kag_parsers: BTreeMap::new(),
                 fonts: fonts::FontBook::with_system_fallback(),
                 csv_parsers: BTreeMap::new(),
                 sounds: BTreeMap::new(),
+                fade_tasks: coroutine::CoroutineScheduler::default(),
                 wave_flags_class,
                 wave_flags: BTreeMap::new(),
                 vocoders: BTreeMap::new(),
                 videos: BTreeMap::new(),
+                video_tasks: coroutine::CoroutineScheduler::default(),
                 psb_files: BTreeMap::new(),
                 text_renderers: BTreeMap::new(),
                 layer_draw: layer_draw::State::default(),
@@ -1138,7 +1147,7 @@ impl Session {
             "session clock cannot move backwards"
         );
         self.services.advance_timers(time_ms)?;
-        self.services.sound_advance(time_ms);
+        self.services.sound_advance(time_ms)?;
         self.services.video_advance(time_ms)?;
         self.services.time_ms = time_ms;
         self.dispatch_window_commands()?;

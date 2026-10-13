@@ -14,6 +14,8 @@ pub(super) struct Transition {
     start: Option<u64>,
     callback: Option<Value>,
     self_update: bool,
+    task: crate::coroutine::TaskId,
+    presented: std::rc::Rc<std::cell::Cell<bool>>,
 }
 struct Rule {
     width: usize,
@@ -185,6 +187,15 @@ impl Services {
             self.layers[&id].transition.is_none(),
             "Layer is already in a transition"
         );
+        let presented = std::rc::Rc::new(std::cell::Cell::new(false));
+        let ready = presented.clone();
+        let task = self.transition_tasks.spawn(move |cx| async move {
+            // Rendering can finish before this task first runs.
+            while !ready.get() {
+                cx.wait_event(id as u64).await;
+            }
+            id
+        })?;
         self.layers.get_mut(&id).unwrap().transition = Some(Transition {
             source,
             with_children,
@@ -197,7 +208,12 @@ impl Services {
             start,
             callback,
             self_update,
+            task,
+            presented,
         });
+        // Register the completion wait before the first rendered frame.
+        let completed = self.transition_tasks.advance(self.time_ms)?;
+        debug_assert!(completed.is_empty());
         Ok(Value::Void)
     }
 
@@ -211,6 +227,7 @@ impl Services {
         let Some(transition) = self.layers.get_mut(&id).and_then(|l| l.transition.take()) else {
             return Ok(());
         };
+        self.transition_tasks.cancel(transition.task);
         let source = transition.source;
         if !self.layers.contains_key(&source) {
             return Ok(());
@@ -424,7 +441,19 @@ impl Services {
                     .as_ref()
                     .is_some_and(|t| t.phase == t.phase_max())
             }) {
-                self.layer_stop_transition(vm, id, true, budget)?;
+                let t = self.layers[&id].transition.as_ref().unwrap();
+                t.presented.set(true);
+                self.transition_tasks.notify_event(id as u64);
+                // Complete at this tree position, after the final frame was drawn.
+                for (task, destination) in self.transition_tasks.advance(self.time_ms)? {
+                    if self
+                        .layers
+                        .get(&destination)
+                        .is_some_and(|l| l.transition.as_ref().is_some_and(|t| t.task == task))
+                    {
+                        self.layer_stop_transition(vm, destination, true, budget)?;
+                    }
+                }
             }
             if let Some(layer) = self.layers.get(&id) {
                 pending.extend(layer.children.iter().rev());
@@ -612,5 +641,35 @@ impl Transition {
     pub(super) fn gc_trace(&self, out: &mut Vec<Value>) {
         out.push(Value::object(self.source));
         out.extend(self.callback.iter().cloned());
+    }
+}
+
+#[cfg(test)]
+mod task_tests {
+    use crate::Session;
+    use krkrz_tjs::Value;
+
+    #[test]
+    fn completion_tasks_cancel_on_stop_source_invalidation_and_completion() {
+        let project = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
+        session.evaluate(r#"Scripts.exec('global.w=new Window();global.p=new Layer(w,null);global.a=new Layer(w,p);global.b=new Layer(w,p);global.done=0;p.setSize(2,1);a.setSize(2,1);b.setSize(2,1);a.visible=true;a.onTransitionCompleted=function(){done++;};a.beginTransition("crossfade",true,b,%[time:100]);')"#).unwrap();
+        assert_eq!(session.services.transition_tasks.pending(), 1);
+        session.evaluate("a.stopTransition()").unwrap();
+        assert_eq!(session.services.transition_tasks.pending(), 0);
+        session.evaluate(r#"Scripts.exec('a.beginTransition("crossfade",true,b,%[time:100]);invalidate b;')"#).unwrap();
+        assert_eq!(session.services.transition_tasks.pending(), 0);
+        assert_eq!(session.evaluate("done").unwrap(), Value::Integer(1));
+        session.evaluate(r#"Scripts.exec('global.b=new Layer(w,p);b.setSize(2,1);a.visible=true;global.clock=0;a.beginTransition("crossfade",true,b,%[time:100,selfupdate:true,callback:function(){return clock;}]);')"#).unwrap();
+        let window = session.evaluate("w").unwrap();
+        session.capture_window(&window).unwrap();
+        assert_eq!(session.services.transition_tasks.pending(), 1);
+        session.evaluate("clock=100").unwrap();
+        session.capture_window(&window).unwrap();
+        assert_eq!(session.services.transition_tasks.pending(), 0);
+        assert_eq!(session.evaluate("done").unwrap(), Value::Integer(2));
+        session.capture_window(&window).unwrap();
+        assert_eq!(session.evaluate("done").unwrap(), Value::Integer(2));
     }
 }

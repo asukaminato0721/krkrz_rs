@@ -24,6 +24,7 @@ pub(crate) struct Video {
     layers: [Value; 2],
     segment: [i32; 2],
     period: i32,
+    task: Option<crate::coroutine::TaskId>,
 }
 impl Default for Video {
     fn default() -> Self {
@@ -44,6 +45,7 @@ impl Default for Video {
             layers: [Value::NULL, Value::NULL],
             segment: [-1, -1],
             period: -1,
+            task: None,
         }
     }
 }
@@ -164,7 +166,11 @@ impl Services {
             return Ok(Value::Void);
         }
         if operation == "@invalidate" {
-            self.videos.remove(&id);
+            if let Some(video) = self.videos.remove(&id)
+                && let Some(task) = video.task
+            {
+                self.video_tasks.cancel(task);
+            }
             return Ok(Value::Void);
         }
         ensure!(
@@ -212,6 +218,7 @@ impl Services {
             video
                 .events
                 .push((video.generation, "onStatusChanged", Value::string("stop")));
+            self.video_sync_task(id)?;
             self.video_present(id)?;
             self.video_dispatch_native_events(vm, id, budget)?;
             return Ok(Value::Void);
@@ -294,6 +301,9 @@ impl Services {
                 self.videos.get_mut(&id).unwrap().events.clear();
             }
             if let Some(value) = self.video_loaded_call(id, operation, args)? {
+                if transport {
+                    self.video_sync_task(id)?;
+                }
                 if matches!(
                     operation,
                     "set:position" | "set:frame" | "rewind" | "prepare"
@@ -658,12 +668,35 @@ impl Services {
         }
         Ok(())
     }
+    fn video_sync_task(&mut self, id: usize) -> Result<()> {
+        let Some(video) = self.videos.get_mut(&id) else {
+            return Ok(());
+        };
+        if video.status == "play" && video.movie.is_some() {
+            if video.task.is_none() {
+                video.task = Some(self.video_tasks.spawn_routine(
+                    move |cx, frames| async move {
+                        loop {
+                            frames.emit(id);
+                            cx.next_step().await;
+                        }
+                    },
+                )?);
+            }
+        } else if let Some(task) = video.task.take() {
+            self.video_tasks.cancel(task);
+        }
+        Ok(())
+    }
     pub(crate) fn video_advance(&mut self, time_ms: u64) -> Result<()> {
         let delta = time_ms.saturating_sub(self.time_ms) as f64;
-        let ids: Vec<_> = self.videos.keys().copied().collect();
-        for id in ids {
-            let video = self.videos.get_mut(&id).unwrap();
-            if video.status != "play" {
+        let mut frames = self.video_tasks.advance(time_ms)?;
+        frames.sort_by_key(|(_, id)| *id);
+        for (task, id) in frames {
+            let Some(video) = self.videos.get_mut(&id) else {
+                continue;
+            };
+            if video.task != Some(task) || video.status != "play" {
                 continue;
             }
             let Some(movie) = &video.movie else {
@@ -694,6 +727,7 @@ impl Services {
             }
             if ended {
                 video.status("stop");
+                self.video_sync_task(id)?;
             }
             self.video_present(id)?;
         }
@@ -738,5 +772,43 @@ impl Video {
         out.push(self.owner.clone());
         out.extend(self.layers.iter().cloned());
         out.extend(self.events.iter().map(|(_, _, value)| value.clone()));
+    }
+}
+
+#[cfg(test)]
+mod task_tests {
+    use crate::Session;
+    use krkrz_tjs::Value;
+
+    #[test]
+    fn playback_tasks_cancel_on_pause_close_eof_and_invalidation() {
+        let project = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        std::fs::write(
+            project.path().join("movie.mpg"),
+            include_bytes!("../tests/fixtures/video_overlay.mpg"),
+        )
+        .unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
+        session.evaluate(r#"Scripts.exec('global.w=new Window();global.v=new VideoOverlay(w);v.open("movie.mpg");v.play();')"#).unwrap();
+        assert_eq!(session.services.video_tasks.pending(), 1);
+        session.advance_clock(40).unwrap();
+        session.evaluate("v.pause()").unwrap();
+        assert_eq!(session.services.video_tasks.pending(), 0);
+        session.advance_clock(80).unwrap();
+        assert_eq!(session.evaluate("v.frame").unwrap(), Value::Integer(1));
+        session.evaluate("v.play()").unwrap();
+        assert_eq!(session.services.video_tasks.pending(), 1);
+        session.advance_clock(1000).unwrap();
+        assert_eq!(session.services.video_tasks.pending(), 0);
+        session
+            .evaluate(r#"Scripts.exec('v.rewind();v.play();v.close();')"#)
+            .unwrap();
+        assert_eq!(session.services.video_tasks.pending(), 0);
+        session
+            .evaluate(r#"Scripts.exec('v.open("movie.mpg");v.play();invalidate v;')"#)
+            .unwrap();
+        assert_eq!(session.services.video_tasks.pending(), 0);
+        session.advance_clock(1100).unwrap();
     }
 }

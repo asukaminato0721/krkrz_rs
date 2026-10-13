@@ -141,7 +141,7 @@ pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Re
         started: false,
         origin: Instant::now(),
         dialog_wait,
-        next_tick: Instant::now(),
+        frame_tasks: frame_clock()?,
         error: None,
         messages: 0,
     };
@@ -157,7 +157,7 @@ struct Host<'a> {
     started: bool,
     origin: Instant,
     dialog_wait: Rc<Cell<Duration>>,
-    next_tick: Instant,
+    frame_tasks: krkrz_runtime::coroutine::CoroutineScheduler<()>,
     error: Option<anyhow::Error>,
     messages: usize,
 }
@@ -528,8 +528,15 @@ impl ApplicationHandler for Host<'_> {
         }
         // A synchronous input dialog pauses the script clock while the user types.
         self.origin += self.dialog_wait.take();
-        let tick_started = Instant::now();
-        if tick_started >= self.next_tick {
+        let now = self.origin.elapsed().as_millis().min(u64::MAX as u128) as u64;
+        let frames = match self.frame_tasks.advance(now) {
+            Ok(frames) => frames,
+            Err(error) => {
+                self.fail(event_loop, error);
+                return;
+            }
+        };
+        if !frames.is_empty() {
             if self.session.vm.should_collect_garbage() {
                 let mut roots = Vec::new();
                 for (&id, native) in &self.windows {
@@ -580,11 +587,27 @@ impl ApplicationHandler for Host<'_> {
                 self.fail(event_loop, error);
                 return;
             }
-            self.next_tick = tick_started + Duration::from_millis(16);
             self.flush_messages();
         }
-        event_loop.set_control_flow(ControlFlow::WaitUntil(self.next_tick));
+        event_loop.set_control_flow(match self.frame_tasks.next_deadline() {
+            Some(deadline) => ControlFlow::WaitUntil(self.origin + Duration::from_millis(deadline)),
+            None => ControlFlow::Wait,
+        });
     }
+}
+
+fn frame_clock() -> Result<krkrz_runtime::coroutine::CoroutineScheduler<()>> {
+    let mut tasks = krkrz_runtime::coroutine::CoroutineScheduler::default();
+    tasks.spawn_routine(|cx, frames| async move {
+        loop {
+            frames.emit(());
+            let Some(next) = cx.now().checked_add(16) else {
+                return;
+            };
+            cx.wait_until(next).await;
+        }
+    })?;
+    Ok(tasks)
 }
 fn shift(native: &NativeWindow) -> u32 {
     native.buttons
@@ -728,6 +751,20 @@ fn cursor_icon(cursor: i32) -> winit::cursor::CursorIcon {
 #[cfg(test)]
 mod icon_tests {
     use super::*;
+
+    #[test]
+    fn frame_clock_waits_and_skips_missed_frames() {
+        let mut tasks = frame_clock().unwrap();
+        assert_eq!(tasks.advance(0).unwrap().len(), 1);
+        assert_eq!(tasks.next_deadline(), Some(16));
+        assert!(tasks.advance(0).unwrap().is_empty());
+        assert!(tasks.advance(15).unwrap().is_empty());
+        assert_eq!(tasks.advance(16).unwrap().len(), 1);
+        assert_eq!(tasks.next_deadline(), Some(32));
+        assert_eq!(tasks.advance(1000).unwrap().len(), 1);
+        assert_eq!(tasks.next_deadline(), Some(1016));
+        assert!(tasks.advance(1000).unwrap().is_empty());
+    }
 
     #[test]
     fn application_executable_is_preferred_to_updaters() {
