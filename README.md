@@ -49,6 +49,13 @@ The workspace builds independently of sibling repositories. `Cargo.lock` pins
 Rust dependencies. Research checkouts, extracted scripts and media belong outside
 the source tree, for example `$XDG_CACHE_HOME/krkrz_rs`.
 
+`System.versionString` uses the selected original EXE's fixed file version.
+Missing or invalid version metadata uses the compatibility default `1.2.0.3`.
+`System.exit(code)` stops script execution and returns the requested process
+status from either CLI host. Script exception handlers cannot catch the exit.
+`WaveSoundBuffer.globalFocusMode` can mute wave audio while all visible windows
+are minimized or inactive. Muting preserves playback time and callbacks.
+
 GitHub Actions builds release archives for Linux, macOS and Windows on x86_64
 and ARM64, plus FreeBSD x86_64. Each archive contains `krkrz_engine` and
 `krkrz_tool`, with movie decoding built in.

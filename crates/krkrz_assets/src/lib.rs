@@ -4,6 +4,7 @@ mod binary;
 pub mod cx;
 pub mod media;
 pub mod pe_icon;
+pub mod pe_version;
 pub mod psb;
 pub mod sli;
 pub mod storage;

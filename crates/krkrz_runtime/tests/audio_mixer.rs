@@ -56,6 +56,49 @@ fn tick_outputs_pcm_and_dispatches_labels_eof() {
 }
 
 #[test]
+fn global_focus_muting_preserves_source_time_and_restores_audio() {
+    use krkrz_runtime::InputEvent;
+    let (_p, _s, mut session) = setup(
+        48000,
+        4800,
+        "global.w=new Window();w.visible=true;WaveSoundBuffer.globalFocusMode=sgfmMuteOnMinimize;",
+    );
+    let window = session.evaluate("w").unwrap();
+    let Value::Object(reference) = &window else {
+        unreachable!()
+    };
+    let id = reference.object.unwrap();
+    session.tick(1).unwrap();
+    assert!(session.take_audio().iter().any(|sample| *sample != 0.0));
+    let before = session
+        .evaluate("s.samplePosition")
+        .unwrap()
+        .integer()
+        .unwrap();
+    session.services.windows.get_mut(&id).unwrap().minimized = true;
+    session.tick(2).unwrap();
+    assert!(session.take_audio().iter().all(|sample| *sample == 0.0));
+    assert_eq!(
+        session.evaluate("s.samplePosition").unwrap(),
+        Value::Integer(before + 48)
+    );
+    session.services.windows.get_mut(&id).unwrap().minimized = false;
+    session
+        .evaluate("WaveSoundBuffer.globalFocusMode=sgfmMuteOnDeactivate")
+        .unwrap();
+    session.input(&window, InputEvent::Focus(false)).unwrap();
+    session.tick(3).unwrap();
+    assert!(session.take_audio().iter().all(|sample| *sample == 0.0));
+    session.input(&window, InputEvent::Focus(true)).unwrap();
+    session.tick(4).unwrap();
+    assert!(session.take_audio().iter().any(|sample| *sample != 0.0));
+    assert_eq!(
+        session.evaluate("WaveSoundBuffer.globalFocusMode").unwrap(),
+        Value::Integer(2)
+    );
+}
+
+#[test]
 fn resampling_is_independent_of_tick_partition_and_seek_discards_lookahead() {
     let (_p1, _s1, mut a) = setup(44100, 4410, "");
     let (_p2, _s2, mut b) = setup(44100, 4410, "");

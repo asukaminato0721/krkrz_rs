@@ -582,7 +582,12 @@ impl Services {
                     let key = [1, 2, 4].get(*button as usize).copied().unwrap_or(0);
                     state.input.keys.remove(&key);
                 }
-                InputEvent::Focus(false) => state.input.keys.clear(),
+                InputEvent::Focus(focused) => {
+                    state.focused = Some(*focused);
+                    if !focused {
+                        state.input.keys.clear();
+                    }
+                }
                 _ => {}
             }
         }

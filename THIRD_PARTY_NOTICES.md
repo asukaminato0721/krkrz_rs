@@ -266,6 +266,9 @@ PE32/PE32+ resource parsing and ICO group reconstruction use `pelite` 0.10.0
 the resulting ICO image. The application reads the user's installed executable
 without loading or executing it. Tests construct synthetic PE resources; no
 original game executable, icon, or artwork is distributed with this repository.
+Fixed file versions also use pelite's version-resource reader. Synchronous
+script exit follows Kirikiri Z `base/SystemIntf.cpp` and
+`base/win32/SysInitImpl.cpp`, under the Kirikiri license above.
 
 ## Built-in MPEG decoder
 

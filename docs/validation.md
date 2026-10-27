@@ -1,5 +1,43 @@
 # Validation record
 
+## 2026-10-27 Yuri confirmation settings
+
+`TYesNoDialog.tjs` parses its background and button settings with
+`String.substring(start, count)`. The runtime incorrectly treated the second
+argument as an end position. Default settings did not match, so the script
+accessed an empty background Layer value at line 104.
+
+Both `substring` and `substr` now use the original TJS start-and-count rules.
+Negative starts and counts return empty strings. Explicit void counts convert
+to zero. Tests cover UTF-16 units, bounds and argument counts.
+
+The unchanged game now constructs its confirmation dialog. The Yes button
+returns true. The No button and Esc return false. A separate Xvfb check
+displayed its captured Layer pixels and verified Esc and button coordinates.
+The startup and confirmation checks used a temporary save directory.
+
+## 2026-10-27 Yuri startup version guard
+
+`System.versionString` to equal `2.11.19.13`.
+Its original EXE contains that fixed file version. The runtime now reads
+the selected original executable's version resource. Missing or invalid
+metadata retains the default `1.2.0.3`. Synthetic PE32 and PE32+ version
+resources pass the reader tests.
+
+`System.exit()` now propagates a separate VM exit signal. Script exception
+handlers cannot catch it. Both CLI hosts handle this signal as termination
+and preserve the requested process status. Runtime tests cover default
+exit, a nonzero status and exit through nested script execution.
+
+The original startup then reached `TSound.tjs`, which selects
+`sgfmMuteOnMinimize`. The shared wave mixer now applies global focus muting
+without stopping source time or callbacks. Window focus events and native
+minimization state control muting. PCM tests verify mute and audio recovery.
+
+The unchanged game reached its title menu at 10,000 ms in headless replay.
+The captured frame displayed the title and menu controls. Validation used
+a temporary save directory. Complete gameplay remains unverified.
+
 ## 2026-10-27 Sweet Girl exit confirmation
 
 The original `YesNoDialog.tjs` requires `Window.PassThroughDrawDevice`, its

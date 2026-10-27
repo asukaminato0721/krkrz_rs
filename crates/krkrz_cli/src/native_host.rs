@@ -173,6 +173,10 @@ impl Host<'_> {
         self.messages = self.session.services.messages.len();
     }
     fn fail(&mut self, event_loop: &dyn ActiveEventLoop, error: anyhow::Error) {
+        if error.downcast_ref::<krkrz_tjs::VmExit>().is_some() {
+            event_loop.exit();
+            return;
+        }
         self.error = Some(error.context(format!(
             "native host at {} ms",
             self.session.services.time_ms
@@ -532,6 +536,15 @@ impl ApplicationHandler for Host<'_> {
         }
         // A synchronous input dialog pauses the script clock while the user types.
         self.origin += self.dialog_wait.take();
+        for (&id, native) in &mut self.windows {
+            if let Some(state) = self.session.services.windows.get_mut(&id)
+                && state.minimized == native.state.minimized
+                && let Some(minimized) = native.window.is_minimized()
+            {
+                state.minimized = minimized;
+                native.state.minimized = minimized;
+            }
+        }
         let now = self.origin.elapsed().as_millis().min(u64::MAX as u128) as u64;
         let frames = match self.frame_tasks.advance(now) {
             Ok(frames) => frames,

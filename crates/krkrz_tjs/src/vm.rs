@@ -1277,7 +1277,9 @@ impl Vm {
                         "{}:{}:{} at VM instruction {executing}",
                         at.storage, at.line, at.column
                     ));
-                    if error.downcast_ref::<VmAbort>().is_some() {
+                    if error.downcast_ref::<VmAbort>().is_some()
+                        || error.downcast_ref::<crate::VmExit>().is_some()
+                    {
                         return Err(error);
                     }
                     if let Some(handler) = frame.handlers.pop() {

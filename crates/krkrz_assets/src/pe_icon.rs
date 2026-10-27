@@ -62,7 +62,7 @@ pub fn decode(bytes: &[u8]) -> Result<Option<Image>> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     fn put16(bytes: &mut [u8], offset: usize, value: u16) {
@@ -73,7 +73,7 @@ mod tests {
     }
 
     /// Minimal PE containing a two-pixel-square 32-bit DIB and icon group 107.
-    fn executable(pe64: bool) -> Vec<u8> {
+    pub(crate) fn executable(pe64: bool) -> Vec<u8> {
         let mut bytes = vec![0; 1024];
         bytes[..2].copy_from_slice(b"MZ");
         put32(&mut bytes, 60, 128);

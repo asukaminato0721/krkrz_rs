@@ -97,16 +97,21 @@ enum Command {
     /// Report archive contents and static script/plugin references; does not execute scripts.
     Inventory,
 }
-fn main() -> Result<()> {
+fn main() -> Result<std::process::ExitCode> {
     match run() {
+        Err(error) if error.downcast_ref::<krkrz_tjs::VmExit>().is_some() => {
+            Ok(std::process::ExitCode::from(
+                error.downcast_ref::<krkrz_tjs::VmExit>().unwrap().0 as u8,
+            ))
+        }
         Err(error)
             if error
                 .downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::BrokenPipe) =>
         {
-            Ok(())
+            Ok(std::process::ExitCode::SUCCESS)
         }
-        result => result,
+        result => result.map(|_| std::process::ExitCode::SUCCESS),
     }
 }
 fn run() -> Result<()> {

@@ -81,7 +81,10 @@ impl Services {
                 }
                 // Native prefetch ignores individual load failures. Resource
                 // and interpreter budgets still terminate the Rust session.
-                Err(error) if error.downcast_ref::<krkrz_tjs::VmAbort>().is_some() => {
+                Err(error)
+                    if error.downcast_ref::<krkrz_tjs::VmAbort>().is_some()
+                        || error.downcast_ref::<krkrz_tjs::VmExit>().is_some() =>
+                {
                     return Err(error);
                 }
                 Err(_) => {}

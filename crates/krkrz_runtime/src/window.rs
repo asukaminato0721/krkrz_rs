@@ -25,6 +25,7 @@ pub struct WindowState {
     pub show_scroll_bars: bool,
     pub(crate) modal: bool,
     pub(crate) close_pending: bool,
+    pub(crate) focused: Option<bool>,
     pub inner_width: i32,
     pub inner_height: i32,
     /// Host-provided left, top, right and bottom non-client extents. Headless
@@ -74,6 +75,7 @@ impl Default for WindowState {
             show_scroll_bars: true,
             modal: false,
             close_pending: false,
+            focused: None,
             inner_width: 10,
             inner_height: 10,
             frame_insets: [0; 4],
