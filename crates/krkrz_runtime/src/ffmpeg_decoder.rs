@@ -1,6 +1,6 @@
 //! ASF/movie and AVI fallback using local FFmpeg tools. Compressed input lives
 //! in a private temporary file; video is streamed one RGBA frame at a time.
-use super::{Audio, MAX_BYTES};
+use super::{Audio, MAX_BYTES, swf};
 use anyhow::{Context, Result, bail, ensure};
 use krkrz_assets::media::Image;
 use serde::Deserialize;
@@ -61,7 +61,7 @@ pub(super) struct Video {
 }
 
 impl Video {
-    pub fn open(bytes: &[u8]) -> Result<(Self, Audio)> {
+    pub fn open(bytes: &[u8], timing: Option<&swf::Timing>) -> Result<(Self, Audio)> {
         let mut source = tempfile::Builder::new().suffix(".movie").tempfile()?;
         source.write_all(bytes)?;
         source.flush()?;
@@ -79,20 +79,34 @@ impl Video {
             .iter()
             .find(|s| s.codec_type == "video")
             .context("movie contains no video stream")?;
-        let width = stream.width.context("movie video width is missing")?;
-        let height = stream.height.context("movie video height is missing")?;
+        let decoded_width = stream.width.context("movie video width is missing")?;
+        let decoded_height = stream.height.context("movie video height is missing")?;
+        let width = timing.map_or(decoded_width, |t| t.width);
+        let height = timing.map_or(decoded_height, |t| t.height);
+        ensure!(
+            decoded_width >= width && decoded_height >= height,
+            "decoded movie is smaller than its display dimensions"
+        );
         ensure!(
             width > 0 && height > 0 && u64::from(width) * u64::from(height) <= 16 * 1024 * 1024,
             "movie dimensions exceed limit"
         );
-        let fps = stream
-            .avg_frame_rate
-            .as_deref()
-            .and_then(rate)
-            .or_else(|| stream.r_frame_rate.as_deref().and_then(rate))
+        let fps = timing
+            .map(|t| t.fps)
+            .or_else(|| {
+                stream
+                    .avg_frame_rate
+                    .as_deref()
+                    .and_then(rate)
+                    .or_else(|| stream.r_frame_rate.as_deref().and_then(rate))
+            })
             .context("unsupported movie frame rate")?;
-        let duration_ms = seconds(stream.duration.as_deref())
-            .or_else(|| seconds(probe.format.duration.as_deref()))
+        let duration_ms = timing
+            .map(|t| f64::from(t.frames) / t.fps)
+            .or_else(|| {
+                seconds(stream.duration.as_deref())
+                    .or_else(|| seconds(probe.format.duration.as_deref()))
+            })
             .context("movie duration is missing")?
             * 1000.0;
         ensure!(
@@ -176,8 +190,8 @@ impl Video {
                     Self::command(self.source.path())
                         .args(["-map", "0:v:0", "-an", "-vf"])
                         .arg(format!(
-                            "setpts=PTS-STARTPTS,fps=fps={}:start_time=0",
-                            self.fps
+                            "crop={}:{}:0:0:exact=1,setpts=PTS-STARTPTS,fps=fps={}:start_time=0",
+                            self.width, self.height, self.fps
                         ))
                         .args([
                             "-pix_fmt", "rgba", "-threads", "2", "-f", "rawvideo", "pipe:1",

@@ -2232,6 +2232,7 @@ dependencies = [
  "dirs",
  "encoding_rs",
  "fast_image_resize",
+ "flate2",
  "fontdb",
  "image",
  "imageproc",

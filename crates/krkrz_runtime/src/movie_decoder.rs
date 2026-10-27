@@ -10,6 +10,8 @@ use std::{collections::VecDeque, sync::Arc};
 
 #[path = "ffmpeg_decoder.rs"]
 mod ffmpeg;
+#[path = "swf_movie.rs"]
+mod swf;
 
 const MAX_BYTES: usize = 256 * 1024 * 1024;
 const CHUNK: usize = 2048;
@@ -39,8 +41,12 @@ pub(super) struct Movie {
 impl Movie {
     pub fn open(bytes: &[u8]) -> Result<Self> {
         ensure!(bytes.len() <= MAX_BYTES, "compressed movie exceeds 256 MiB");
+        if swf::detects(bytes) {
+            let movie = swf::Movie::parse(bytes)?;
+            return Self::open_external(&movie.bytes, Some(movie.timing));
+        }
         if ffmpeg::detects(bytes) {
-            return Self::open_ffmpeg(bytes);
+            return Self::open_external(bytes, None);
         }
         let mut demux = Demuxer::new_auto();
         let mut video = Vec::new();
@@ -118,15 +124,18 @@ impl Movie {
         })
     }
 
-    fn open_ffmpeg(bytes: &[u8]) -> Result<Self> {
-        let (video, pcm) = ffmpeg::Video::open(bytes)?;
-        let audio_start_ms = pcm.start_ms.unwrap_or(0) as f64;
-        let duration_ms = video.duration_ms.max(if pcm.samples.is_empty() {
-            0.0
-        } else {
-            audio_start_ms
-                + pcm.samples.len() as f64 * 1000.0 / pcm.channels as f64 / pcm.rate as f64
-        });
+    fn open_external(bytes: &[u8], timing: Option<swf::Timing>) -> Result<Self> {
+        let (video, pcm) = ffmpeg::Video::open(bytes, timing.as_ref())?;
+        let audio_start_ms =
+            pcm.start_ms.unwrap_or(0) as f64 + timing.as_ref().map_or(0.0, |t| t.audio_start_ms);
+        let duration_ms = video
+            .duration_ms
+            .max(if pcm.samples.is_empty() || timing.is_some() {
+                0.0
+            } else {
+                audio_start_ms
+                    + pcm.samples.len() as f64 * 1000.0 / pcm.channels as f64 / pcm.rate as f64
+            });
         ensure!(
             duration_ms <= 3_600_000.0,
             "movie duration exceeds one-hour limit"
@@ -135,7 +144,10 @@ impl Movie {
             width: video.width,
             height: video.height,
             fps: video.fps,
-            frames: (duration_ms * video.fps / 1000.0).ceil() as u64,
+            frames: timing.as_ref().map_or_else(
+                || (duration_ms * video.fps / 1000.0).ceil() as u64,
+                |t| u64::from(t.frames),
+            ),
             duration_ms,
             audio: pcm.samples,
             audio_rate: pcm.rate,

@@ -8,6 +8,12 @@ Kirikiri Z 1.2.0.3 / TJS2 2.4.28 binary. That version audit remains open.
 
 Implementation references:
 
+- [Adobe SWF file format specification, version 19](https://open-flash.github.io/mirrors/swf-spec-19.pdf):
+  SWF headers, video placements, sprite timelines, embedded VP6 packets and MP3
+  streaming latency. The Rust reader validates a single video timeline and emits
+  media tags for the existing external decoder. FFmpeg's
+  [SWF demuxer](https://github.com/FFmpeg/FFmpeg/blob/master/libavformat/swfdec.c)
+  skips nested sprites, so the reader removes the validated static wrapper.
 - `krkrz/base/XP3Archive.cpp`, `StorageIntf.cpp`: index chains, segment structure,
   normalization, search-path order. In-archive ASCII case folding is deliberate.
 - `GARbro/ArcFormats/KiriKiri/KiriKiriCx.cs`: Cx generation and interpretation.

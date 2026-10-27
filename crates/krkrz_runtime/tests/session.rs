@@ -105,6 +105,40 @@ fn movie_plugin_uses_builtin_video_overlay_without_replacing_objects() {
     );
 }
 #[test]
+fn flash_plugin_preserves_video_objects_and_rejects_invalid_swf() {
+    let dir = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    let mut session = Session::open(dir.path(), Some(saves.path()), None, 100_000).unwrap();
+    std::fs::write(
+        dir.path().join("startup.tjs"),
+        r#"
+            var klass=VideoOverlay,w=new Window(),v=new VideoOverlay(w);
+            v.left=17;
+            Plugins.link('plugin\\KRFLASH.DLL');
+            Plugins.link('plugin\\KRFLASH.DLL');
+            Plugins.link('krflash.dll');
+            return [VideoOverlay===klass,v.left,Plugins.getList().join(',')].join('|');
+        "#,
+    )
+    .unwrap();
+    assert_eq!(
+        session.startup().unwrap(),
+        Value::string("1|17|plugin\\KRFLASH.DLL,krflash.dll")
+    );
+    std::fs::write(
+        dir.path().join("swf.tjs"),
+        "try{v.open('movie.swf');}catch(e){return 'caught';}",
+    )
+    .unwrap();
+    for signature in [b"FWS", b"CWS", b"ZWS"] {
+        std::fs::write(dir.path().join("movie.swf"), signature).unwrap();
+        let error = session.execute_storage("swf.tjs").unwrap_err();
+        assert!(error.downcast_ref::<krkrz_tjs::VmAbort>().is_some());
+        assert!(format!("{error:#}").contains("truncated SWF"));
+    }
+}
+
+#[test]
 fn sound_options_plugin_declares_dialog_api_and_preserves_relinks() {
     let dir = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
