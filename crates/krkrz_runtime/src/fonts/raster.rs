@@ -37,15 +37,26 @@ impl FontBook {
             (1..=4096).contains(&height),
             "font size is outside supported range"
         );
-        let source = self.resolve_face(&style.face)?;
+        let selection = self.resolve_face(&style.face)?;
+        let source = selection.face();
         let font = skrifa::FontRef::from_index(&source.data, source.index)?;
         let metadata = font.metrics(Size::unscaled(), LocationRef::default());
         let scale = height as f64 / metadata.units_per_em as f64;
-        let (ascender, descender) = font
-            .os2()
-            .map_or((metadata.ascent as f64, metadata.descent as f64), |os2| {
-                (os2.us_win_ascent() as f64, os2.us_win_descent() as f64)
-            });
+        let (ascender, descender) =
+            font.os2()
+                .map_or((metadata.ascent as f64, metadata.descent as f64), |os2| {
+                    // Replacement fonts must fit the script's em-sized line box.
+                    // Noto CJK's Windows ascent includes 0.28 em of extra leading.
+                    // Keep GDI metrics when the requested face exists.
+                    match selection {
+                        FaceSelection::Fallback(_)
+                            if os2.s_typo_ascender() > 0 && os2.s_typo_descender() <= 0 =>
+                        {
+                            (os2.s_typo_ascender() as f64, os2.s_typo_descender() as f64)
+                        }
+                        _ => (os2.us_win_ascent() as f64, os2.us_win_descent() as f64),
+                    }
+                });
         let ascent = (ascender * scale).round() as i32;
         let cell_height = ascent + (descender.abs() * scale).round() as i32;
         let mut lines = Vec::new();
@@ -342,6 +353,66 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn fallback_uses_typographic_baseline_without_changing_named_gdi_metrics() {
+        let mut data = include_bytes!("../../tests/fixtures/synthetic.ttf").to_vec();
+        let tables = u16::from_be_bytes(data[4..6].try_into().unwrap()) as usize;
+        for table in 0..tables {
+            let record = 12 + table * 16;
+            if &data[record..record + 4] == b"OS/2" {
+                let offset =
+                    u32::from_be_bytes(data[record + 8..record + 12].try_into().unwrap()) as usize;
+                // Model a CJK replacement with Windows leading outside its em.
+                data[offset + 74..offset + 76].copy_from_slice(&1160u16.to_be_bytes());
+                data[offset + 76..offset + 78].copy_from_slice(&288u16.to_be_bytes());
+            }
+        }
+        let mut book = FontBook::default();
+        book.add(data).unwrap();
+        let mut style = FontStyle {
+            face: "Kirikiri Synthetic".into(),
+            height: 20,
+            ..FontStyle::default()
+        };
+        let named = book
+            .text_rasterizer(&style)
+            .unwrap()
+            .glyph('A' as u16, true)
+            .unwrap();
+        assert_eq!((named.top, named.height), (9, 14));
+        style.face = "missing, Kirikiri Synthetic".into();
+        let candidate = book
+            .text_rasterizer(&style)
+            .unwrap()
+            .glyph('A' as u16, true)
+            .unwrap();
+        assert_eq!((candidate.left, candidate.top), (named.left, named.top));
+        style.face = "ＭＳ ゴシック".into();
+        let fallback = book
+            .text_rasterizer(&style)
+            .unwrap()
+            .glyph('A' as u16, true)
+            .unwrap();
+        assert_eq!((fallback.top, fallback.height), (2, 14));
+        assert!(fallback.top >= 0 && fallback.top + fallback.height as i32 <= style.height);
+        assert_eq!(fallback.advance, named.advance);
+        assert_eq!(fallback.coverage, named.coverage);
+        style.angle = 900;
+        let rotated = book
+            .text_rasterizer(&style)
+            .unwrap()
+            .glyph('A' as u16, true)
+            .unwrap();
+        style.face = "Kirikiri Synthetic".into();
+        let named_rotated = book
+            .text_rasterizer(&style)
+            .unwrap()
+            .glyph('A' as u16, true)
+            .unwrap();
+        assert_eq!(rotated.left - named_rotated.left, -7);
+        assert_eq!(rotated.coverage, named_rotated.coverage);
     }
 
     #[test]

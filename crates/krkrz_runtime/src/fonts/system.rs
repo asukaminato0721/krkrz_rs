@@ -1,5 +1,5 @@
 //! Load one system font file on demand; share its data across sessions.
-use super::{Face, FontBook};
+use super::{FaceSelection, FontBook};
 use std::sync::OnceLock;
 
 struct SystemFont {
@@ -47,17 +47,19 @@ impl SystemFont {
             })
     }
 
-    fn resolve(&self, name: &str) -> &Face {
+    fn resolve(&self, name: &str) -> FaceSelection<'_> {
         let index = name
             .split(',')
             .find_map(|name| self.book.names.get(name.trim()))
-            .copied()
-            .unwrap_or(self.default_index);
-        &self.book.faces[index]
+            .copied();
+        match index {
+            Some(index) => FaceSelection::Named(&self.book.faces[index]),
+            None => FaceSelection::Fallback(&self.book.faces[self.default_index]),
+        }
     }
 }
 
-pub(super) fn resolve(name: &str) -> Option<&'static Face> {
+pub(super) fn resolve(name: &str) -> Option<FaceSelection<'static>> {
     static SYSTEM: OnceLock<Option<SystemFont>> = OnceLock::new();
     SYSTEM
         .get_or_init(|| {
@@ -80,13 +82,15 @@ mod tests {
         database.load_font_data(include_bytes!("../../tests/fixtures/synthetic.ttf").to_vec());
         let system = SystemFont::load(&database).unwrap();
         let named = system.resolve("Kirikiri Synthetic");
-        assert!(std::ptr::eq(named, system.resolve("黑体")));
+        assert!(matches!(named, FaceSelection::Named(_)));
+        assert!(matches!(system.resolve("黑体"), FaceSelection::Fallback(_)));
+        assert!(std::ptr::eq(named.face(), system.resolve("黑体").face()));
         assert!(std::ptr::eq(
-            named,
-            system.resolve("missing, Kirikiri Synthetic")
+            named.face(),
+            system.resolve("missing, Kirikiri Synthetic").face()
         ));
         assert!(
-            !super::super::raster::rasterize(system.resolve("黑体"), 'あ', 20.0)
+            !super::super::raster::rasterize(system.resolve("黑体").face(), 'あ', 20.0)
                 .unwrap()
                 .coverage
                 .is_empty()

@@ -20,6 +20,18 @@ struct Face {
     data: Arc<[u8]>,
     index: u32,
 }
+
+enum FaceSelection<'a> {
+    Named(&'a Face),
+    Fallback(&'a Face),
+}
+impl<'a> FaceSelection<'a> {
+    fn face(&self) -> &'a Face {
+        match self {
+            Self::Named(face) | Self::Fallback(face) => face,
+        }
+    }
+}
 #[derive(Default)]
 pub struct FontBook {
     faces: Vec<Face>,
@@ -110,7 +122,7 @@ impl FontBook {
     /// FontSystem::GetBeingFont chooses the first available named candidate,
     /// then the default font. Use a bundled Japanese face as the portable
     /// default so Windows-only saved preferences remain readable on Linux.
-    fn resolve_face(&self, name: &str) -> Result<&Face> {
+    fn resolve_face(&self, name: &str) -> Result<FaceSelection<'_>> {
         let named = name
             .split(',')
             .find_map(|candidate| self.names.get(candidate.trim()).copied());
@@ -134,8 +146,8 @@ impl FontBook {
             .or_else(|| (!self.faces.is_empty()).then_some(0))
         };
         named
-            .or_else(fallback)
-            .map(|index| &self.faces[index])
+            .map(|index| FaceSelection::Named(&self.faces[index]))
+            .or_else(|| fallback().map(|index| FaceSelection::Fallback(&self.faces[index])))
             .or_else(|| {
                 self.system_fallback
                     .then(|| system::resolve(name))
@@ -159,6 +171,7 @@ impl FontBook {
             return Ok(0);
         }
         let face = self.resolve_face(name)?;
+        let face = face.face();
         let font =
             FontRef::from_index(&face.data, face.index).context("registered font is invalid")?;
         let metrics = font.metrics(Size::unscaled(), LocationRef::default());
@@ -248,6 +261,6 @@ impl FontBook {
             "font size is outside supported range"
         );
         let face = self.resolve_face(name)?;
-        raster::rasterize(face, character, em_pixels)
+        raster::rasterize(face.face(), character, em_pixels)
     }
 }
