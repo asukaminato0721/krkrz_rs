@@ -412,6 +412,12 @@ bars, popups and OS shortcut delivery are not implemented. Shortcut name tables
 use stable English defaults until a platform keyboard adapter is available.
 
 `Plugins.link('krmovie.dll')` uses the existing built-in `VideoOverlay` decoder.
+`Plugins.link('krflash.dll')` accepts decoder registration and preserves existing
+`VideoOverlay` objects. Embedded VP6 video with MP3 streaming audio is supported
+in FWS and zlib-compressed CWS files. A single static wrapper sprite is supported.
+Playback uses `ffmpeg` and `ffprobe` on PATH. The SWF timeline supplies frame count,
+frame rate, display dimensions and MP3 latency. ActionScript, vector graphics,
+multiple display characters and transformed placements produce explicit errors.
 
 `Plugins.link('ktsndopt.dll')` provides the volume-dialog functions observed in
 Route of AYANO's `Override.tjs`. The native host shows music, sound-effect and

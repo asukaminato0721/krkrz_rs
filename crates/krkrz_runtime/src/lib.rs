@@ -595,6 +595,13 @@ impl Host for Services {
                             .insert(path.rsplit('/').next().unwrap().to_ascii_lowercase());
                         Ok(Value::Void)
                     }
+                    // krflash supplies a VideoOverlay decoder, with no TJS
+                    // globals. Accept registration without replacing objects.
+                    // The movie decoder handles supported SWF video timelines.
+                    "krflash.dll" => {
+                        self.loaded_plugins.insert("krflash.dll".into());
+                        Ok(Value::Void)
+                    }
                     // extrans installs transition providers, with no TJS globals.
                     // Layer.beginTransition remains responsible for validating
                     // the selected provider and rejecting unimplemented effects.
