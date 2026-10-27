@@ -682,19 +682,23 @@ impl Vm {
                     })
                 }
                 "substring" | "substr" => {
-                    let start = arg(0)?.integer()?.clamp(0, s.len() as i64) as usize;
-                    let end = if let Some(value) = args.get(1).filter(|v| !matches!(v, Value::Void))
-                    {
-                        let n = value.integer()?.max(0) as usize;
-                        if name == "substr" {
-                            start.saturating_add(n).min(s.len())
-                        } else {
-                            n.min(s.len())
-                        }
+                    ensure!(
+                        (1..=2).contains(&args.len()),
+                        "{name} requires one or two arguments"
+                    );
+                    // Both TJS names use a signed start and a character count.
+                    let start = arg(0)?.integer()? as i32;
+                    if start < 0 || start as usize >= s.len() {
+                        return Ok(Value::String(Vec::new()));
+                    }
+                    let start = start as usize;
+                    let end = if let Some(value) = args.get(1) {
+                        let count = value.integer()? as i32;
+                        start.saturating_add(count.max(0) as usize).min(s.len())
                     } else {
                         s.len()
                     };
-                    Ok(Value::String(s[start.min(end)..start.max(end)].to_vec()))
+                    Ok(Value::String(s[start..end].to_vec()))
                 }
                 "indexOf" => {
                     let needle = units(arg(0)?)?;

@@ -170,3 +170,50 @@ fn original_exit_link_completes_its_input_callback() {
     }
     assert!(!session.evaluate("isvalid kag").unwrap().truth().unwrap());
 }
+
+#[test]
+#[ignore = "requires the installed Yuri game and KRKRZ_PROJECT_DIR"]
+fn original_yuri_dialog_parses_settings_and_returns_both_answers() {
+    use krkrz_assets::storage::Storage;
+    use krkrz_core::Limits;
+    let project = std::env::var_os("KRKRZ_PROJECT_DIR").unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    let mut storage =
+        Storage::open(std::path::Path::new(&project), None, Limits::default()).unwrap();
+    storage.detect_cipher().unwrap();
+    let mut session =
+        Session::from_storage(storage, Some(saves.path()), None, 1_000_000_000).unwrap();
+    let frames = Rc::new(RefCell::new(Vec::new()));
+    let output = frames.clone();
+    let mut inputs = VecDeque::from([
+        ModalEvent::Key { code: 27 },
+        ModalEvent::Click { x: 220, y: 95 },
+        ModalEvent::Click { x: 70, y: 95 },
+    ]);
+    session.services.set_modal_window_handler(move || {
+        Ok(Box::new(Host {
+            events: VecDeque::from([inputs.pop_front().context("no dialog test input remains")?]),
+            frames: output.clone(),
+        }))
+    });
+    session.startup().unwrap();
+    for time in (0..=10000).step_by(16) {
+        session.tick(time).unwrap();
+    }
+    for expected in [0, 0, 1] {
+        assert_eq!(
+            session.evaluate("askYesNo('終了しますか？')").unwrap(),
+            Value::Integer(expected)
+        );
+        assert_eq!(
+            session.evaluate("isvalid tWindow").unwrap(),
+            Value::Integer(1)
+        );
+    }
+    let frames = frames.borrow();
+    assert_eq!(frames.len(), 3);
+    assert!(frames[0].width > 220 && frames[0].height > 95);
+    if let Some(path) = std::env::var_os("KRKRZ_MODAL_FRAME") {
+        std::fs::write(path, serde_json::to_vec(&frames[0]).unwrap()).unwrap();
+    }
+}
