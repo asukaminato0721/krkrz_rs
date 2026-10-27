@@ -35,3 +35,23 @@ fn window_invalidation_does_not_swallow_execution_limits() {
     .unwrap_err();
     assert!(error.downcast_ref::<VmAbort>().is_some(), "{error:#}");
 }
+
+#[test]
+fn window_update_delivers_pending_paint_before_returning() {
+    let source = r#"
+var w=new Window(),p=new Layer(w,null),c=new Layer(w,p),events=[];
+p.onPaint=function(){events.add('parent');};
+c.onPaint=function(){events.add('child');};
+p.update();c.update();w.update();events.add('returned');
+w.update();
+return events.join('|')+'|'+p.callOnPaint+'|'+c.callOnPaint;
+"#;
+    assert_eq!(
+        run(source, 100_000).unwrap(),
+        Value::string("parent|child|returned|0|0")
+    );
+    assert_eq!(
+        run("var w=new Window();w.update();return 1;", 100_000).unwrap(),
+        Value::Integer(1)
+    );
+}

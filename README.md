@@ -259,6 +259,13 @@ sessions automatically load a system font, preferring Noto/Source Han CJK fonts
 for missing Windows faces such as `黑体`. The fallback file is loaded on first use
 and shared across sessions; no font files are copied into the game directory.
 
+`Font.mapPrerenderedFont` loads Kirikiri `.tft` version 0 and 1 files from
+game storage. All layers in the session share mappings for the same font
+name, size, angle and style. Measurement uses the stored advances. Drawing
+uses the stored coverage and origins. Missing characters use the normal font
+backend. `Font.unmapPrerenderedFont` removes the current style's mapping.
+`Window.update()` delivers pending layer paint callbacks before it returns.
+
 The interactive and replay hosts collect unreachable TJS objects between ticks.
 Collection traces script graphs and native references, runs finalizers, and keeps
 object IDs unique for the session. The 100,000-object limit applies to live

@@ -100,6 +100,7 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         "setZoom",
         "setPos",
         "setLayerPos",
+        "update",
         "onResize",
         "onClick",
         "onDoubleClick",

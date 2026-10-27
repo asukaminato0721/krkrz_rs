@@ -373,6 +373,17 @@ impl Host for Services {
                 self.set_draw_device(vm, id, value, budget)?;
                 return Ok(Value::Void);
             }
+            if operation == "update" {
+                let window = self
+                    .windows
+                    .get(&id)
+                    .filter(|window| window.constructed)
+                    .context("Window.update requires a constructed Window")?;
+                if let Some(root) = layer::object(&window.primary_layer)? {
+                    self.layer_before_completion(vm, root, budget)?;
+                }
+                return Ok(Value::Void);
+            }
             let first_window = !self
                 .windows
                 .values()

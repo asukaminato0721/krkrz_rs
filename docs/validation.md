@@ -1,5 +1,20 @@
 # Validation record
 
+## 2026-10-27 prerendered fonts and Sweet Girl startup
+
+`Font.mapPrerenderedFont` now reads TFT version 0 and 1 files through game
+storage. Font settings select a session-wide mapping. Text measurement uses
+the stored advances, and Layer drawing uses the stored bitmap coverage and
+origins. Missing characters use the normal font backend.
+`Font.unmapPrerenderedFont` removes the selected mapping. Invalid headers,
+indices and compressed runs return errors. Failed mapping preserves the
+previous mapping.
+
+
+The font and Window test targets passed 12 tests. The existing system-font
+test remained ignored. Runtime Clippy passed with warnings denied. Both CLI
+binaries built successfully.
+
 ## 2026-09-21 integration update
 
 The optimized runtime completed the unmodified warning and pretitle sequences,

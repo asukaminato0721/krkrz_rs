@@ -383,7 +383,7 @@ impl Services {
         Ok(())
     }
 
-    pub(super) fn layer_before_completion(
+    pub(crate) fn layer_before_completion(
         &mut self,
         vm: &mut Vm,
         root: usize,
