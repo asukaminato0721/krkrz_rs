@@ -26,6 +26,10 @@ See [provenance](docs/provenance.md) for extraction details and
 Proprietary game scripts, scenarios, media and saves are not bundled; running a
 game requires a user-supplied installation.
 
+Native window icons use transparent padding when the source image is rectangular.
+This preserves their pixels and proportions while meeting Wayland's square-icon
+requirement. The same conversion applies to EXE icons and `--icon` images.
+
 ## Build and verify
 
 ```sh

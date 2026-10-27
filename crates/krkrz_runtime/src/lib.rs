@@ -1059,6 +1059,10 @@ impl Session {
             ("title", "krkrz_rs".into()),
             ("osName", std::env::consts::OS.into()),
             ("platformName", std::env::consts::OS.into()),
+            (
+                "versionInformation",
+                format!("吉里吉里[きりきり] Z 実行コア/{version} (krkrz_rs)"),
+            ),
             ("versionString", version),
             ("dataPath", format!("file://.{}/", save_dir.display())),
         ] {

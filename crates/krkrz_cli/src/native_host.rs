@@ -57,7 +57,33 @@ pub fn load_icon(path: &std::path::Path) -> Result<Icon> {
         "window icon exceeds 16 MiB"
     );
     let image = krkrz_assets::media::Image::decode(&bytes).context("decode window icon")?;
-    Ok(RgbaIcon::new(image.rgba, image.width, image.height)?.into())
+    square_icon(image)
+}
+
+/// Wayland's xdg-toplevel-icon protocol requires a square buffer. Preserve the
+/// source pixels and center rectangular images on transparent padding.
+fn square_icon(image: krkrz_assets::media::Image) -> Result<Icon> {
+    let side = image.width.max(image.height) as usize;
+    anyhow::ensure!(
+        side > 0 && side <= 8192 && image.width > 0 && image.height > 0,
+        "invalid window icon dimensions"
+    );
+    let (width, height) = (image.width as usize, image.height as usize);
+    anyhow::ensure!(
+        image.rgba.len() == width * height * 4,
+        "invalid window icon pixel count"
+    );
+    if width == height {
+        return Ok(RgbaIcon::new(image.rgba, image.width, image.height)?.into());
+    }
+    let mut rgba = vec![0; side * side * 4];
+    let (left, top) = ((side - width) / 2, (side - height) / 2);
+    for y in 0..height {
+        let source = y * width * 4;
+        let target = ((y + top) * side + left) * 4;
+        rgba[target..target + width * 4].copy_from_slice(&image.rgba[source..source + width * 4]);
+    }
+    Ok(RgbaIcon::new(rgba, side as u32, side as u32)?.into())
 }
 
 /// Explicit image options take priority. Otherwise reuse the application's own
@@ -84,9 +110,7 @@ pub fn project_icon(
         else {
             return Ok(None);
         };
-        Ok(Some(
-            RgbaIcon::new(image.rgba, image.width, image.height)?.into(),
-        ))
+        Ok(Some(square_icon(image)?))
     };
     match load() {
         Ok(icon) => Ok(icon),
@@ -768,6 +792,38 @@ fn cursor_icon(cursor: i32) -> winit::cursor::CursorIcon {
 #[cfg(test)]
 mod icon_tests {
     use super::*;
+
+    #[test]
+    fn rectangular_icons_keep_pixels_and_receive_transparent_padding() {
+        for (width, height) in [(55, 58), (58, 55), (2, 2)] {
+            let rgba: Vec<_> = (0..width * height)
+                .flat_map(|i| [i as u8, 37, 91, 128])
+                .collect();
+            let icon = square_icon(krkrz_assets::media::Image {
+                width,
+                height,
+                rgba: rgba.clone(),
+            })
+            .unwrap();
+            let icon = icon.cast_ref::<RgbaIcon>().unwrap();
+            let side = width.max(height);
+            assert_eq!((icon.width(), icon.height()), (side, side));
+            let (left, top) = ((side - width) / 2, (side - height) / 2);
+            for y in 0..side {
+                for x in 0..side {
+                    let target = ((y * side + x) * 4) as usize;
+                    let expected = if x >= left && x < left + width && y >= top && y < top + height
+                    {
+                        let source = (((y - top) * width + x - left) * 4) as usize;
+                        &rgba[source..source + 4]
+                    } else {
+                        &[0, 0, 0, 0]
+                    };
+                    assert_eq!(&icon.buffer()[target..target + 4], expected);
+                }
+            }
+        }
+    }
 
     #[test]
     fn frame_clock_waits_and_skips_missed_frames() {

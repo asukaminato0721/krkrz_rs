@@ -53,6 +53,13 @@ fn missing_executable_metadata_preserves_the_default_version() {
         session.evaluate("System.versionString").unwrap(),
         Value::string("1.2.0.3")
     );
+    assert_eq!(
+        session
+            .evaluate("System.versionInformation.substr(11,1)")
+            .unwrap(),
+        Value::string("Z")
+    );
+    assert!(session.evaluate("System.versionInformation.indexOf(System.versionString)>=0 && System.versionInformation.indexOf('krkrz_rs')>=0").unwrap().truth().unwrap());
 }
 
 #[test]
