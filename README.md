@@ -266,6 +266,14 @@ uses the stored coverage and origins. Missing characters use the normal font
 backend. `Font.unmapPrerenderedFont` removes the current style's mapping.
 `Window.update()` delivers pending layer paint callbacks before it returns.
 
+Legacy scripts can use `Window.PassThroughDrawDevice` and its drawer constants.
+Both draw-device classes retain `preferredDrawer` while the CPU compositor
+supplies their pixels. `Window.showModal()` displays the script's Layer tree
+in a separate native window. Clicks and basic navigation keys use the shared
+input dispatcher. Closing a modal window preserves its script result until
+explicit invalidation. The game clock pauses while the window waits for input.
+Modal frames update after input events. Animated modal windows are not supported.
+
 The interactive and replay hosts collect unreachable TJS objects between ticks.
 Collection traces script graphs and native references, runs finalizers, and keeps
 object IDs unique for the session. The 100,000-object limit applies to live

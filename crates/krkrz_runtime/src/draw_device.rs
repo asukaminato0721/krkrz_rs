@@ -6,7 +6,12 @@ use std::collections::BTreeMap;
 #[derive(Default)]
 pub(crate) struct Devices {
     pub class: Option<Value>,
-    live: BTreeMap<usize, u64>,
+    live: BTreeMap<usize, Device>,
+}
+#[derive(Default)]
+struct Device {
+    generation: u64,
+    preferred: i64,
 }
 impl Devices {
     pub fn new(class: Value) -> Self {
@@ -29,6 +34,37 @@ pub(crate) fn register(vm: &mut Vm) -> Result<Value> {
     )?;
     let window = vm.globals["Window"].clone();
     vm.register_native_static_value(&window, "BasicDrawDevice", class.clone())?;
+    let legacy = vm.new_native_class("PassThroughDrawDevice", "BasicDrawDevice.@initialize")?;
+    for method in ["PassThroughDrawDevice", "finalize", "recreate"] {
+        let operation = if method == "PassThroughDrawDevice" {
+            "BasicDrawDevice"
+        } else {
+            method
+        };
+        vm.register_native_method(&legacy, method, &format!("BasicDrawDevice.{operation}"))?;
+    }
+    for device in [&class, &legacy] {
+        vm.register_native_property(
+            device,
+            "preferredDrawer",
+            Some("BasicDrawDevice.get:preferredDrawer"),
+            Some("BasicDrawDevice.set:preferredDrawer"),
+        )?;
+        vm.register_native_property(device, "drawer", Some("BasicDrawDevice.get:drawer"), None)?;
+    }
+    vm.register_native_property(
+        &legacy,
+        "interface",
+        Some("BasicDrawDevice.get:interface"),
+        None,
+    )?;
+    for (index, name) in ["dtNone", "dtDrawDib", "dtDBGDI", "dtDBDD", "dtDBD3D"]
+        .into_iter()
+        .enumerate()
+    {
+        vm.register_native_static_value(&legacy, name, Value::Integer(index as i64))?;
+    }
+    vm.register_native_static_value(&window, "PassThroughDrawDevice", legacy)?;
     vm.register_native_property(
         &window,
         "drawDevice",
@@ -38,11 +74,16 @@ pub(crate) fn register(vm: &mut Vm) -> Result<Value> {
     Ok(class)
 }
 impl Services {
-    pub(crate) fn draw_device_call(&mut self, op: &str, context: &Value) -> Result<Value> {
+    pub(crate) fn draw_device_call(
+        &mut self,
+        op: &str,
+        context: &Value,
+        args: &[Value],
+    ) -> Result<Value> {
         let id = object(context)?.context("BasicDrawDevice requires a non-null context")?;
         match op {
             "@initialize" => {
-                self.draw_devices.live.entry(id).or_insert(0);
+                self.draw_devices.live.entry(id).or_default();
             }
             "@invalidate" => {
                 self.draw_devices.live.remove(&id);
@@ -68,7 +109,35 @@ impl Services {
                     .context("context has no BasicDrawDevice native instance")?;
                 // CPU pixels belong to Layers and survive device recreation.
                 // Hosts must discard presentation resources for the old epoch.
-                *generation = generation.wrapping_add(1);
+                generation.generation = generation.generation.wrapping_add(1);
+            }
+            "get:preferredDrawer" => {
+                return Ok(Value::Integer(
+                    self.draw_devices
+                        .live
+                        .get(&id)
+                        .context("draw device is invalid")?
+                        .preferred,
+                ));
+            }
+            "set:preferredDrawer" => {
+                let preferred = args
+                    .first()
+                    .context("preferredDrawer requires a value")?
+                    .integer()?;
+                self.draw_devices
+                    .live
+                    .get_mut(&id)
+                    .context("draw device is invalid")?
+                    .preferred = preferred;
+            }
+            // The CPU compositor supplies a bitmap for the platform presenter.
+            "get:drawer" => {
+                ensure!(
+                    self.draw_devices.live.contains_key(&id),
+                    "draw device is invalid"
+                );
+                return Ok(Value::Integer(1));
             }
             _ => {
                 return Err(unsupported(format!(
@@ -129,7 +198,7 @@ impl crate::Session {
                 .live
                 .get(&id)
                 .context("Draw device is invalid")?;
-            return Ok(Some((id, *generation)));
+            return Ok(Some((id, generation.generation)));
         }
         Ok(None)
     }

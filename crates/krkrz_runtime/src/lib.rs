@@ -36,6 +36,7 @@ mod timer;
 mod video_overlay;
 pub mod window;
 mod window_ex;
+pub mod window_modal;
 use anyhow::{Context, Result, ensure};
 use krkrz_assets::{cx::CxEncryption, storage::Storage, text};
 use krkrz_core::{Limits, save_directory};
@@ -68,6 +69,7 @@ pub struct Services {
     pub trace_enabled: bool,
     pub windows: BTreeMap<usize, window::WindowState>,
     main_window: Option<usize>,
+    input_dispatch_depth: u32,
     draw_devices: draw_device::Devices,
     debug_console: Value,
     /// The headless display size. A native host replaces it before startup.
@@ -103,6 +105,7 @@ pub struct Services {
     dialogs: dialog::State,
     sound_options: Option<Vec<u8>>,
     window_ex: window_ex::State,
+    modal_windows: window_modal::State,
     alpha_movies: BTreeMap<usize, alpha_movie::Player>,
     alpha_movie_links: BTreeSet<String>,
     sound_global_volume: i32,
@@ -257,7 +260,7 @@ impl Host for Services {
             return self.kag_call(vm, operation, context, args, budget);
         }
         if let Some(operation) = name.strip_prefix("BasicDrawDevice.") {
-            return self.draw_device_call(operation, context);
+            return self.draw_device_call(operation, context, args);
         }
         if let Some(operation) = name.strip_prefix("WindowEx.") {
             return self.window_ex_call(vm, operation, context, args, budget);
@@ -384,6 +387,9 @@ impl Host for Services {
                 }
                 return Ok(Value::Void);
             }
+            if operation == "showModal" {
+                return self.show_window_modal(vm, context, budget);
+            }
             let first_window = !self
                 .windows
                 .values()
@@ -428,7 +434,14 @@ impl Host for Services {
             }
             if operation == "onCloseQuery" {
                 if args.first().is_some_and(|v| v.truth().unwrap_or(false)) {
-                    vm.invalidate(context, self, budget)?;
+                    if window.modal {
+                        window.modal = false;
+                        window.visible = false;
+                    } else if self.input_dispatch_depth != 0 {
+                        window.close_pending = true;
+                    } else {
+                        vm.invalidate(context, self, budget)?;
+                    }
                 }
                 return Ok(Value::Void);
             }
@@ -1087,6 +1100,7 @@ impl Session {
                 trace_enabled: false,
                 windows: BTreeMap::new(),
                 main_window: None,
+                input_dispatch_depth: 0,
                 draw_devices: draw_device::Devices::new(draw_device_class),
                 debug_console,
                 screen_size: (1280, 720),
@@ -1121,6 +1135,7 @@ impl Session {
                 dialogs: dialog::State::default(),
                 sound_options: None,
                 window_ex: window_ex::State::default(),
+                modal_windows: window_modal::State::default(),
                 alpha_movies: BTreeMap::new(),
                 alpha_movie_links: BTreeSet::new(),
                 sound_global_volume: 100_000,

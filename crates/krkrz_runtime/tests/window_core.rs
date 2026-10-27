@@ -55,3 +55,25 @@ return events.join('|')+'|'+p.callOnPaint+'|'+c.callOnPaint;
         Value::Integer(1)
     );
 }
+
+#[test]
+fn closing_during_input_keeps_the_window_valid_until_the_callback_returns() {
+    let project = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
+    session.evaluate("Scripts.exec('global.w=new Window();w.visible=true;var p=new Layer(w,null);w.onMouseDown=function(){w.close();global.alive=isvalid w;};')").unwrap();
+    let window = session.evaluate("w").unwrap();
+    session
+        .input(
+            &window,
+            krkrz_runtime::InputEvent::PointerDown {
+                x: 1,
+                y: 1,
+                button: 0,
+                shift: 8,
+            },
+        )
+        .unwrap();
+    assert_eq!(session.evaluate("alive").unwrap(), Value::Integer(1));
+    assert_eq!(session.evaluate("isvalid w").unwrap(), Value::Integer(0));
+}

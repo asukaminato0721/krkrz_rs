@@ -496,15 +496,26 @@ impl crate::Session {
         self.capture_window_prepared(window)
     }
     pub(super) fn capture_window_prepared(&mut self, window: &Value) -> Result<Image> {
+        self.services
+            .capture_window_prepared(&mut self.vm, window, &mut self.budget)
+    }
+}
+
+impl Services {
+    pub(crate) fn capture_window_prepared(
+        &mut self,
+        vm: &mut Vm,
+        window: &Value,
+        budget: &mut u64,
+    ) -> Result<Image> {
         let window_id = object(window)?.context("capture requires a Window")?;
         let window = self
-            .services
             .windows
             .get(&window_id)
             .context("capture requires a Window")?;
         let root = object(&window.primary_layer)?.context("window has no primary Layer")?;
-        let layer = &self.services.layers[&root];
-        let mut image = self.services.layer_complete(
+        let layer = &self.layers[&root];
+        let mut image = self.layer_complete(
             root,
             Rect {
                 x: 0,
@@ -512,13 +523,12 @@ impl crate::Session {
                 w: layer.width as i64,
                 h: layer.height as i64,
             },
-            &mut self.budget,
+            budget,
             0,
             0,
         )?;
-        self.services
-            .layer_after_completion(&mut self.vm, root, &mut self.budget)?;
-        for video in self.services.videos.values() {
+        self.layer_after_completion(vm, root, budget)?;
+        for video in self.videos.values() {
             if let Some((frame, [x, y, width, height])) = video.overlay(window_id) {
                 if width <= 0 || height <= 0 {
                     continue;
@@ -530,7 +540,7 @@ impl crate::Session {
                 if left >= right || top >= bottom {
                     continue;
                 }
-                charge(&mut self.budget, ((right - left) * (bottom - top)) as u64)?;
+                charge(budget, ((right - left) * (bottom - top)) as u64)?;
                 for dy in top..bottom {
                     let sy = ((dy - i64::from(y)) * i64::from(frame.height) / i64::from(height))
                         as usize;

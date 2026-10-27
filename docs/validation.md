@@ -1,5 +1,31 @@
 # Validation record
 
+## 2026-10-27 Sweet Girl exit confirmation
+
+The original `YesNoDialog.tjs` requires `Window.PassThroughDrawDevice`, its
+`dtDrawDib` constant and `preferredDrawer`. The runtime now provides that
+legacy interface. It also retains the dialog's `innerSunken` and
+`showScrollBars` settings. `Window.showModal()` uses the shared compositor
+and input dispatcher through a separate native presentation process.
+Modal close hides the dialog without invalidating its script result.
+
+The unchanged game script returned true for the Yes button and false for
+Esc and window close. The original title's exit link also completed its
+input callback. This required deferring main-window invalidation until
+the active input callback returned. Previously, `MessageLayer.onMouseDown`
+called its superclass after the window and its layers became invalid.
+
+An Xvfb test displayed pixels captured from the original confirmation
+dialog. It verified the child process's Esc event, Yes-button coordinates
+and termination after its parent ended the exchange. Separate runtime
+tests verified the script results and main-window lifetime. Full-game
+native pointer automation did not activate the title link under Xvfb.
+That complete native interaction remains unverified.
+
+The six related runtime test targets passed 47 tests. Both opt-in game
+tests passed separately. Runtime and CLI Clippy passed with warnings denied.
+Both CLI binaries built. Tests used temporary save directories.
+
 ## 2026-10-27 prerendered fonts and Sweet Girl startup
 
 `Font.mapPrerenderedFont` now reads TFT version 0 and 1 files through game

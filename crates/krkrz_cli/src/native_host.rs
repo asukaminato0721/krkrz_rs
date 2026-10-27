@@ -106,6 +106,10 @@ pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Re
     let mut event_loop = EventLoop::new()?;
     let dialog_wait = Rc::new(Cell::new(Duration::ZERO));
     let wait = dialog_wait.clone();
+    session
+        .services
+        .set_modal_window_handler(move || crate::modal_window::Process::start(wait.clone()));
+    let wait = dialog_wait.clone();
     session.services.set_input_dialog_handler(move |request| {
         let start = Instant::now();
         let answer = crate::input_dialog::show(request);

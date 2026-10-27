@@ -53,3 +53,35 @@ fn device_recreation_and_replacement_invalidate_host_resources() {
     session.evaluate("invalidate w").unwrap();
     assert!(session.draw_device_epoch(&w).is_err());
 }
+
+#[test]
+fn legacy_draw_device_constants_preferences_and_ownership() {
+    let (_, _, mut session) = session("global.w=new Window();", 100_000);
+    assert_eq!(session.evaluate("[Window.PassThroughDrawDevice.dtNone,Window.PassThroughDrawDevice.dtDrawDib,Window.PassThroughDrawDevice.dtDBGDI,Window.PassThroughDrawDevice.dtDBDD,Window.PassThroughDrawDevice.dtDBD3D].join('|')").unwrap(), Value::string("0|1|2|3|4"));
+    session
+        .evaluate("w.drawDevice.preferredDrawer=Window.PassThroughDrawDevice.dtDrawDib")
+        .unwrap();
+    assert_eq!(
+        session.evaluate("w.drawDevice.preferredDrawer").unwrap(),
+        Value::Integer(1)
+    );
+    session
+        .evaluate("w.drawDevice=new Window.PassThroughDrawDevice()")
+        .unwrap();
+    assert_eq!(
+        session
+            .evaluate("w.drawDevice instanceof 'PassThroughDrawDevice'")
+            .unwrap(),
+        Value::Integer(1)
+    );
+    let w = session.evaluate("w").unwrap();
+    let before = session.draw_device_epoch(&w).unwrap().unwrap();
+    session.evaluate("w.drawDevice.recreate()").unwrap();
+    let after = session.draw_device_epoch(&w).unwrap().unwrap();
+    assert_eq!(before.0, after.0);
+    assert_ne!(before.1, after.1);
+    session
+        .evaluate("Scripts.exec('global.d=w.drawDevice;invalidate w;')")
+        .unwrap();
+    assert_eq!(session.evaluate("isvalid d").unwrap(), Value::Integer(0));
+}

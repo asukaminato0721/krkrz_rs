@@ -59,6 +59,11 @@ and miahmie as authors and specifies the same Kirikiri license below.
 Prerendered font mapping, TFT indices and glyph run decoding follow Kirikiri Z
 `visual/PrerenderedFont.cpp`, `visual/PrerenderedFont.h` and
 `visual/LayerBitmapImpl.cpp`, under the same Kirikiri license below.
+Legacy draw-device constants and preferences follow Kirikiroid2
+`src/core/visual/win32/PassThroughDrawDevice.cpp` and its header at the pinned
+revision in `docs/references.json`. Modal window close behavior follows
+Kirikiri Z `visual/WindowIntf.cpp` and `visual/win32/WindowImpl.cpp`.
+These sources use the Kirikiri license below.
 KAGParserEx parsing, macro expansion and native parser state follow wamsoft/KAGParserEx
 `KAGParser.cpp`, Copyright (C) 2000 W.Dee <dee@kikyou.info> and contributors,
 under the same Kirikiri license below. Layer focus, province pixels and colorRect
