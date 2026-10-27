@@ -15,7 +15,12 @@ fn number(vm: &mut Vm, dict: &Value, key: &str, limit: usize) -> Result<usize> {
     );
     Ok(n as usize)
 }
-fn array(vm: &mut Vm, value: &Value, limit: usize, budget: &mut u64) -> Result<Vec<Value>> {
+pub(super) fn array(
+    vm: &mut Vm,
+    value: &Value,
+    limit: usize,
+    budget: &mut u64,
+) -> Result<Vec<Value>> {
     let items = vm.array_items(value)?;
     ensure!(
         items.len() <= limit,
@@ -109,13 +114,7 @@ impl Parser {
         }
         let mut macro_args = Vec::new();
         for args in &self.macro_args {
-            let mut flat = Vec::new();
-            for name in &args.names {
-                charge(budget)?;
-                flat.push(Value::string(name));
-                flat.push(args.get(vm, name)?);
-            }
-            macro_args.push(vm.new_native_array(flat)?);
+            macro_args.push(args.store(vm, budget)?);
         }
         let value = vm.new_native_array(macro_args)?;
         set(vm, &result, "macroArgs", value)?;
@@ -187,13 +186,8 @@ impl Services {
         let mut macro_args = Vec::new();
         if !matches!(saved_args, Value::Void) {
             for args in array(vm, &saved_args, 128, budget)? {
-                let flat = array(vm, &args, 100_000, budget)?;
-                ensure!(flat.len() % 2 == 0, "malformed KAG saved macro arguments");
-                let mut copied = Args::new(vm)?;
-                for pair in flat.as_chunks::<2>().0 {
-                    copied.add(vm, &pair[0].text(), pair[1].clone())?;
-                }
-                macro_args.push(copied);
+                let format = handle.borrow().args.clone();
+                macro_args.push(format.restore(vm, &args, budget)?);
             }
         }
         ensure!(macro_args.len() == depth, "malformed KAG saved macro depth");

@@ -308,6 +308,9 @@ parent/child links and Font state. Timer and AsyncTrigger share the session even
 KAGParserEx now executes expressions, macros, conditions, inline-script callbacks and
 scenario calls. Native assign/store/restore follow the original label-based format
 and have differential and fresh-session serialization tests.
+Core KAG macros copy the complete live `mp` dictionary for `*` attributes.
+Loading `KAGParserEx.dll` selects ordered parameter expansion for new parsers.
+The two parameter formats use `Args<P>` and retain their respective save formats.
 After PackinOne has loaded, `layerExImage.dll` resolves to its existing exports,
 as in the installed engine. The image-effect operations still need implementation.
 

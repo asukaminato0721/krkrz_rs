@@ -611,8 +611,8 @@ impl Host for Services {
                         Ok(Value::Void)
                     }
                     "kagparser.dll" | "kagparserex.dll" => {
-                        // Both plugin names use the built-in parser. Preserve
-                        // classes and instances created by legacy KAG startup.
+                        // Keep existing classes and instances. New instances
+                        // select the extended parameter format after Ex loads.
                         self.loaded_plugins
                             .insert(path.rsplit('/').next().unwrap().to_ascii_lowercase());
                         Ok(Value::Void)

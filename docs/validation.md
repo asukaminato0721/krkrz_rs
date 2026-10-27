@@ -1,5 +1,27 @@
 # Validation record
 
+## 2026-10-27 scene gallery macro parameters
+
+The unchanged Joshi game's `SceneList.ks` adds button settings to `mp`
+before expanding `[button *]`. Core KAG copies the complete dictionary.
+KAGParserEx copies only its recorded parameter names. The runtime previously
+used the extended rule for both parsers and omitted the button's image name.
+
+`Args<P>` now separates the two parameter formats. Core arguments contain a
+dictionary. Extended arguments also contain the native parameter-name array.
+Parser construction selects the format after plugin loading. Existing parser
+instances keep their format. Core save data contains complete dictionaries;
+restore also accepts the older runtime's flat argument arrays.
+
+The nine parser tests pass, including the original KAGParserEx corpus and
+regressions for nested macros, script-added fields, deletion, copying and
+save restoration. The installed-game check uses native-order pointer events
+and a temporary save directory. It reaches the scene gallery and renders
+its twelve locked thumbnail buttons at 1280×720. It selects the fifth page,
+checks its two thumbnails, returns to the first page and returns to the title.
+Unlocked scene playback remains unverified. Runtime Clippy passes with warnings
+denied. Both CLI binaries build.
+
 ## 2026-10-27 Yuri confirmation settings
 
 `TYesNoDialog.tjs` parses its background and button settings with

@@ -64,6 +64,8 @@ Legacy draw-device constants and preferences follow Kirikiroid2
 revision in `docs/references.json`. Modal window close behavior follows
 Kirikiri Z `visual/WindowIntf.cpp` and `visual/win32/WindowImpl.cpp`.
 These sources use the Kirikiri license below.
+Core KAG parameter expansion and macro dictionaries follow Kirikiroid2
+`src/core/utils/KAGParser.cpp`, under the same Kirikiri license below.
 KAGParserEx parsing, macro expansion and native parser state follow wamsoft/KAGParserEx
 `KAGParser.cpp`, Copyright (C) 2000 W.Dee <dee@kikyou.info> and contributors,
 under the same Kirikiri license below. Layer focus, province pixels and colorRect

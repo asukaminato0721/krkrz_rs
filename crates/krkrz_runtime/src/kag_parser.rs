@@ -1,56 +1,11 @@
-//! KAGParserEx native execution, following the community KAGParser.cpp implementation.
+//! Core KAGParser and KAGParserEx native execution.
 use crate::{Services, layer::object};
 use anyhow::{Context, Result, ensure};
 use krkrz_kag::native::{Attribute, Position, Source, Tag, scan_tag};
 use krkrz_tjs::{Value, Vm, compile_expression, unsupported};
 use std::{cell::RefCell, rc::Rc, sync::Arc};
-#[derive(Clone)]
-struct Args {
-    dict: Value,
-    list: Value,
-    names: Vec<String>,
-}
-impl Args {
-    fn new(vm: &mut Vm) -> Result<Self> {
-        Ok(Self {
-            dict: vm.new_dictionary()?,
-            list: vm.new_native_array(Vec::new())?,
-            names: Vec::new(),
-        })
-    }
-    fn clear(&mut self, vm: &mut Vm, budget: &mut u64) -> Result<()> {
-        vm.dictionary_assign(&self.dict, &[], true, budget)?;
-        vm.clear_array(&self.list)?;
-        self.names.clear();
-        Ok(())
-    }
-    fn add(&mut self, vm: &mut Vm, name: &str, value: Value) -> Result<()> {
-        vm.set_member(&self.dict, &Value::string(name), value)?;
-        vm.set_member(
-            &self.list,
-            &Value::Integer(self.names.len() as i64),
-            Value::string(name),
-        )?;
-        self.names.push(name.into());
-        Ok(())
-    }
-    fn get(&self, vm: &mut Vm, name: &str) -> Result<Value> {
-        vm.get_member(&self.dict, &Value::string(name), true)
-    }
-    fn result(&self, vm: &mut Vm) -> Result<Value> {
-        vm.set_member(&self.dict, &Value::string("taglist"), self.list.clone())?;
-        Ok(self.dict.clone())
-    }
-    fn duplicate(&self, vm: &mut Vm, budget: &mut u64) -> Result<Self> {
-        let mut result = Self::new(vm)?;
-        for name in &self.names {
-            charge(budget)?;
-            let value = self.get(vm, name)?;
-            result.add(vm, name, value)?;
-        }
-        Ok(result)
-    }
-}
+mod args;
+use args::Arguments;
 #[derive(Clone)]
 struct Call {
     storage: String,
@@ -77,8 +32,8 @@ pub(crate) struct Parser {
     interrupted: bool,
     macros: Value,
     param_macros: Value,
-    args: Args,
-    macro_args: Vec<Args>,
+    args: Arguments,
+    macro_args: Vec<Arguments>,
     macro_base: usize,
     recording: Option<(String, Vec<u16>)>,
     conditions: Vec<(i32, bool)>,
@@ -86,7 +41,7 @@ pub(crate) struct Parser {
     calls: Vec<Call>,
 }
 impl Parser {
-    fn new(vm: &mut Vm) -> Result<Self> {
+    fn new(vm: &mut Vm, extended: bool) -> Result<Self> {
         Ok(Self {
             alive: true,
             source: None,
@@ -101,7 +56,7 @@ impl Parser {
             interrupted: false,
             macros: vm.new_dictionary()?,
             param_macros: vm.new_dictionary()?,
-            args: Args::new(vm)?,
+            args: Arguments::new(vm, extended)?,
             macro_args: Vec::new(),
             macro_base: 0,
             recording: None,
@@ -363,8 +318,9 @@ impl Services {
     ) -> Result<Value> {
         let id = object(context)?.context("KAGParser requires non-null context")?;
         if op == "@initialize" {
+            let extended = self.loaded_plugins.contains("kagparserex.dll");
             self.kag_parsers
-                .insert(id, Rc::new(RefCell::new(Parser::new(vm)?)));
+                .insert(id, Rc::new(RefCell::new(Parser::new(vm, extended)?)));
             return Ok(Value::Void);
         }
         if op == "@invalidate" {
@@ -396,7 +352,10 @@ impl Services {
                 "debugLevel" => Value::Integer(p.debug.into()),
                 "macros" => p.macros.clone(),
                 "paramMacros" => p.param_macros.clone(),
-                "mp" | "macroParams" => p.macro_args.last().map_or(Value::NULL, |a| a.dict.clone()),
+                "mp" | "macroParams" => p
+                    .macro_args
+                    .last()
+                    .map_or(Value::NULL, |a| a.dict().clone()),
                 "callStackDepth" => Value::Integer(p.calls.len() as i64),
                 _ => {
                     return Err(unsupported(format!(
@@ -456,6 +415,10 @@ impl Services {
                         .map(|a| a.duplicate(vm, budget))
                         .collect::<Result<_>>()?;
                     let mut target = handle.borrow_mut();
+                    ensure!(
+                        target.args.same_format(&source.args),
+                        "KAGParser.assign requires matching parameter formats"
+                    );
                     vm.dictionary_assign(&target.macros, &[source.macros], false, budget)?;
                     vm.dictionary_assign(
                         &target.param_macros,
@@ -504,12 +467,7 @@ impl Services {
         if attr.all {
             let top = handle.borrow().macro_args.last().cloned();
             if let Some(top) = top {
-                for name in &top.names {
-                    if name != "tagname" {
-                        let value = top.get(vm, name)?;
-                        handle.borrow_mut().args.add(vm, name, value)?;
-                    }
-                }
+                top.expand_into(vm, &mut handle.borrow_mut().args, budget)?;
             }
             return Ok(());
         }
@@ -785,7 +743,8 @@ impl Services {
             }
             handle.borrow_mut().position.pos = tag.delimiter;
             if self.kag_control(vm, id, &tag, condition, budget)? {
-                return handle.borrow().args.result(vm);
+                let p = handle.borrow();
+                return p.args.result(vm);
             }
         }
     }
@@ -954,7 +913,7 @@ impl Services {
                     (
                         p.args.get(vm, "storage")?.text(),
                         p.args.get(vm, "target")?.text(),
-                        p.args.dict.clone(),
+                        p.args.dict().clone(),
                     )
                 };
                 let event = match kind {
@@ -1008,10 +967,10 @@ impl Services {
                 let p = handle.borrow();
                 let name = p.args.get(vm, "name")?;
                 let mut entries = Vec::new();
-                for key in &p.args.names {
+                for (key, value) in p.args.entries(vm, budget)? {
                     if key != "name" && key != "tagname" {
-                        entries.push(Value::string(key));
-                        entries.push(p.args.get(vm, key)?);
+                        entries.push(Value::string(&key));
+                        entries.push(value);
                     }
                 }
                 let array = vm.new_native_array(entries)?;
@@ -1031,14 +990,10 @@ mod state;
 
 impl Parser {
     pub(crate) fn gc_trace(&self, out: &mut Vec<Value>) {
-        out.extend([
-            self.macros.clone(),
-            self.param_macros.clone(),
-            self.args.dict.clone(),
-            self.args.list.clone(),
-        ]);
+        out.extend([self.macros.clone(), self.param_macros.clone()]);
+        self.args.trace(out);
         for args in &self.macro_args {
-            out.extend([args.dict.clone(), args.list.clone()]);
+            args.trace(out);
         }
     }
 }
