@@ -8,6 +8,7 @@ pub mod compositor;
 mod continuous;
 pub mod coroutine;
 mod csv;
+mod cursor;
 pub mod dialog;
 pub mod display;
 mod draw_device;
@@ -91,6 +92,7 @@ pub struct Services {
     transition_tasks: coroutine::CoroutineScheduler<usize>,
     layer_managers: BTreeMap<usize, layer::Manager>,
     font_objects: BTreeMap<usize, font::Font>,
+    cursors: cursor::Cursors,
     kag_parsers: BTreeMap<usize, std::rc::Rc<std::cell::RefCell<kag_parser::Parser>>>,
     csv_parsers: BTreeMap<usize, csv::Parser>,
     sounds: BTreeMap<usize, sound::Sound>,
@@ -489,9 +491,16 @@ impl Host for Services {
                 Err(anyhow::Error::new(krkrz_tjs::VmExit(code)))
             }
             "Storages.selectFile" => self.select_file(vm, arg(0)?, budget),
-            "System.get:personalPath" | "System.get:appDataPath" => Ok(Value::string(
-                &file_dialog::system_path(name == "System.get:personalPath", &self.storage.project),
-            )),
+            "System.get:personalPath" | "System.get:appDataPath" => {
+                let directory = if name == "System.get:personalPath" {
+                    save_storage::UserDirectory::Personal
+                } else {
+                    save_storage::UserDirectory::AppData
+                };
+                Ok(Value::string(
+                    &directory.storage_path(&self.storage.project),
+                ))
+            }
             "TextStream.read" => {
                 let bytes = self.read_storage(&arg(0)?.text())?;
                 let (mode, offset) = save_storage::offset_mode(&arg(1)?.text())?;
@@ -1136,6 +1145,7 @@ impl Session {
                 transition_tasks: coroutine::CoroutineScheduler::default(),
                 layer_managers: BTreeMap::new(),
                 font_objects: BTreeMap::new(),
+                cursors: cursor::Cursors::default(),
                 kag_parsers: BTreeMap::new(),
                 fonts: fonts::FontBook::with_system_fallback(),
                 csv_parsers: BTreeMap::new(),

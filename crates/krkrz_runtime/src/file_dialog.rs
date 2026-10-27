@@ -34,16 +34,6 @@ pub(crate) struct State {
     selected: BTreeMap<String, (PathBuf, bool)>,
 }
 
-pub(crate) fn system_path(personal: bool, project: &Path) -> String {
-    let path = if personal {
-        dirs::document_dir().or_else(dirs::data_dir)
-    } else {
-        dirs::data_dir()
-    }
-    .unwrap_or_else(|| project.to_path_buf());
-    format!("file://.{}/", path.to_string_lossy().trim_end_matches('/'))
-}
-
 impl Services {
     pub fn set_file_dialog_handler<F>(&mut self, handler: F)
     where

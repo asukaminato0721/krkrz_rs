@@ -232,6 +232,9 @@ directories cannot be selected as save destinations. Native Array/Dictionary
 structured saves, Array text load/save, and the standalone saveStruct plugin
 write through this overlay. Game-relative writes are redirected there; reads
 prefer it. Directories are created when data is written.
+Paths below `System.personalPath` and `System.appDataPath` also use this overlay,
+under `personal/` and `appdata/`. Child directory names are retained. If the two
+system directories coincide, their paths use the same `personal/` alias.
 
 Use an optimized build for the original game; the debug interpreter is much slower.
 Optional `--trace /path/outside/the/game/new-trace.json` records execution for diagnosis.
@@ -438,7 +441,8 @@ drawing, message boxes and pointer-based buffer operations remain unsupported.
 Layout and positioning are approximate rather than Win32 dialog-unit rendering.
 
 `System.personalPath` and `System.appDataPath` use the platform's user document
-and application-data directories. `Storages.selectFile` opens a separate egui
+and application-data directories. Ordinary storage operations map child paths
+to the session's save overlay. `Storages.selectFile` opens a separate egui
 file picker for opening or saving, with initial paths, filename filters,
 one-based filter indices, default extensions and overwrite confirmation.
 Cancellation leaves the script's options unchanged. A selected file can be read

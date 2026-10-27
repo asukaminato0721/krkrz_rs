@@ -11,6 +11,7 @@ use std::{
 };
 use winit::{
     application::ApplicationHandler,
+    cursor::{CustomCursor, CustomCursorSource},
     dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, run_on_demand::EventLoopExtRunOnDemand},
@@ -36,6 +37,7 @@ struct NativeWindow {
     suspended: bool,
     frame_state: WindowFrameState,
     frame: Option<krkrz_assets::media::Image>,
+    cursor: Option<i32>,
 }
 impl NativeWindow {
     fn refresh_frame(&mut self, session: &mut Session, target: &Value) -> Result<bool> {
@@ -165,6 +167,7 @@ pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Re
             None
         },
         windows: BTreeMap::new(),
+        cursors: BTreeMap::new(),
         icon,
         started: false,
         origin: Instant::now(),
@@ -181,6 +184,7 @@ struct Host<'a> {
     session: &'a mut Session,
     audio: Option<AudioOutput>,
     windows: BTreeMap<usize, NativeWindow>,
+    cursors: BTreeMap<i32, CustomCursor>,
     icon: Option<Icon>,
     started: bool,
     origin: Instant,
@@ -291,6 +295,7 @@ impl Host<'_> {
                     suspended: false,
                     frame_state: WindowFrameState::default(),
                     frame: None,
+                    cursor: None,
                 });
             }
             let native = self.windows.get_mut(&id).unwrap();
@@ -345,7 +350,30 @@ impl Host<'_> {
             native
                 .window
                 .set_cursor_visible(state.mouse_cursor_state == 0 && cursor != -1);
-            native.window.set_cursor(cursor_icon(cursor).into());
+            if native.cursor != Some(cursor) {
+                let shape = if let Some(image) = self.session.cursor_image(cursor) {
+                    let custom = match self.cursors.entry(cursor) {
+                        std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+                        std::collections::btree_map::Entry::Vacant(entry) => {
+                            let [x, y] = image.hotspot();
+                            let image = image.image();
+                            let source = CustomCursorSource::from_rgba(
+                                image.rgba.clone(),
+                                image.width.try_into()?,
+                                image.height.try_into()?,
+                                x,
+                                y,
+                            )?;
+                            entry.insert(event_loop.create_custom_cursor(source)?)
+                        }
+                    };
+                    custom.clone().into()
+                } else {
+                    cursor_icon(cursor).into()
+                };
+                native.window.set_cursor(shape);
+                native.cursor = Some(cursor);
+            }
             native.state = state.clone();
         }
         if self.started && self.windows.is_empty() {

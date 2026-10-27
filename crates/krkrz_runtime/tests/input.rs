@@ -21,6 +21,59 @@ var a=new Layer(w,p,owner);a.setSize(20,20);a.setPos(10,5);a.visible=true;a.hitT
 "#;
 
 #[test]
+fn image_cursors_are_cached_inherited_and_preserved_after_load_failure() {
+    use image::ImageEncoder;
+    let (project, _save, mut s, window) = session(SETUP);
+    let mut png = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut png)
+        .write_image(
+            &[255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 0, 0, 0, 0],
+            2,
+            2,
+            image::ExtendedColorType::Rgba8,
+        )
+        .unwrap();
+    let mut cur = vec![0, 0, 2, 0, 1, 0, 2, 2, 0, 0, 1, 0, 1, 0];
+    cur.extend_from_slice(&(png.len() as u32).to_le_bytes());
+    cur.extend_from_slice(&22u32.to_le_bytes());
+    cur.extend(png);
+    std::fs::write(project.path().join("pointer.cur"), cur).unwrap();
+    std::fs::write(project.path().join("broken.cur"), b"bad cursor").unwrap();
+    s.evaluate("p.cursor='pointer.cur'").unwrap();
+    let handle = s.evaluate("p.cursor").unwrap().integer().unwrap() as i32;
+    assert_eq!(handle, 2);
+    let image = s.cursor_image(handle).unwrap();
+    assert_eq!(image.hotspot(), [1, 1]);
+    assert_eq!((image.image().width, image.image().height), (2, 2));
+    s.input(
+        &window,
+        InputEvent::PointerMove {
+            x: 24,
+            y: 14,
+            shift: 0,
+        },
+    )
+    .unwrap();
+    assert_eq!(s.window_cursor(&window).unwrap(), handle);
+    s.evaluate("a.cursor=crHandPoint").unwrap();
+    assert_eq!(s.window_cursor(&window).unwrap(), -21);
+    s.evaluate("a.cursor='POINTER.CUR'").unwrap();
+    assert_eq!(
+        s.evaluate("a.cursor").unwrap(),
+        Value::Integer(handle.into())
+    );
+    assert!(s.evaluate("a.cursor='broken.cur'").is_err());
+    assert_eq!(s.window_cursor(&window).unwrap(), handle);
+    s.evaluate("a.cursor=crDefault").unwrap();
+    assert_eq!(s.window_cursor(&window).unwrap(), handle);
+    s.evaluate("p.cursor=crNone").unwrap();
+    assert_eq!(s.window_cursor(&window).unwrap(), -1);
+    s.evaluate("a.cursor=crHBeam").unwrap();
+    assert_eq!(s.window_cursor(&window).unwrap(), 1);
+    assert!(s.cursor_image(1).is_none());
+}
+
+#[test]
 fn legacy_quake_moves_presentation_and_hit_testing_then_restores_origin() {
     let (_project, _saves, mut s, w) = session(
         r#"

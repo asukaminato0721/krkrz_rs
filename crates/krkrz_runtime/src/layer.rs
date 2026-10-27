@@ -89,6 +89,9 @@ pub(crate) struct Layer {
     opacity: i32,
     cursor: i32,
     cursor_x_work: i32,
+    use_attention: bool,
+    attention: [i32; 2],
+    ime_mode: i32,
     image_modified: bool,
     call_on_paint: bool,
     hit_type: i32,
@@ -139,6 +142,9 @@ impl Default for Layer {
             opacity: 255,
             cursor: 0,
             cursor_x_work: 0,
+            use_attention: false,
+            attention: [0, 0],
+            ime_mode: 0,
             image_modified: true,
             call_on_paint: false,
             hit_type: 0,
@@ -527,6 +533,10 @@ impl Layer {
                 "enabled" => self.enabled.into(),
                 "opacity" => self.opacity,
                 "cursor" => self.cursor,
+                "useAttention" => self.use_attention.into(),
+                "attentionLeft" => self.attention[0],
+                "attentionTop" => self.attention[1],
+                "imeMode" => self.ime_mode,
                 "imageModified" => self.image_modified.into(),
                 "callOnPaint" => self.call_on_paint.into(),
                 "hitType" => self.hit_type,
@@ -544,6 +554,11 @@ impl Layer {
             }
             "set:showParentHint" => self.show_parent_hint = arg(0)?.truth()?,
             "set:ignoreHintSensing" => self.ignore_hint_sensing = arg(0)?.truth()?,
+            "set:useAttention" => self.use_attention = arg(0)?.truth()?,
+            "set:attentionLeft" => self.attention[0] = n(0)?,
+            "set:attentionTop" => self.attention[1] = n(0)?,
+            "setAttentionPos" => self.attention = [n(0)?, n(1)?],
+            "set:imeMode" => self.ime_mode = n(0)?,
             "set:hint" => {
                 self.hint = arg(0)?.unary("string")?;
                 self.show_parent_hint = false;
@@ -567,9 +582,6 @@ impl Layer {
                 self.call_on_paint = true;
             }
             "set:cursor" => {
-                if matches!(arg(0)?, Value::String(_)) {
-                    return Err(unsupported("Layer cursor image loading is not implemented"));
-                }
                 self.cursor = n(0)?;
             }
             "set:holdAlpha" => self.hold_alpha = arg(0)?.truth()?,
@@ -1002,6 +1014,11 @@ impl Services {
             return Ok(value);
         }
         match op {
+            "set:cursor" if matches!(arg(0)?, Value::String(_)) => {
+                let cursor = self.load_cursor(&arg(0)?.text())?;
+                self.layers.get_mut(&id).unwrap().cursor = cursor;
+                return Ok(Value::Void);
+            }
             "getLayerAt" => return self.layer_get_at(vm, id, args, budget),
             "get:absoluteOrderMode" => {
                 return Ok(Value::Integer(self.layers[&id].absolute_mode.into()));

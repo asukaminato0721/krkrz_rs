@@ -357,11 +357,16 @@ impl crate::Session {
             .windows
             .get(&id)
             .context("cursor Window is invalid")?;
-        Ok(window
-            .input
-            .hover
-            .and_then(|id| self.services.layers.get(&id))
-            .map_or(0, |layer| layer.cursor))
+        Ok(std::iter::successors(
+            window
+                .input
+                .hover
+                .and_then(|id| self.services.layers.get(&id)),
+            |layer| layer.parent.and_then(|id| self.services.layers.get(&id)),
+        )
+        .map(|layer| layer.cursor)
+        .find(|cursor| *cursor != 0)
+        .unwrap_or(0))
     }
     pub fn request_window_close(&mut self, window: &Value) -> Result<()> {
         let id = object(window)?.context("close requires a Window")?;
