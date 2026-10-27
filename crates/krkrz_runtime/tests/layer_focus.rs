@@ -37,6 +37,27 @@ fn original_layer_focus_corpus() {
 }
 
 #[test]
+fn editing_layers_retain_attention_coordinates_and_ime_settings() {
+    let (_project, _saves, mut session) = session(
+        "global.w=new Window();global.p=new Layer(w,null);global.a=new Layer(w,p);global.b=new Layer(w,p);",
+        100_000,
+    );
+    assert_eq!(
+        session
+            .evaluate("[a.useAttention,a.attentionLeft,a.attentionTop,a.imeMode].join('|')")
+            .unwrap(),
+        Value::string("0|0|0|0")
+    );
+    assert_eq!(session.evaluate("Scripts.exec('a.useAttention=true;a.imeMode=imDontCare;a.setAttentionPos(12,34);a.attentionLeft=-5;return [a.useAttention,a.attentionLeft,a.attentionTop,a.imeMode,b.useAttention,b.attentionLeft].join(\"|\");')").unwrap(),
+        Value::string("1|-5|34|3|0|0"));
+    assert!(session.evaluate("a.setAttentionPos(7)").is_err());
+    assert_eq!(
+        session.evaluate("a.attentionLeft").unwrap(),
+        Value::Integer(-5)
+    );
+}
+
+#[test]
 fn original_modal_layer_corpus() {
     let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/layer_modal.json")).unwrap();
     for case in cases {

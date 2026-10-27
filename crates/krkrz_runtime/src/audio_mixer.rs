@@ -47,7 +47,23 @@ impl Session {
         if frames == 0 {
             return Ok(());
         }
-        let global_volume = self.services.sound_global_volume as f32 / 100_000.0;
+        let mut windows = self
+            .services
+            .windows
+            .values()
+            .filter(|w| w.constructed && w.visible)
+            .peekable();
+        let muted = windows.peek().is_some()
+            && match self.services.sound_focus_mode {
+                1 => windows.all(|w| w.minimized),
+                2 => !windows.any(|w| !w.minimized && w.focused != Some(false)),
+                _ => false,
+            };
+        let global_volume = if muted {
+            0.0
+        } else {
+            self.services.sound_global_volume as f32 / 100_000.0
+        };
         for sound in self.services.sounds.values_mut() {
             if sound.status != "play" || sound.paused {
                 continue;

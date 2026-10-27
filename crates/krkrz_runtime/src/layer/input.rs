@@ -342,27 +342,130 @@ impl Services {
 }
 impl crate::Session {
     fn host_window_event(&mut self, window: usize, name: &str, args: &[Value]) -> Result<()> {
-        if !self.services.windows.contains_key(&window) {
+        self.services
+            .host_window_event(&mut self.vm, window, name, args, &mut self.budget)
+    }
+    /// Physical client coordinates are converted using the window's draw rectangle.
+    pub fn input(&mut self, window: &Value, event: InputEvent) -> Result<()> {
+        self.services
+            .window_input(&mut self.vm, window, event, &mut self.budget)
+    }
+    pub fn window_cursor(&self, window: &Value) -> Result<i32> {
+        let id = object(window)?.context("cursor requires a Window")?;
+        let window = self
+            .services
+            .windows
+            .get(&id)
+            .context("cursor Window is invalid")?;
+        Ok(std::iter::successors(
+            window
+                .input
+                .hover
+                .and_then(|id| self.services.layers.get(&id)),
+            |layer| layer.parent.and_then(|id| self.services.layers.get(&id)),
+        )
+        .map(|layer| layer.cursor)
+        .find(|cursor| *cursor != 0)
+        .unwrap_or(0))
+    }
+    pub fn request_window_close(&mut self, window: &Value) -> Result<()> {
+        let id = object(window)?.context("close requires a Window")?;
+        self.host_window_event(id, "onCloseQuery", &[Value::Integer(1)])
+    }
+    pub fn resize_window(&mut self, window: &Value, width: u32, height: u32) -> Result<()> {
+        ensure!(
+            width <= 32768 && height <= 32768,
+            "window size exceeds limit"
+        );
+        let id = object(window)?.context("resize requires a Window")?;
+        let w = self
+            .services
+            .windows
+            .get_mut(&id)
+            .context("resize Window is invalid")?;
+        if (w.inner_width, w.inner_height) != (width as i32, height as i32) {
+            w.inner_width = width as i32;
+            w.inner_height = height as i32;
+            w.resize_pending = true;
+        }
+        Ok(())
+    }
+}
+
+impl State {
+    pub(crate) fn gc_trace(&self, out: &mut Vec<Value>) {
+        out.extend(
+            [self.capture, self.hover]
+                .into_iter()
+                .flatten()
+                .map(Value::object),
+        );
+    }
+}
+
+impl Services {
+    pub(crate) fn host_window_event(
+        &mut self,
+        vm: &mut Vm,
+        window: usize,
+        name: &str,
+        args: &[Value],
+        budget: &mut u64,
+    ) -> Result<()> {
+        if !self.windows.contains_key(&window) {
             return Ok(());
         }
         let context = bound(window);
-        let callback = self.vm.get_member(&context, &Value::string(name), true)?;
+        let callback = vm.get_member(&context, &Value::string(name), true)?;
         if !matches!(callback, Value::Void) {
-            self.vm.call_function(
-                &callback,
-                &context,
-                args,
-                &mut self.services,
-                &mut self.budget,
-            )?;
+            vm.call_function(&callback, &context, args, self, budget)?;
         }
         Ok(())
     }
     /// Physical client coordinates are converted using the window's draw rectangle.
-    pub fn input(&mut self, window: &Value, event: InputEvent) -> Result<()> {
+    pub(crate) fn window_input(
+        &mut self,
+        vm: &mut Vm,
+        window: &Value,
+        event: InputEvent,
+        budget: &mut u64,
+    ) -> Result<()> {
+        ensure!(
+            self.input_dispatch_depth < 128,
+            "window input nesting limit exceeded"
+        );
+        self.input_dispatch_depth += 1;
+        let result = self.window_input_inner(vm, window, event, budget);
+        self.input_dispatch_depth -= 1;
+        // A close request must not invalidate a Layer while its script event
+        // still has native calls to complete, such as super.onMouseDown().
+        let closed = if self.input_dispatch_depth == 0 {
+            let pending: Vec<_> = self
+                .windows
+                .iter()
+                .filter_map(|(&id, w)| w.close_pending.then_some(id))
+                .collect();
+            pending.into_iter().try_for_each(|id| {
+                if self.windows.contains_key(&id) {
+                    vm.invalidate(&bound(id), self, budget)?;
+                }
+                Ok(())
+            })
+        } else {
+            Ok(())
+        };
+        result.and(closed)
+    }
+    fn window_input_inner(
+        &mut self,
+        vm: &mut Vm,
+        window: &Value,
+        event: InputEvent,
+        budget: &mut u64,
+    ) -> Result<()> {
         let window = object(window)?.context("input requires a Window")?;
         ensure!(
-            self.services.windows.contains_key(&window),
+            self.windows.contains_key(&window),
             "input Window is invalid"
         );
         // A transition completion can post KAG's exclusive continuation after
@@ -370,12 +473,11 @@ impl crate::Session {
         // input: their hover handlers may depend on the resumed scene script.
         // Reposted exclusive callbacks still precede input and share its budget;
         // ordinary/idle callbacks keep their usual deferred batch semantics.
-        while self.services.events.has_exclusive() {
-            let through = self.services.events.begin_batch();
-            self.services
-                .dispatch_async(&mut self.vm, through, 1, &mut self.budget)?;
+        while self.events.has_exclusive() {
+            let through = self.events.begin_batch();
+            self.dispatch_async(vm, through, 1, budget)?;
         }
-        let Some(state) = self.services.windows.get(&window) else {
+        let Some(state) = self.windows.get(&window) else {
             // The continuation may close the window awaiting this OS event.
             return Ok(());
         };
@@ -386,7 +488,7 @@ impl crate::Session {
         }
         let primary = object(&state.primary_layer)?;
         let convert = |x: i32, y: i32| {
-            if let Some(layer) = primary.and_then(|id| self.services.layers.get(&id)) {
+            if let Some(layer) = primary.and_then(|id| self.layers.get(&id)) {
                 let [ox, oy, w, h] = state.draw_rect(layer.width, layer.height);
                 [
                     ((i64::from(x) - i64::from(ox)) * i64::from(layer.width) / i64::from(w.max(1)))
@@ -461,7 +563,7 @@ impl crate::Session {
                 [0; 2],
             ),
         };
-        if let Some(state) = self.services.windows.get_mut(&window) {
+        if let Some(state) = self.windows.get_mut(&window) {
             if matches!(event, InputEvent::PointerMove { .. })
                 && state.pointer != point
                 && state.mouse_cursor_state == 1
@@ -485,35 +587,39 @@ impl crate::Session {
                     let key = [1, 2, 4].get(*button as usize).copied().unwrap_or(0);
                     state.input.keys.remove(&key);
                 }
-                InputEvent::Focus(false) => state.input.keys.clear(),
+                InputEvent::Focus(focused) => {
+                    state.focused = Some(*focused);
+                    if !focused {
+                        state.input.keys.clear();
+                    }
+                }
                 _ => {}
             }
         }
-        self.host_window_event(window, name, &args)?;
-        if !self.services.windows.contains_key(&window) {
+        self.host_window_event(vm, window, name, &args, budget)?;
+        if !self.windows.contains_key(&window) {
             return Ok(());
         }
-        let s = &mut self.services;
+        let s = self;
         match event {
             InputEvent::PointerMove { shift, .. } | InputEvent::PointerDown { shift, .. } => {
                 let moved = s.windows[&window].pointer != point;
                 s.windows.get_mut(&window).unwrap().pointer = point;
-                s.host_hover(&mut self.vm, window, point, shift, moved, &mut self.budget)?;
+                s.host_hover(vm, window, point, shift, moved, budget)?;
                 if !s.windows.contains_key(&window) {
                     return Ok(());
                 }
                 if let InputEvent::PointerDown { button, .. } = event {
-                    let target =
-                        s.host_target(&mut self.vm, window, point, true, &mut self.budget)?;
+                    let target = s.host_target(vm, window, point, true, budget)?;
                     s.windows.get_mut(&window).unwrap().input.release_capture = false;
                     if let Some(id) = target {
                         s.host_layer_pointer(
-                            &mut self.vm,
+                            vm,
                             id,
                             name,
                             point,
                             &[button.into(), shift.into()],
-                            &mut self.budget,
+                            budget,
                         )?;
                     }
                     if let Some(w) = s.windows.get_mut(&window)
@@ -524,36 +630,33 @@ impl crate::Session {
                 }
             }
             InputEvent::PointerUp { button, shift, .. } => {
-                if let Some(id) =
-                    s.host_target(&mut self.vm, window, point, true, &mut self.budget)?
-                {
+                if let Some(id) = s.host_target(vm, window, point, true, budget)? {
                     s.host_layer_pointer(
-                        &mut self.vm,
+                        vm,
                         id,
                         name,
                         point,
                         &[button.into(), shift.into()],
-                        &mut self.budget,
+                        budget,
                     )?;
                 }
                 if shift & 56 == 0
                     && let Some(w) = s.windows.get_mut(&window)
                 {
                     w.input.capture = None;
-                    s.host_hover(&mut self.vm, window, point, shift, false, &mut self.budget)?;
+                    s.host_hover(vm, window, point, shift, false, budget)?;
                 }
             }
             InputEvent::Click { .. } | InputEvent::DoubleClick { .. } => {
-                if let Some(id) =
-                    s.host_target(&mut self.vm, window, point, false, &mut self.budget)?
+                if let Some(id) = s.host_target(vm, window, point, false, budget)?
                     && (matches!(event, InputEvent::DoubleClick { .. })
                         || s.windows[&window].input.capture == Some(id))
                 {
-                    s.host_layer_pointer(&mut self.vm, id, name, point, &[], &mut self.budget)?;
+                    s.host_layer_pointer(vm, id, name, point, &[], budget)?;
                 }
             }
             InputEvent::PointerLeave => {
-                s.host_hover(&mut self.vm, window, [-1, -1], 0, false, &mut self.budget)?;
+                s.host_hover(vm, window, [-1, -1], 0, false, budget)?;
             }
             InputEvent::Focus(false) => {
                 s.windows.get_mut(&window).unwrap().input.capture = None;
@@ -571,60 +674,14 @@ impl crate::Session {
                         args.push(Value::Integer(1));
                     }
                     if let Some(id) = focused {
-                        s.layer_event(&mut self.vm, id, name, &args, &mut self.budget)?;
+                        s.layer_event(vm, id, name, &args, budget)?;
                     } else if !matches!(event, InputEvent::Wheel { .. }) {
-                        s.layer_input_default(&mut self.vm, root, name, &args, &mut self.budget)?;
+                        s.layer_input_default(vm, root, name, &args, budget)?;
                     }
                 }
             }
             _ => {}
         }
         Ok(())
-    }
-    pub fn window_cursor(&self, window: &Value) -> Result<i32> {
-        let id = object(window)?.context("cursor requires a Window")?;
-        let window = self
-            .services
-            .windows
-            .get(&id)
-            .context("cursor Window is invalid")?;
-        Ok(window
-            .input
-            .hover
-            .and_then(|id| self.services.layers.get(&id))
-            .map_or(0, |layer| layer.cursor))
-    }
-    pub fn request_window_close(&mut self, window: &Value) -> Result<()> {
-        let id = object(window)?.context("close requires a Window")?;
-        self.host_window_event(id, "onCloseQuery", &[Value::Integer(1)])
-    }
-    pub fn resize_window(&mut self, window: &Value, width: u32, height: u32) -> Result<()> {
-        ensure!(
-            width <= 32768 && height <= 32768,
-            "window size exceeds limit"
-        );
-        let id = object(window)?.context("resize requires a Window")?;
-        let w = self
-            .services
-            .windows
-            .get_mut(&id)
-            .context("resize Window is invalid")?;
-        if (w.inner_width, w.inner_height) != (width as i32, height as i32) {
-            w.inner_width = width as i32;
-            w.inner_height = height as i32;
-            w.resize_pending = true;
-        }
-        Ok(())
-    }
-}
-
-impl State {
-    pub(crate) fn gc_trace(&self, out: &mut Vec<Value>) {
-        out.extend(
-            [self.capture, self.hover]
-                .into_iter()
-                .flatten()
-                .map(Value::object),
-        );
     }
 }

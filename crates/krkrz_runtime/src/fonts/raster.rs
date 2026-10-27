@@ -27,6 +27,7 @@ pub(crate) struct TextRasterizer {
     style: FontStyle,
     ascent: i32,
     lines: Vec<(i32, i32)>,
+    prerendered: Option<Arc<prerendered::PrerenderedFont>>,
 }
 
 impl FontBook {
@@ -75,12 +76,23 @@ impl FontBook {
             style: style.clone(),
             ascent,
             lines,
+            prerendered: self.prerendered.get(style).cloned(),
         })
     }
 }
 
 impl TextRasterizer {
     pub(crate) fn glyph(&mut self, unit: u16, antialias: bool) -> Result<TextGlyph> {
+        if let Some(font) = &self.prerendered
+            && let Some(item) = font.find(unit)
+        {
+            let mut glyph = font.glyph(item)?;
+            let angle90 = self.style.angle as f64 * std::f64::consts::PI / 1800.0
+                + std::f64::consts::FRAC_PI_2;
+            glyph.left += (-angle90.cos() * self.ascent as f64) as i32;
+            glyph.top += (angle90.sin() * self.ascent as f64) as i32;
+            return Ok(glyph);
+        }
         let font = skrifa::FontRef::from_index(&self.face.data, self.face.index)?;
         let id = font.charmap().map(unit as u32).unwrap_or_default();
         let linear_advance =

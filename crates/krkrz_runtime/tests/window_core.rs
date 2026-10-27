@@ -35,3 +35,45 @@ fn window_invalidation_does_not_swallow_execution_limits() {
     .unwrap_err();
     assert!(error.downcast_ref::<VmAbort>().is_some(), "{error:#}");
 }
+
+#[test]
+fn window_update_delivers_pending_paint_before_returning() {
+    let source = r#"
+var w=new Window(),p=new Layer(w,null),c=new Layer(w,p),events=[];
+p.onPaint=function(){events.add('parent');};
+c.onPaint=function(){events.add('child');};
+p.update();c.update();w.update();events.add('returned');
+w.update();
+return events.join('|')+'|'+p.callOnPaint+'|'+c.callOnPaint;
+"#;
+    assert_eq!(
+        run(source, 100_000).unwrap(),
+        Value::string("parent|child|returned|0|0")
+    );
+    assert_eq!(
+        run("var w=new Window();w.update();return 1;", 100_000).unwrap(),
+        Value::Integer(1)
+    );
+}
+
+#[test]
+fn closing_during_input_keeps_the_window_valid_until_the_callback_returns() {
+    let project = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
+    session.evaluate("Scripts.exec('global.w=new Window();w.visible=true;var p=new Layer(w,null);w.onMouseDown=function(){w.close();global.alive=isvalid w;};')").unwrap();
+    let window = session.evaluate("w").unwrap();
+    session
+        .input(
+            &window,
+            krkrz_runtime::InputEvent::PointerDown {
+                x: 1,
+                y: 1,
+                button: 0,
+                shift: 8,
+            },
+        )
+        .unwrap();
+    assert_eq!(session.evaluate("alive").unwrap(), Value::Integer(1));
+    assert_eq!(session.evaluate("isvalid w").unwrap(), Value::Integer(0));
+}

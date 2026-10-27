@@ -2,7 +2,7 @@
 use crate::{Services, layer::object};
 use anyhow::{Context, Result};
 use krkrz_tjs::{Value, Vm, unsupported};
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Font {
     pub(crate) face: String,
     pub(crate) height: i32,
@@ -78,6 +78,23 @@ impl Services {
             self.font_objects.remove(&id);
             return Ok(Value::Void);
         }
+        if op == "mapPrerenderedFont" {
+            let style = self
+                .font_objects
+                .get(&id)
+                .context("context has no Font native instance")?
+                .clone();
+            let storage = args
+                .first()
+                .context("Font.mapPrerenderedFont: missing argument 0")?
+                .text();
+            let data = self.read_storage(&storage)?;
+            *budget = budget
+                .checked_sub(data.len() as u64)
+                .ok_or_else(|| unsupported("Font mapping execution budget exceeded"))?;
+            self.fonts.map_prerendered(style, data)?;
+            return Ok(Value::Void);
+        }
         let f = self
             .font_objects
             .get_mut(&id)
@@ -114,6 +131,7 @@ impl Services {
             "set:italic" => f.italic = arg(0)?.truth()?,
             "set:underline" => f.underline = arg(0)?.truth()?,
             "set:strikeout" => f.strikeout = arg(0)?.truth()?,
+            "unmapPrerenderedFont" => self.fonts.unmap_prerendered(f),
             "getTextWidth" | "getEscWidthX" | "getEscWidthY" | "getEscHeightX"
             | "getEscHeightY" => {
                 let Value::String(text) = arg(0)?.unary("string")? else {
@@ -126,9 +144,7 @@ impl Services {
                 let extent = if op.starts_with("getEscHeight") {
                     f.height.unsigned_abs() as f64
                 } else {
-                    self.fonts
-                        .text_width(&f.face, &text, f.height.unsigned_abs(), f.bold)?
-                        as f64
+                    self.fonts.measure(f, &text)? as f64
                 };
                 return Ok(match op {
                     "getTextWidth" => Value::Integer(extent as i64),

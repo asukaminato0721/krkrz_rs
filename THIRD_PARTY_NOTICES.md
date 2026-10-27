@@ -56,6 +56,16 @@ and text stream encoding follow Kirikiri Z `tjs2/tjsArray.cpp`,
 `saveStruct/Main.cpp` and Kirikiroid2 `src/plugins/saveStruct.cpp`, adjusted
 against the installed plugin's output. The historical plugin lists Go Watanabe
 and miahmie as authors and specifies the same Kirikiri license below.
+Prerendered font mapping, TFT indices and glyph run decoding follow Kirikiri Z
+`visual/PrerenderedFont.cpp`, `visual/PrerenderedFont.h` and
+`visual/LayerBitmapImpl.cpp`, under the same Kirikiri license below.
+Legacy draw-device constants and preferences follow Kirikiroid2
+`src/core/visual/win32/PassThroughDrawDevice.cpp` and its header at the pinned
+revision in `docs/references.json`. Modal window close behavior follows
+Kirikiri Z `visual/WindowIntf.cpp` and `visual/win32/WindowImpl.cpp`.
+These sources use the Kirikiri license below.
+Core KAG parameter expansion and macro dictionaries follow Kirikiroid2
+`src/core/utils/KAGParser.cpp`, under the same Kirikiri license below.
 KAGParserEx parsing, macro expansion and native parser state follow wamsoft/KAGParserEx
 `KAGParser.cpp`, Copyright (C) 2000 W.Dee <dee@kikyou.info> and contributors,
 under the same Kirikiri license below. Layer focus, province pixels and colorRect
@@ -258,6 +268,9 @@ PE32/PE32+ resource parsing and ICO group reconstruction use `pelite` 0.10.0
 the resulting ICO image. The application reads the user's installed executable
 without loading or executing it. Tests construct synthetic PE resources; no
 original game executable, icon, or artwork is distributed with this repository.
+Fixed file versions also use pelite's version-resource reader. Synchronous
+script exit follows Kirikiri Z `base/SystemIntf.cpp` and
+`base/win32/SysInitImpl.cpp`, under the Kirikiri license above.
 
 ## Built-in MPEG decoder
 

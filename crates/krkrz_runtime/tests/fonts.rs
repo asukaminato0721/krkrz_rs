@@ -2,6 +2,114 @@ use krkrz_runtime::{Session, fonts::FontBook};
 use krkrz_tjs::Value;
 
 const FONT: &[u8] = include_bytes!("fixtures/synthetic.ttf");
+
+fn prerendered_font(version: u8) -> Vec<u8> {
+    let mut data = b"TVP pre-rendered font\x1a".to_vec();
+    data.extend([version, 2]);
+    for value in [1u32, 36, 38] {
+        data.extend(value.to_le_bytes());
+    }
+    data.extend(65u16.to_le_bytes());
+    data.extend(58u32.to_le_bytes());
+    // A 2x2 glyph at baseline (1,-3), with advance 9 and coverage [64,32,32,32].
+    for value in [2i16, 2, 1, 3, 9, 0, 9, 0] {
+        data.extend(value.to_le_bytes());
+    }
+    data.extend(if version == 0 {
+        vec![64, 32, 65, 2]
+    } else {
+        vec![64, 32, 66]
+    });
+    data
+}
+
+#[test]
+fn prerendered_mapping_controls_shared_metrics_pixels_and_unmapping() {
+    for version in [0, 1] {
+        let project = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join("synthetic.ttf"), FONT).unwrap();
+        std::fs::write(project.path().join("font.tft"), prerendered_font(version)).unwrap();
+        std::fs::write(project.path().join("invalid.tft"), b"invalid").unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
+        let source = r#"
+Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);
+var w=new Window(),l=new Layer(w,null),other=new Layer(w,l),f=l.font,g=other.font;
+l.setSize(32,28);l.face=dfAlpha;l.fillRect(0,0,32,28,0);
+f.face=g.face='Kirikiri Synthetic';f.height=g.height=20;
+f.mapPrerenderedFont('font.tft');
+var results=[f.getTextWidth('AA'),g.getTextWidth('Aあ'),f.getTextHeight('AA'),f.getEscWidthX('AA')];
+// The mapped glyph stays antialiased even when drawText requests monochrome.
+l.drawText(0,0,'AA',0xffffff,255,false);
+var pixels=0,alpha=0;for(var y=0;y<28;y++)for(var x=0;x<32;x++){var a=l.getMaskPixel(x,y);if(a)pixels++;alpha+=a;}
+results.add(pixels);results.add(alpha);
+// The complete font style selects the mapping.
+g.bold=true;results.add(g.getTextWidth('A'));g.bold=false;
+g.height=21;results.add(g.getTextWidth('A'));g.height=20;
+g.angle=900;results.add(g.getTextWidth('A'));g.angle=0;
+g.face='other';results.add(g.getTextWidth('A'));g.face=f.face;
+try {f.mapPrerenderedFont('invalid.tft');}catch(e){}
+results.add(g.getTextWidth('A'));
+// Remove the mapping through a different Font instance.
+g.unmapPrerenderedFont();results.add(f.getTextWidth('A'));
+g.unmapPrerenderedFont();
+return results.join('|');
+"#;
+        let program = krkrz_tjs::compile("prerendered", source).unwrap();
+        let result = session
+            .vm
+            .execute(&program, &mut session.services, &mut session.budget)
+            .unwrap();
+        assert_eq!(result, Value::string("18|23|20|18|8|1278|15|15|14|14|9|14"));
+    }
+}
+
+#[test]
+fn prerendered_fonts_reject_invalid_headers_and_compressed_runs() {
+    let valid = prerendered_font(1);
+    let mut cases = Vec::new();
+    for length in [0, 21, 35, 37, 57] {
+        cases.push((valid[..length].to_vec(), false));
+    }
+    for (offset, value) in [(0, 0), (22, 2), (23, 1), (28, 255), (32, 255), (38, 255)] {
+        let mut data = valid.clone();
+        data[offset] = value;
+        cases.push((data, false));
+    }
+    for bytes in [vec![67], vec![64, 68], vec![64]] {
+        let mut data = valid[..58].to_vec();
+        data.extend(bytes);
+        cases.push((data, true));
+    }
+    // Version 0 permits 0x41 followed by a count, but no other coverage >64.
+    for bytes in [vec![64, 66], vec![64, 65], vec![64, 65, 4]] {
+        let mut data = valid[..58].to_vec();
+        data[22] = 0;
+        data.extend(bytes);
+        cases.push((data, true));
+    }
+    for (data, draw) in cases {
+        let project = tempfile::tempdir().unwrap();
+        let saves = tempfile::tempdir().unwrap();
+        std::fs::write(project.path().join("synthetic.ttf"), FONT).unwrap();
+        std::fs::write(project.path().join("font.tft"), data).unwrap();
+        let mut session = Session::open(project.path(), Some(saves.path()), None, 100_000).unwrap();
+        let source = format!(
+            "Plugins.link('PackinOne.dll');System.addFont('synthetic.ttf',false);var w=new Window(),l=new Layer(w,null);l.setSize(32,28);l.font.height=20;l.font.mapPrerenderedFont('font.tft');{}",
+            if draw {
+                "l.drawText(0,0,'A',0xffffff);"
+            } else {
+                ""
+            }
+        );
+        let program = krkrz_tjs::compile("malformed TFT", &source).unwrap();
+        let error = session
+            .vm
+            .execute(&program, &mut session.services, &mut session.budget)
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("prerendered"), "{error:#}");
+    }
+}
 #[test]
 fn font_names_deduplication_metrics_and_coverage() {
     let mut book = FontBook::default();

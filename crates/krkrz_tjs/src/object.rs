@@ -109,6 +109,16 @@ pub fn unsupported(message: impl Into<String>) -> anyhow::Error {
     anyhow::Error::new(VmAbort(message.into()))
 }
 
+/// A script requested synchronous host termination. Script handlers must not catch it.
+#[derive(Debug)]
+pub struct VmExit(pub i32);
+impl std::fmt::Display for VmExit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "script requested exit with code {}", self.0)
+    }
+}
+impl std::error::Error for VmExit {}
+
 #[derive(Debug)]
 pub(crate) struct Thrown {
     pub value: Value,

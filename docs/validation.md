@@ -1,5 +1,106 @@
 # Validation record
 
+## 2026-10-27 scene gallery macro parameters
+
+The unchanged Joshi game's `SceneList.ks` adds button settings to `mp`
+before expanding `[button *]`. Core KAG copies the complete dictionary.
+KAGParserEx copies only its recorded parameter names. The runtime previously
+used the extended rule for both parsers and omitted the button's image name.
+
+`Args<P>` now separates the two parameter formats. Core arguments contain a
+dictionary. Extended arguments also contain the native parameter-name array.
+Parser construction selects the format after plugin loading. Existing parser
+instances keep their format. Core save data contains complete dictionaries;
+restore also accepts the older runtime's flat argument arrays.
+
+The nine parser tests pass, including the original KAGParserEx corpus and
+regressions for nested macros, script-added fields, deletion, copying and
+save restoration. The installed-game check uses native-order pointer events
+and a temporary save directory. It reaches the scene gallery and renders
+its twelve locked thumbnail buttons at 1280×720. It selects the fifth page,
+checks its two thumbnails, returns to the first page and returns to the title.
+Unlocked scene playback remains unverified. Runtime Clippy passes with warnings
+denied. Both CLI binaries build.
+
+## 2026-10-27 Yuri confirmation settings
+
+`TYesNoDialog.tjs` parses its background and button settings with
+`String.substring(start, count)`. The runtime incorrectly treated the second
+argument as an end position. Default settings did not match, so the script
+accessed an empty background Layer value at line 104.
+
+Both `substring` and `substr` now use the original TJS start-and-count rules.
+Negative starts and counts return empty strings. Explicit void counts convert
+to zero. Tests cover UTF-16 units, bounds and argument counts.
+
+The unchanged game now constructs its confirmation dialog. The Yes button
+returns true. The No button and Esc return false. A separate Xvfb check
+displayed its captured Layer pixels and verified Esc and button coordinates.
+The startup and confirmation checks used a temporary save directory.
+
+## 2026-10-27 Yuri startup version guard
+
+`System.versionString` to equal `2.11.19.13`.
+Its original EXE contains that fixed file version. The runtime now reads
+the selected original executable's version resource. Missing or invalid
+metadata retains the default `1.2.0.3`. Synthetic PE32 and PE32+ version
+resources pass the reader tests.
+
+`System.exit()` now propagates a separate VM exit signal. Script exception
+handlers cannot catch it. Both CLI hosts handle this signal as termination
+and preserve the requested process status. Runtime tests cover default
+exit, a nonzero status and exit through nested script execution.
+
+The original startup then reached `TSound.tjs`, which selects
+`sgfmMuteOnMinimize`. The shared wave mixer now applies global focus muting
+without stopping source time or callbacks. Window focus events and native
+minimization state control muting. PCM tests verify mute and audio recovery.
+
+The unchanged game reached its title menu at 10,000 ms in headless replay.
+The captured frame displayed the title and menu controls. Validation used
+a temporary save directory. Complete gameplay remains unverified.
+
+## 2026-10-27 Sweet Girl exit confirmation
+
+The original `YesNoDialog.tjs` requires `Window.PassThroughDrawDevice`, its
+`dtDrawDib` constant and `preferredDrawer`. The runtime now provides that
+legacy interface. It also retains the dialog's `innerSunken` and
+`showScrollBars` settings. `Window.showModal()` uses the shared compositor
+and input dispatcher through a separate native presentation process.
+Modal close hides the dialog without invalidating its script result.
+
+The unchanged game script returned true for the Yes button and false for
+Esc and window close. The original title's exit link also completed its
+input callback. This required deferring main-window invalidation until
+the active input callback returned. Previously, `MessageLayer.onMouseDown`
+called its superclass after the window and its layers became invalid.
+
+An Xvfb test displayed pixels captured from the original confirmation
+dialog. It verified the child process's Esc event, Yes-button coordinates
+and termination after its parent ended the exchange. Separate runtime
+tests verified the script results and main-window lifetime. Full-game
+native pointer automation did not activate the title link under Xvfb.
+That complete native interaction remains unverified.
+
+The six related runtime test targets passed 47 tests. Both opt-in game
+tests passed separately. Runtime and CLI Clippy passed with warnings denied.
+Both CLI binaries built. Tests used temporary save directories.
+
+## 2026-10-27 prerendered fonts and Sweet Girl startup
+
+`Font.mapPrerenderedFont` now reads TFT version 0 and 1 files through game
+storage. Font settings select a session-wide mapping. Text measurement uses
+the stored advances, and Layer drawing uses the stored bitmap coverage and
+origins. Missing characters use the normal font backend.
+`Font.unmapPrerenderedFont` removes the selected mapping. Invalid headers,
+indices and compressed runs return errors. Failed mapping preserves the
+previous mapping.
+
+
+The font and Window test targets passed 12 tests. The existing system-font
+test remained ignored. Runtime Clippy passed with warnings denied. Both CLI
+binaries built successfully.
+
 ## 2026-09-21 integration update
 
 The optimized runtime completed the unmodified warning and pretitle sequences,

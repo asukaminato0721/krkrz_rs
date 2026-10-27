@@ -5,6 +5,52 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Clone, Copy)]
+pub(crate) enum UserDirectory {
+    Personal,
+    AppData,
+}
+impl UserDirectory {
+    fn local_path(self, project: &Path) -> PathBuf {
+        match self {
+            Self::Personal => dirs::document_dir().or_else(dirs::data_dir),
+            Self::AppData => dirs::data_dir(),
+        }
+        .unwrap_or_else(|| project.to_path_buf())
+    }
+    pub(crate) fn storage_path(self, project: &Path) -> String {
+        let path = self.local_path(project);
+        format!("file://.{}/", path.to_string_lossy().trim_end_matches('/'))
+    }
+    fn save_namespace(self) -> &'static str {
+        match self {
+            Self::Personal => "personal",
+            Self::AppData => "appdata",
+        }
+    }
+}
+
+fn user_relative(project: &Path, candidate: &Path) -> Result<PathBuf> {
+    let directory = [UserDirectory::Personal, UserDirectory::AppData]
+        .into_iter()
+        .find_map(|directory| {
+            candidate
+                .strip_prefix(directory.local_path(project))
+                .ok()
+                .map(|relative| (directory, relative))
+        });
+    let (directory, relative) = directory.with_context(|| {
+        format!(
+            "writable storage is outside the game, save and user directories: {}",
+            candidate.display()
+        )
+    })?;
+    // Validate the suffix before adding the namespace. '..' must not cross
+    // the logical user-directory root, even when the final path stays in saves.
+    let relative = krkrz_core::storage_name(&relative.to_string_lossy())?;
+    Ok(Path::new(directory.save_namespace()).join(relative))
+}
+
 pub(crate) fn path(project: &Path, root: &Path, name: &str) -> Result<PathBuf> {
     ensure!(
         !name.contains('>') && !name.contains('\0'),
@@ -16,9 +62,10 @@ pub(crate) fn path(project: &Path, root: &Path, name: &str) -> Result<PathBuf> {
         candidate
             .strip_prefix(root)
             .or_else(|_| candidate.strip_prefix(project))
-            .context("writable storage is outside the game and save directories")?
+            .map(Path::to_path_buf)
+            .or_else(|_| user_relative(project, candidate))?
     } else {
-        candidate
+        candidate.to_path_buf()
     };
     let relative = krkrz_core::storage_name(&relative.to_string_lossy())?;
     let target = root.join(relative);

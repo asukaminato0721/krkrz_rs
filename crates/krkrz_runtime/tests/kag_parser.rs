@@ -170,3 +170,72 @@ fn standard_parser_plugin_and_extended_alias_keep_existing_instances() {
         );
     }
 }
+
+#[test]
+fn core_wildcard_copies_live_macro_dictionary_through_nested_macros() {
+    for copy in [false, true] {
+        let (project, _saves, mut s) = session("", 100_000);
+        std::fs::write(project.path().join("story.ks"),
+            "[macro name=outer][edit][inner *][endmacro][macro name=inner][button before=X * after=Y][endmacro][outer original=A removed=B]").unwrap();
+        let source = format!(
+            r#"
+Plugins.link('KAGParser.dll');
+var p=new KAGParser();p.ignoreCR=true;p.loadScenario('story.ks');
+if(p.getNextTag().tagname!='edit')throw 'missing edit';
+p.mp.graphic='thumbnail';p.mp.original='changed';delete p.mp.removed;
+if({copy}){{var q=new KAGParser();q.ignoreCR=true;q.assign(p);p=q;}}
+var t=p.getNextTag();
+return [t.tagname,t.graphic,t.original,t.removed===void,t.before===void,t.after,p.mp.graphic,t.taglist===void].join('|');
+"#
+        );
+        std::fs::write(project.path().join("test.tjs"), source).unwrap();
+        assert_eq!(
+            s.execute_storage("test.tjs").unwrap(),
+            Value::string("button|thumbnail|changed|1|1|Y|thumbnail|1")
+        );
+    }
+}
+
+#[test]
+fn core_saved_macro_arguments_include_script_added_fields() {
+    let (project, _saves, mut s) = session("", 100_000);
+    std::fs::write(
+        project.path().join("story.ks"),
+        "[macro name=m][edit][button *][endmacro][m original=A]",
+    )
+    .unwrap();
+    std::fs::write(
+        project.path().join("test.tjs"),
+        r#"
+var p=new KAGParser();p.ignoreCR=true;p.loadScenario('story.ks');p.getNextTag();
+p.mp.graphic='thumbnail';delete p.mp.original;
+var state=p.store();p.mp.graphic='changed';
+var q=new KAGParser();q.restore(state);
+return [state.macroArgs[0].graphic,q.mp.graphic,q.mp.original===void].join('|');
+"#,
+    )
+    .unwrap();
+    assert_eq!(
+        s.execute_storage("test.tjs").unwrap(),
+        Value::string("thumbnail|thumbnail|1")
+    );
+}
+
+#[test]
+fn extended_wildcard_keeps_recorded_names_and_preceding_attributes() {
+    let (project, _saves, mut s) = session("", 100_000);
+    std::fs::write(project.path().join("story.ks"),
+        "[macro name=m][edit][button before=X * explicit=%graphic][endmacro][m original=A removed=B]").unwrap();
+    std::fs::write(project.path().join("test.tjs"), r#"
+Plugins.link('KAGParserEx.dll');
+var p=new KAGParser();p.ignoreCR=true;p.loadScenario('story.ks');p.getNextTag();
+p.mp.graphic='thumbnail';delete p.mp.removed;
+var q=new KAGParser();q.ignoreCR=true;q.assign(p);
+var t=q.getNextTag();
+return [t.tagname,t.before,t.original,t.removed===void,t.graphic===void,t.explicit,t.taglist.join(',')].join('|');
+"#).unwrap();
+    assert_eq!(
+        s.execute_storage("test.tjs").unwrap(),
+        Value::string("button|X|A|1|1|thumbnail|tagname,before,original,explicit")
+    );
+}

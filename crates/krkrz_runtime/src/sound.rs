@@ -171,10 +171,10 @@ impl Services {
                 self.sound_global_volume = (arg(0)?.integer()? as i32).clamp(0, 100_000);
                 return Ok(Value::Void);
             }
-            "get:globalFocusMode" => return Ok(Value::Integer(0)),
-            "set:globalFocusMode" if arg(0)?.integer()? == 0 => return Ok(Value::Void),
+            "get:globalFocusMode" => return Ok(Value::Integer(self.sound_focus_mode.into())),
             "set:globalFocusMode" => {
-                return Err(unsupported("sound focus muting is not implemented"));
+                self.sound_focus_mode = arg(0)?.integer()? as i32;
+                return Ok(Value::Void);
             }
             _ => {}
         }

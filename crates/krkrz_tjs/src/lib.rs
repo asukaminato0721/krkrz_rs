@@ -26,7 +26,7 @@ pub use preprocessor::Preprocessor;
 pub mod value;
 mod vm;
 pub use compiler::{compile, compile_expression, compile_with_preprocessor};
-pub use object::{Class, Function, Property, VmAbort, unsupported};
+pub use object::{Class, Function, Property, VmAbort, VmExit, unsupported};
 pub use value::{ObjectRef, Value};
 pub use vm::{Argument, Host, Instruction, Op, Program, Vm};
 

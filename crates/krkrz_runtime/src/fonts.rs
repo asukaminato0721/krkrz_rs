@@ -10,6 +10,7 @@ use skrifa::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
+mod prerendered;
 mod raster;
 mod system;
 pub(crate) use raster::TextGlyph;
@@ -26,6 +27,7 @@ pub struct FontBook {
     sources: BTreeMap<[u8; 32], u32>,
     bytes: usize,
     system_fallback: bool,
+    prerendered: BTreeMap<crate::font::Font, Arc<prerendered::PrerenderedFont>>,
 }
 #[derive(Debug, PartialEq)]
 pub struct GlyphBitmap {
@@ -38,6 +40,65 @@ pub struct GlyphBitmap {
     pub coverage: Vec<u8>,
 }
 impl FontBook {
+    pub(crate) fn map_prerendered(
+        &mut self,
+        style: crate::font::Font,
+        data: Vec<u8>,
+    ) -> Result<()> {
+        ensure!(
+            data.len() <= 64 << 20,
+            "prerendered font exceeds size limit"
+        );
+        let hash: [u8; 32] = Sha256::digest(&data).into();
+        let existing = self
+            .prerendered
+            .values()
+            .find(|font| font.hash == hash)
+            .cloned();
+        let font = match existing {
+            Some(font) => font,
+            None => Arc::new(prerendered::PrerenderedFont::parse(data, hash)?),
+        };
+        ensure!(
+            self.prerendered.contains_key(&style) || self.prerendered.len() < 256,
+            "prerendered font mapping limit exceeded"
+        );
+        let bytes: usize = self
+            .prerendered
+            .iter()
+            .filter(|(key, _)| **key != style)
+            .map(|(_, font)| font.byte_len())
+            .sum();
+        ensure!(
+            bytes + font.byte_len() <= 256 << 20,
+            "prerendered font storage limit exceeded"
+        );
+        self.prerendered.insert(style, font);
+        Ok(())
+    }
+    pub(crate) fn unmap_prerendered(&mut self, style: &crate::font::Font) {
+        self.prerendered.remove(style);
+    }
+    pub(crate) fn measure(&self, style: &crate::font::Font, text: &[u16]) -> Result<i32> {
+        if let Some(font) = self.prerendered.get(style) {
+            let mut width = 0i32;
+            for &unit in text.iter().take_while(|c| **c != 0) {
+                let advance = match font.find(unit) {
+                    Some(item) => item.advance,
+                    None => self.text_width(
+                        &style.face,
+                        &[unit],
+                        style.height.unsigned_abs(),
+                        style.bold,
+                    )?,
+                };
+                width = width.checked_add(advance).context("text width overflow")?;
+            }
+            Ok(width)
+        } else {
+            self.text_width(&style.face, text, style.height.unsigned_abs(), style.bold)
+        }
+    }
     /// Keep game fonts private and preferred, with a lazily loaded system font
     /// for games that rely on Windows fonts instead of bundling their own.
     pub fn with_system_fallback() -> Self {

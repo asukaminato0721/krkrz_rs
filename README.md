@@ -26,6 +26,10 @@ See [provenance](docs/provenance.md) for extraction details and
 Proprietary game scripts, scenarios, media and saves are not bundled; running a
 game requires a user-supplied installation.
 
+Native window icons use transparent padding when the source image is rectangular.
+This preserves their pixels and proportions while meeting Wayland's square-icon
+requirement. The same conversion applies to EXE icons and `--icon` images.
+
 ## Build and verify
 
 ```sh
@@ -48,6 +52,13 @@ Backward seeks restart video decoding from the beginning with bounded memory.
 The workspace builds independently of sibling repositories. `Cargo.lock` pins
 Rust dependencies. Research checkouts, extracted scripts and media belong outside
 the source tree, for example `$XDG_CACHE_HOME/krkrz_rs`.
+
+`System.versionString` uses the selected original EXE's fixed file version.
+Missing or invalid version metadata uses the compatibility default `1.2.0.3`.
+`System.exit(code)` stops script execution and returns the requested process
+status from either CLI host. Script exception handlers cannot catch the exit.
+`WaveSoundBuffer.globalFocusMode` can mute wave audio while all visible windows
+are minimized or inactive. Muting preserves playback time and callbacks.
 
 GitHub Actions builds release archives for Linux, macOS and Windows on x86_64
 and ARM64, plus FreeBSD x86_64. Each archive contains `krkrz_engine` and
@@ -221,6 +232,9 @@ directories cannot be selected as save destinations. Native Array/Dictionary
 structured saves, Array text load/save, and the standalone saveStruct plugin
 write through this overlay. Game-relative writes are redirected there; reads
 prefer it. Directories are created when data is written.
+Paths below `System.personalPath` and `System.appDataPath` also use this overlay,
+under `personal/` and `appdata/`. Child directory names are retained. If the two
+system directories coincide, their paths use the same `personal/` alias.
 
 Use an optimized build for the original game; the debug interpreter is much slower.
 Optional `--trace /path/outside/the/game/new-trace.json` records execution for diagnosis.
@@ -259,6 +273,21 @@ sessions automatically load a system font, preferring Noto/Source Han CJK fonts
 for missing Windows faces such as `黑体`. The fallback file is loaded on first use
 and shared across sessions; no font files are copied into the game directory.
 
+`Font.mapPrerenderedFont` loads Kirikiri `.tft` version 0 and 1 files from
+game storage. All layers in the session share mappings for the same font
+name, size, angle and style. Measurement uses the stored advances. Drawing
+uses the stored coverage and origins. Missing characters use the normal font
+backend. `Font.unmapPrerenderedFont` removes the current style's mapping.
+`Window.update()` delivers pending layer paint callbacks before it returns.
+
+Legacy scripts can use `Window.PassThroughDrawDevice` and its drawer constants.
+Both draw-device classes retain `preferredDrawer` while the CPU compositor
+supplies their pixels. `Window.showModal()` displays the script's Layer tree
+in a separate native window. Clicks and basic navigation keys use the shared
+input dispatcher. Closing a modal window preserves its script result until
+explicit invalidation. The game clock pauses while the window waits for input.
+Modal frames update after input events. Animated modal windows are not supported.
+
 The interactive and replay hosts collect unreachable TJS objects between ticks.
 Collection traces script graphs and native references, runs finalizers, and keeps
 object IDs unique for the session. The 100,000-object limit applies to live
@@ -282,6 +311,9 @@ parent/child links and Font state. Timer and AsyncTrigger share the session even
 KAGParserEx now executes expressions, macros, conditions, inline-script callbacks and
 scenario calls. Native assign/store/restore follow the original label-based format
 and have differential and fresh-session serialization tests.
+Core KAG macros copy the complete live `mp` dictionary for `*` attributes.
+Loading `KAGParserEx.dll` selects ordered parameter expansion for new parsers.
+The two parameter formats use `Args<P>` and retain their respective save formats.
 After PackinOne has loaded, `layerExImage.dll` resolves to its existing exports,
 as in the installed engine. The image-effect operations still need implementation.
 
@@ -409,7 +441,8 @@ drawing, message boxes and pointer-based buffer operations remain unsupported.
 Layout and positioning are approximate rather than Win32 dialog-unit rendering.
 
 `System.personalPath` and `System.appDataPath` use the platform's user document
-and application-data directories. `Storages.selectFile` opens a separate egui
+and application-data directories. Ordinary storage operations map child paths
+to the session's save overlay. `Storages.selectFile` opens a separate egui
 file picker for opening or saving, with initial paths, filename filters,
 one-based filter indices, default extensions and overwrite confirmation.
 Cancellation leaves the script's options unchanged. A selected file can be read

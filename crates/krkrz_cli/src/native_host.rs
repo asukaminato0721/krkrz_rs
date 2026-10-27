@@ -11,6 +11,7 @@ use std::{
 };
 use winit::{
     application::ApplicationHandler,
+    cursor::{CustomCursor, CustomCursorSource},
     dpi::{PhysicalPosition, PhysicalSize},
     event::{ElementState, Ime, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop, run_on_demand::EventLoopExtRunOnDemand},
@@ -36,6 +37,7 @@ struct NativeWindow {
     suspended: bool,
     frame_state: WindowFrameState,
     frame: Option<krkrz_assets::media::Image>,
+    cursor: Option<i32>,
 }
 impl NativeWindow {
     fn refresh_frame(&mut self, session: &mut Session, target: &Value) -> Result<bool> {
@@ -57,7 +59,33 @@ pub fn load_icon(path: &std::path::Path) -> Result<Icon> {
         "window icon exceeds 16 MiB"
     );
     let image = krkrz_assets::media::Image::decode(&bytes).context("decode window icon")?;
-    Ok(RgbaIcon::new(image.rgba, image.width, image.height)?.into())
+    square_icon(image)
+}
+
+/// Wayland's xdg-toplevel-icon protocol requires a square buffer. Preserve the
+/// source pixels and center rectangular images on transparent padding.
+fn square_icon(image: krkrz_assets::media::Image) -> Result<Icon> {
+    let side = image.width.max(image.height) as usize;
+    anyhow::ensure!(
+        side > 0 && side <= 8192 && image.width > 0 && image.height > 0,
+        "invalid window icon dimensions"
+    );
+    let (width, height) = (image.width as usize, image.height as usize);
+    anyhow::ensure!(
+        image.rgba.len() == width * height * 4,
+        "invalid window icon pixel count"
+    );
+    if width == height {
+        return Ok(RgbaIcon::new(image.rgba, image.width, image.height)?.into());
+    }
+    let mut rgba = vec![0; side * side * 4];
+    let (left, top) = ((side - width) / 2, (side - height) / 2);
+    for y in 0..height {
+        let source = y * width * 4;
+        let target = ((y + top) * side + left) * 4;
+        rgba[target..target + width * 4].copy_from_slice(&image.rgba[source..source + width * 4]);
+    }
+    Ok(RgbaIcon::new(rgba, side as u32, side as u32)?.into())
 }
 
 /// Explicit image options take priority. Otherwise reuse the application's own
@@ -84,9 +112,7 @@ pub fn project_icon(
         else {
             return Ok(None);
         };
-        Ok(Some(
-            RgbaIcon::new(image.rgba, image.width, image.height)?.into(),
-        ))
+        Ok(Some(square_icon(image)?))
     };
     match load() {
         Ok(icon) => Ok(icon),
@@ -105,6 +131,10 @@ fn icon_executable(project: &std::path::Path) -> Result<Option<std::path::PathBu
 pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Result<()> {
     let mut event_loop = EventLoop::new()?;
     let dialog_wait = Rc::new(Cell::new(Duration::ZERO));
+    let wait = dialog_wait.clone();
+    session
+        .services
+        .set_modal_window_handler(move || crate::modal_window::Process::start(wait.clone()));
     let wait = dialog_wait.clone();
     session.services.set_input_dialog_handler(move |request| {
         let start = Instant::now();
@@ -137,6 +167,7 @@ pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Re
             None
         },
         windows: BTreeMap::new(),
+        cursors: BTreeMap::new(),
         icon,
         started: false,
         origin: Instant::now(),
@@ -153,6 +184,7 @@ struct Host<'a> {
     session: &'a mut Session,
     audio: Option<AudioOutput>,
     windows: BTreeMap<usize, NativeWindow>,
+    cursors: BTreeMap<i32, CustomCursor>,
     icon: Option<Icon>,
     started: bool,
     origin: Instant,
@@ -169,6 +201,10 @@ impl Host<'_> {
         self.messages = self.session.services.messages.len();
     }
     fn fail(&mut self, event_loop: &dyn ActiveEventLoop, error: anyhow::Error) {
+        if error.downcast_ref::<krkrz_tjs::VmExit>().is_some() {
+            event_loop.exit();
+            return;
+        }
         self.error = Some(error.context(format!(
             "native host at {} ms",
             self.session.services.time_ms
@@ -259,6 +295,7 @@ impl Host<'_> {
                     suspended: false,
                     frame_state: WindowFrameState::default(),
                     frame: None,
+                    cursor: None,
                 });
             }
             let native = self.windows.get_mut(&id).unwrap();
@@ -313,7 +350,30 @@ impl Host<'_> {
             native
                 .window
                 .set_cursor_visible(state.mouse_cursor_state == 0 && cursor != -1);
-            native.window.set_cursor(cursor_icon(cursor).into());
+            if native.cursor != Some(cursor) {
+                let shape = if let Some(image) = self.session.cursor_image(cursor) {
+                    let custom = match self.cursors.entry(cursor) {
+                        std::collections::btree_map::Entry::Occupied(entry) => entry.into_mut(),
+                        std::collections::btree_map::Entry::Vacant(entry) => {
+                            let [x, y] = image.hotspot();
+                            let image = image.image();
+                            let source = CustomCursorSource::from_rgba(
+                                image.rgba.clone(),
+                                image.width.try_into()?,
+                                image.height.try_into()?,
+                                x,
+                                y,
+                            )?;
+                            entry.insert(event_loop.create_custom_cursor(source)?)
+                        }
+                    };
+                    custom.clone().into()
+                } else {
+                    cursor_icon(cursor).into()
+                };
+                native.window.set_cursor(shape);
+                native.cursor = Some(cursor);
+            }
             native.state = state.clone();
         }
         if self.started && self.windows.is_empty() {
@@ -528,6 +588,15 @@ impl ApplicationHandler for Host<'_> {
         }
         // A synchronous input dialog pauses the script clock while the user types.
         self.origin += self.dialog_wait.take();
+        for (&id, native) in &mut self.windows {
+            if let Some(state) = self.session.services.windows.get_mut(&id)
+                && state.minimized == native.state.minimized
+                && let Some(minimized) = native.window.is_minimized()
+            {
+                state.minimized = minimized;
+                native.state.minimized = minimized;
+            }
+        }
         let now = self.origin.elapsed().as_millis().min(u64::MAX as u128) as u64;
         let frames = match self.frame_tasks.advance(now) {
             Ok(frames) => frames,
@@ -751,6 +820,38 @@ fn cursor_icon(cursor: i32) -> winit::cursor::CursorIcon {
 #[cfg(test)]
 mod icon_tests {
     use super::*;
+
+    #[test]
+    fn rectangular_icons_keep_pixels_and_receive_transparent_padding() {
+        for (width, height) in [(55, 58), (58, 55), (2, 2)] {
+            let rgba: Vec<_> = (0..width * height)
+                .flat_map(|i| [i as u8, 37, 91, 128])
+                .collect();
+            let icon = square_icon(krkrz_assets::media::Image {
+                width,
+                height,
+                rgba: rgba.clone(),
+            })
+            .unwrap();
+            let icon = icon.cast_ref::<RgbaIcon>().unwrap();
+            let side = width.max(height);
+            assert_eq!((icon.width(), icon.height()), (side, side));
+            let (left, top) = ((side - width) / 2, (side - height) / 2);
+            for y in 0..side {
+                for x in 0..side {
+                    let target = ((y * side + x) * 4) as usize;
+                    let expected = if x >= left && x < left + width && y >= top && y < top + height
+                    {
+                        let source = (((y - top) * width + x - left) * 4) as usize;
+                        &rgba[source..source + 4]
+                    } else {
+                        &[0, 0, 0, 0]
+                    };
+                    assert_eq!(&icon.buffer()[target..target + 4], expected);
+                }
+            }
+        }
+    }
 
     #[test]
     fn frame_clock_waits_and_skips_missed_frames() {

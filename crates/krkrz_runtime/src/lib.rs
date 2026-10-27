@@ -8,6 +8,7 @@ pub mod compositor;
 mod continuous;
 pub mod coroutine;
 mod csv;
+mod cursor;
 pub mod dialog;
 pub mod display;
 mod draw_device;
@@ -36,6 +37,7 @@ mod timer;
 mod video_overlay;
 pub mod window;
 mod window_ex;
+pub mod window_modal;
 use anyhow::{Context, Result, ensure};
 use krkrz_assets::{cx::CxEncryption, storage::Storage, text};
 use krkrz_core::{Limits, save_directory};
@@ -66,8 +68,11 @@ pub struct Services {
     pub trace: Vec<TraceEvent>,
     pub messages: Vec<String>,
     pub trace_enabled: bool,
+    /// A synchronous script exit request. Hosts return this process status.
+    pub exit_code: Option<i32>,
     pub windows: BTreeMap<usize, window::WindowState>,
     main_window: Option<usize>,
+    input_dispatch_depth: u32,
     draw_devices: draw_device::Devices,
     debug_console: Value,
     /// The headless display size. A native host replaces it before startup.
@@ -87,6 +92,7 @@ pub struct Services {
     transition_tasks: coroutine::CoroutineScheduler<usize>,
     layer_managers: BTreeMap<usize, layer::Manager>,
     font_objects: BTreeMap<usize, font::Font>,
+    cursors: cursor::Cursors,
     kag_parsers: BTreeMap<usize, std::rc::Rc<std::cell::RefCell<kag_parser::Parser>>>,
     csv_parsers: BTreeMap<usize, csv::Parser>,
     sounds: BTreeMap<usize, sound::Sound>,
@@ -103,9 +109,11 @@ pub struct Services {
     dialogs: dialog::State,
     sound_options: Option<Vec<u8>>,
     window_ex: window_ex::State,
+    modal_windows: window_modal::State,
     alpha_movies: BTreeMap<usize, alpha_movie::Player>,
     alpha_movie_links: BTreeSet<String>,
     sound_global_volume: i32,
+    sound_focus_mode: i32,
     sample_plugin: get_sample::State,
     fftgraph: fftgraph::State,
     pub arguments: BTreeMap<String, String>,
@@ -257,7 +265,7 @@ impl Host for Services {
             return self.kag_call(vm, operation, context, args, budget);
         }
         if let Some(operation) = name.strip_prefix("BasicDrawDevice.") {
-            return self.draw_device_call(operation, context);
+            return self.draw_device_call(operation, context, args);
         }
         if let Some(operation) = name.strip_prefix("WindowEx.") {
             return self.window_ex_call(vm, operation, context, args, budget);
@@ -338,7 +346,9 @@ impl Host for Services {
                 };
                 for object in registered {
                     if let Err(error) = vm.invalidate(&object, self, budget) {
-                        if error.downcast_ref::<krkrz_tjs::VmAbort>().is_some() {
+                        if error.downcast_ref::<krkrz_tjs::VmAbort>().is_some()
+                            || error.downcast_ref::<krkrz_tjs::VmExit>().is_some()
+                        {
                             return Err(error);
                         }
                         self.messages.push(format!("{error:#}"));
@@ -372,6 +382,20 @@ impl Host for Services {
                     .clone();
                 self.set_draw_device(vm, id, value, budget)?;
                 return Ok(Value::Void);
+            }
+            if operation == "update" {
+                let window = self
+                    .windows
+                    .get(&id)
+                    .filter(|window| window.constructed)
+                    .context("Window.update requires a constructed Window")?;
+                if let Some(root) = layer::object(&window.primary_layer)? {
+                    self.layer_before_completion(vm, root, budget)?;
+                }
+                return Ok(Value::Void);
+            }
+            if operation == "showModal" {
+                return self.show_window_modal(vm, context, budget);
             }
             let first_window = !self
                 .windows
@@ -417,7 +441,14 @@ impl Host for Services {
             }
             if operation == "onCloseQuery" {
                 if args.first().is_some_and(|v| v.truth().unwrap_or(false)) {
-                    vm.invalidate(context, self, budget)?;
+                    if window.modal {
+                        window.modal = false;
+                        window.visible = false;
+                    } else if self.input_dispatch_depth != 0 {
+                        window.close_pending = true;
+                    } else {
+                        vm.invalidate(context, self, budget)?;
+                    }
                 }
                 return Ok(Value::Void);
             }
@@ -454,10 +485,22 @@ impl Host for Services {
                 .with_context(|| format!("{name}: missing argument {i}"))
         };
         match name {
+            "System.exit" => {
+                let code = args.first().map(Value::integer).transpose()?.unwrap_or(0) as i32;
+                self.exit_code = Some(code);
+                Err(anyhow::Error::new(krkrz_tjs::VmExit(code)))
+            }
             "Storages.selectFile" => self.select_file(vm, arg(0)?, budget),
-            "System.get:personalPath" | "System.get:appDataPath" => Ok(Value::string(
-                &file_dialog::system_path(name == "System.get:personalPath", &self.storage.project),
-            )),
+            "System.get:personalPath" | "System.get:appDataPath" => {
+                let directory = if name == "System.get:personalPath" {
+                    save_storage::UserDirectory::Personal
+                } else {
+                    save_storage::UserDirectory::AppData
+                };
+                Ok(Value::string(
+                    &directory.storage_path(&self.storage.project),
+                ))
+            }
             "TextStream.read" => {
                 let bytes = self.read_storage(&arg(0)?.text())?;
                 let (mode, offset) = save_storage::offset_mode(&arg(1)?.text())?;
@@ -577,8 +620,8 @@ impl Host for Services {
                         Ok(Value::Void)
                     }
                     "kagparser.dll" | "kagparserex.dll" => {
-                        // Both plugin names use the built-in parser. Preserve
-                        // classes and instances created by legacy KAG startup.
+                        // Keep existing classes and instances. New instances
+                        // select the extended parameter format after Ex loads.
                         self.loaded_plugins
                             .insert(path.rsplit('/').next().unwrap().to_ascii_lowercase());
                         Ok(Value::Void)
@@ -960,6 +1003,8 @@ impl Session {
         let save_dir = save_directory(&storage.project, save_dir)?;
         let executable = krkrz_core::project_executable(&storage.project, executable)?
             .unwrap_or_else(|| storage.project.join("krkrz_engine"));
+        let version = krkrz_assets::pe_version::read(&executable).unwrap_or([1, 2, 0, 3]);
+        let version = version.map(|part| part.to_string()).join(".");
         let mut vm = Vm::default();
         vm.preprocessor.set("kirikiriz", 1);
         let constants = krkrz_tjs::compile(
@@ -1023,7 +1068,11 @@ impl Session {
             ("title", "krkrz_rs".into()),
             ("osName", std::env::consts::OS.into()),
             ("platformName", std::env::consts::OS.into()),
-            ("versionString", "1.2.0.3".into()),
+            (
+                "versionInformation",
+                format!("吉里吉里[きりきり] Z 実行コア/{version} (krkrz_rs)"),
+            ),
+            ("versionString", version),
             ("dataPath", format!("file://.{}/", save_dir.display())),
         ] {
             vm.set_member(&system, &Value::string(key), Value::string(&value))?;
@@ -1032,6 +1081,7 @@ impl Session {
             "Debug.message",
             "Debug.notice",
             "System.getTickCount",
+            "System.exit",
             "System.createUUID",
             "System.touchImages",
             "System.clearGraphicCache",
@@ -1074,8 +1124,10 @@ impl Session {
                 trace: vec![],
                 messages: vec![],
                 trace_enabled: false,
+                exit_code: None,
                 windows: BTreeMap::new(),
                 main_window: None,
+                input_dispatch_depth: 0,
                 draw_devices: draw_device::Devices::new(draw_device_class),
                 debug_console,
                 screen_size: (1280, 720),
@@ -1093,6 +1145,7 @@ impl Session {
                 transition_tasks: coroutine::CoroutineScheduler::default(),
                 layer_managers: BTreeMap::new(),
                 font_objects: BTreeMap::new(),
+                cursors: cursor::Cursors::default(),
                 kag_parsers: BTreeMap::new(),
                 fonts: fonts::FontBook::with_system_fallback(),
                 csv_parsers: BTreeMap::new(),
@@ -1110,9 +1163,11 @@ impl Session {
                 dialogs: dialog::State::default(),
                 sound_options: None,
                 window_ex: window_ex::State::default(),
+                modal_windows: window_modal::State::default(),
                 alpha_movies: BTreeMap::new(),
                 alpha_movie_links: BTreeSet::new(),
                 sound_global_volume: 100_000,
+                sound_focus_mode: 0,
                 sample_plugin: get_sample::State::default(),
                 fftgraph: fftgraph::State::default(),
                 arguments: BTreeMap::from([("-debugwin".into(), "no".into())]),

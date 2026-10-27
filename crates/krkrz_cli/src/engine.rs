@@ -2,6 +2,7 @@ mod audio_output;
 mod file_dialog;
 mod file_dialog_egui;
 mod input_dialog;
+mod modal_window;
 mod native_host;
 mod presenter;
 mod project;
@@ -17,6 +18,8 @@ struct Args {
     native_dialog: bool,
     #[arg(long, hide = true)]
     file_dialog: bool,
+    #[arg(long, hide = true)]
+    modal_window: bool,
     #[arg(long, default_value = ".")]
     project_dir: PathBuf,
     /// Save directory (defaults to <project-dir>/savedata, including existing saves).
@@ -39,14 +42,17 @@ struct Args {
     #[arg(long)]
     icon: Option<PathBuf>,
 }
-fn main() -> Result<()> {
+fn main() -> Result<std::process::ExitCode> {
     env_logger::init();
     let args = Args::parse();
     if args.native_dialog {
-        return input_dialog::run_child();
+        return input_dialog::run_child().map(|_| std::process::ExitCode::SUCCESS);
     }
     if args.file_dialog {
-        return file_dialog::run_child();
+        return file_dialog::run_child().map(|_| std::process::ExitCode::SUCCESS);
+    }
+    if args.modal_window {
+        return modal_window::run_child().map(|_| std::process::ExitCode::SUCCESS);
     }
     let storage = args.project.open(&args.project_dir)?;
     let mut session = Session::from_storage(
@@ -78,5 +84,8 @@ fn main() -> Result<()> {
         serde_json::to_writer_pretty(&mut output, &session.services.trace)?;
         output.write_all(b"\n")?;
     }
-    result
+    result?;
+    Ok(std::process::ExitCode::from(
+        session.services.exit_code.unwrap_or(0) as u8,
+    ))
 }
