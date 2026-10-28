@@ -95,6 +95,7 @@ impl Storage {
     pub fn open(project: &Path, cipher: Option<CxEncryption>, limits: Limits) -> Result<Self> {
         let project = project.canonicalize()?;
         let mut files = Vec::new();
+        let mut executables = Vec::new();
         for entry in fs::read_dir(&project)? {
             let path = entry?.path();
             if path
@@ -102,9 +103,16 @@ impl Storage {
                 .is_some_and(|e| e.eq_ignore_ascii_case("xp3"))
             {
                 files.push(path);
+            } else if path
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+                && path.is_file()
+            {
+                executables.push(path);
             }
         }
         files.sort_by_key(|p| archive_priority(p));
+        executables.sort();
         let mut storage = Self {
             project,
             archives: vec![],
@@ -115,6 +123,12 @@ impl Storage {
             loose_directories: RefCell::new(BTreeMap::new()),
             resolutions: RefCell::new(LruCache::new(NonZeroUsize::new(4096).unwrap())),
         };
+        // Embedded resources form the base. Separate archives retain patch priority.
+        for path in executables {
+            if let Some(archive) = Archive::open_embedded(&path, limits)? {
+                storage.mount_archive(archive);
+            }
+        }
         for path in files {
             storage.mount(&path, limits)?;
         }
@@ -122,13 +136,16 @@ impl Storage {
     }
     pub fn mount(&mut self, path: &Path, limits: Limits) -> Result<()> {
         let archive = Archive::open(path, limits)?;
+        self.mount_archive(archive);
+        Ok(())
+    }
+    fn mount_archive(&mut self, archive: Archive) {
         let index = self.archives.len();
         for name in archive.entries.keys() {
             self.catalog.insert(name.clone(), index);
         }
         self.archives.push(archive);
         self.resolutions.get_mut().clear();
-        Ok(())
     }
     /// Detect protected plaintext or select a known cipher using the archive's
     /// checksum. Renaming a game directory or executable does not affect this.

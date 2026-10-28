@@ -12,6 +12,16 @@ use std::{
 };
 
 pub const MAGIC: &[u8; 11] = b"XP3\r\n \n\x1a\x8b\x67\x01";
+
+/// XP3 index and segment offsets are relative to this position in the file.
+#[derive(Clone, Copy)]
+struct ArchiveBase(u64);
+
+impl ArchiveBase {
+    fn absolute(self, relative: u64) -> Result<u64> {
+        self.0.checked_add(relative).context("XP3 offset overflow")
+    }
+}
 #[derive(Clone, Debug, Serialize)]
 pub struct Segment {
     pub compressed: bool,
@@ -86,21 +96,51 @@ impl Archive {
 
     pub fn open(path: impl AsRef<Path>, limits: Limits) -> Result<Self> {
         let path = path.as_ref();
+        let file = File::open(path).with_context(|| format!("open {}", path.display()))?;
+        Self::open_file(path, file, ArchiveBase(0), limits)
+    }
+
+    /// Read an appended archive without executing or extracting the EXE.
+    /// Scan with bounded memory and validate candidates to skip signature literals.
+    pub fn open_embedded(path: &Path, limits: Limits) -> Result<Option<Self>> {
         let mut file = File::open(path).with_context(|| format!("open {}", path.display()))?;
         let length = file.metadata()?.len();
-        let magic = read_at(&mut file, 0, 11, length)?;
+        if length < 2 || read_at(&mut file, 0, 2, length)? != b"MZ" {
+            return Ok(None);
+        }
+        let mut offset = 0;
+        while offset + MAGIC.len() as u64 <= length {
+            let size = (length - offset).min(64 * 1024);
+            let bytes = read_at(&mut file, offset, size, length)?;
+            for (position, window) in bytes.windows(MAGIC.len()).enumerate() {
+                if window == MAGIC {
+                    let base = ArchiveBase(offset + position as u64);
+                    if let Ok(archive) = Self::open_file(path, file.try_clone()?, base, limits) {
+                        return Ok(Some(archive));
+                    }
+                }
+            }
+            // Retain enough overlap for a signature across two scan blocks.
+            offset += size - (MAGIC.len() as u64 - 1);
+        }
+        Ok(None)
+    }
+
+    fn open_file(path: &Path, mut file: File, base: ArchiveBase, limits: Limits) -> Result<Self> {
+        let length = file.metadata()?.len();
+        let magic = read_at(&mut file, base.0, 11, length)?;
         ensure!(magic == MAGIC, "{}: not an XP3 archive", path.display());
-        let mut next = file_u64(&mut file)?;
+        let mut next = Some(base.absolute(file_u64(&mut file)?)?);
         let mut entries = BTreeMap::new();
         let mut seen = HashSet::new();
         let mut total_index = 0u64;
-        loop {
+        while let Some(offset) = next {
             ensure!(
-                seen.len() < 1024 && seen.insert(next),
+                seen.len() < 1024 && seen.insert(offset),
                 "cyclic or excessive XP3 index chain"
             );
-            range(next, 9, length)?;
-            file.seek(SeekFrom::Start(next))?;
+            range(offset, 9, length)?;
+            file.seek(SeekFrom::Start(offset))?;
             let mut flags = [0];
             file.read_exact(&mut flags)?;
             let flags = flags[0];
@@ -128,23 +168,23 @@ impl Archive {
             let mut index = Reader::new(&index);
             while !index.done() {
                 let (tag, data) = index.chunk()?;
-                if &tag != b"File" {
-                    continue;
+                if &tag == b"File" {
+                    let entry = parse_entry(data, base, length, limits)
+                        .with_context(|| format!("{} index {offset:#x}", path.display()))?;
+                    ensure!(entries.len() < limits.entries, "too many XP3 entries");
+                    ensure!(
+                        !entries.contains_key(&entry.name),
+                        "duplicate XP3 entry {}",
+                        entry.name
+                    );
+                    entries.insert(entry.name.clone(), entry);
                 }
-                let entry = parse_entry(data, length, limits)
-                    .with_context(|| format!("{} index {next:#x}", path.display()))?;
-                ensure!(entries.len() < limits.entries, "too many XP3 entries");
-                ensure!(
-                    !entries.contains_key(&entry.name),
-                    "duplicate XP3 entry {}",
-                    entry.name
-                );
-                entries.insert(entry.name.clone(), entry);
             }
-            if flags & 0x80 == 0 {
-                break;
-            }
-            next = file_u64(&mut file)?;
+            next = if flags & 0x80 == 0 {
+                None
+            } else {
+                Some(base.absolute(file_u64(&mut file)?)?)
+            };
         }
         Ok(Self {
             path: path.to_owned(),
@@ -279,7 +319,7 @@ impl Archive {
         Ok(())
     }
 }
-fn parse_entry(data: &[u8], length: u64, limits: Limits) -> Result<Entry> {
+fn parse_entry(data: &[u8], base: ArchiveBase, length: u64, limits: Limits) -> Result<Entry> {
     let mut r = Reader::new(data);
     let (mut info, mut segments, mut hash) = (None, None, None);
     while !r.done() {
@@ -321,7 +361,7 @@ fn parse_entry(data: &[u8], length: u64, limits: Limits) -> Result<Entry> {
                     ensure!(flags <= 1, "unsupported segment flags {flags:#x}");
                     let s = Segment {
                         compressed: flags != 0,
-                        offset: c.u64()?,
+                        offset: base.absolute(c.u64()?)?,
                         size: c.u64()?,
                         packed_size: c.u64()?,
                     };

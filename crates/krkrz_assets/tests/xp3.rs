@@ -83,6 +83,79 @@ fn fixture_with_protection(
     data
 }
 #[test]
+fn embedded_archive_reads_relative_indexes_segments_and_patch_overrides() {
+    let project = tempfile::tempdir().unwrap();
+    // Place the archive signature across a scanner block boundary. An earlier
+    // signature literal must not prevent discovery of the valid archive.
+    let mut exe = vec![0; 64 * 1024 - 5];
+    exe[..2].copy_from_slice(b"MZ");
+    exe[32..43].copy_from_slice(MAGIC);
+    exe.extend(fixture("startup.tjs", b"embedded startup", true, true));
+    let path = project.path().join("Game.EXE");
+    std::fs::write(&path, &exe).unwrap();
+    let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+    assert_eq!(storage.detect_cipher().unwrap(), Some("otome-domain"));
+    assert_eq!(storage.read("startup.tjs").unwrap(), b"embedded startup");
+    assert_eq!(
+        storage.read("game.exe>startup.tjs").unwrap(),
+        b"embedded startup"
+    );
+    storage.verify("startup.tjs").unwrap();
+
+    std::fs::write(
+        project.path().join("patch.xp3"),
+        fixture("startup.tjs", b"patched startup", false, false),
+    )
+    .unwrap();
+    let mut storage = Storage::open(
+        project.path(),
+        Some(CxEncryption::otome_domain().unwrap()),
+        Limits::default(),
+    )
+    .unwrap();
+    assert_eq!(storage.read("startup.tjs").unwrap(), b"patched startup");
+    assert_eq!(
+        storage.read("game.exe>startup.tjs").unwrap(),
+        b"embedded startup"
+    );
+
+    // A relative index must not wrap into the executable prefix.
+    let base = 64 * 1024 - 5;
+    exe[base + 11..base + 19].copy_from_slice(&u64::MAX.to_le_bytes());
+    std::fs::write(&path, exe).unwrap();
+    assert!(
+        Archive::open_embedded(&path, Limits::default())
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn executables_without_embedded_archives_are_optional() {
+    let project = tempfile::tempdir().unwrap();
+    for bytes in [
+        b"".as_slice(),
+        b"MZ",
+        b"MZ without an archive",
+        b"not an EXE",
+    ] {
+        let path = project.path().join("launcher.exe");
+        std::fs::write(&path, bytes).unwrap();
+        assert!(
+            Archive::open_embedded(&path, Limits::default())
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            Storage::open(project.path(), None, Limits::default())
+                .unwrap()
+                .catalog
+                .is_empty()
+        );
+    }
+}
+
+#[test]
 fn segmented_compressed_encrypted_range_reads() {
     let d = tempfile::tempdir().unwrap();
     let path = d.path().join("data.xp3");
