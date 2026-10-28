@@ -1,5 +1,6 @@
 use flate2::{Compression, write::ZlibEncoder};
 use krkrz_assets::{
+    cipher::Cipher,
     cx::CxEncryption,
     storage::Storage,
     xp3::{Archive, MAGIC, adler32},
@@ -27,14 +28,22 @@ fn fixture_with_protection(
     protected: bool,
     chained: bool,
 ) -> Vec<u8> {
+    let cipher = encrypt.then(|| Cipher::Cx(CxEncryption::otome_domain().unwrap()));
+    fixture_with_cipher(name, payload, cipher.as_ref(), protected, chained)
+}
+fn fixture_with_cipher(
+    name: &str,
+    payload: &[u8],
+    cipher: Option<&Cipher>,
+    protected: bool,
+    chained: bool,
+) -> Vec<u8> {
     let mut data = MAGIC.to_vec();
     data.extend(0u64.to_le_bytes());
     let mut encoded = payload.to_vec();
     let hash = adler32(payload);
-    if encrypt {
-        CxEncryption::otome_domain()
-            .unwrap()
-            .apply(hash, 0, &mut encoded);
+    if let Some(cipher) = cipher {
+        cipher.apply(hash, 0, &mut encoded);
     }
     let split = encoded.len() / 2;
     let mut segs = vec![];
@@ -109,7 +118,7 @@ fn embedded_archive_reads_relative_indexes_segments_and_patch_overrides() {
     .unwrap();
     let mut storage = Storage::open(
         project.path(),
-        Some(CxEncryption::otome_domain().unwrap()),
+        Some(CxEncryption::otome_domain().unwrap().into()),
         Limits::default(),
     )
     .unwrap();
@@ -169,7 +178,7 @@ fn segmented_compressed_encrypted_range_reads() {
         },
     )
     .unwrap();
-    let cx = CxEncryption::otome_domain().unwrap();
+    let cx = CxEncryption::otome_domain().unwrap().into();
     assert!(a.read("dir/a.bin", None).is_err());
     a.verify("dir/a.bin", Some(&cx)).unwrap();
     for (start, size) in [
@@ -254,7 +263,7 @@ fn qualified_paths_select_the_named_archive_and_roundtrip_placed_paths() {
     }
     let mut storage = Storage::open(
         d.path(),
-        Some(CxEncryption::otome_domain().unwrap()),
+        Some(CxEncryption::otome_domain().unwrap().into()),
         Limits::default(),
     )
     .unwrap();
@@ -356,6 +365,38 @@ fn cipher_detection_uses_archive_contents_without_a_game_executable() {
     let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
     assert_eq!(storage.detect_cipher().unwrap(), None);
     assert_eq!(storage.read("startup.tjs").unwrap(), plain);
+}
+
+#[test]
+fn applique_detection_and_segmented_range_reads() {
+    let project = tempfile::tempdir().unwrap();
+    let path = project.path().join("data.xp3");
+    let plain = (0..12).collect::<Vec<u8>>();
+    let bytes = fixture_with_cipher("startup.tjs", &plain, Some(&Cipher::Applique), true, true);
+    std::fs::write(&path, &bytes).unwrap();
+    let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+    assert_eq!(storage.detect_cipher().unwrap(), Some("applique"));
+    assert_eq!(storage.read("startup.tjs").unwrap(), plain);
+    storage.verify("startup.tjs").unwrap();
+
+    let mut archive = Archive::open(&path, Limits::default()).unwrap();
+    assert!(archive.read("startup.tjs", None).is_err());
+    // The first segment ends at byte six. These reads cross both the
+    // five-byte plaintext header and the raw/compressed segment boundary.
+    for (start, end) in [(0, 12), (0, 5), (3, 8), (5, 9), (6, 12), (12, 12)] {
+        assert_eq!(
+            archive
+                .read_range("startup.tjs", start, end - start, Some(&Cipher::Applique))
+                .unwrap(),
+            plain[start as usize..end as usize]
+        );
+    }
+    let mut corrupt = bytes;
+    corrupt[19] ^= 1;
+    std::fs::write(&path, corrupt).unwrap();
+    let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+    assert!(storage.detect_cipher().is_err());
+    assert!(storage.read("startup.tjs").is_err());
 }
 
 #[test]

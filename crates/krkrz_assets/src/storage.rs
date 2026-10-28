@@ -1,4 +1,5 @@
 use crate::{
+    cipher::Cipher,
     cx::CxEncryption,
     xp3::{Archive, Entry},
 };
@@ -19,7 +20,7 @@ pub struct Storage {
     pub project: PathBuf,
     pub archives: Vec<Archive>,
     pub catalog: BTreeMap<String, usize>,
-    cipher: Option<CxEncryption>,
+    cipher: Option<Cipher>,
     search_paths: Vec<String>,
     limits: Limits,
     loose_directories: RefCell<BTreeMap<PathBuf, DirectoryIndex>>,
@@ -92,7 +93,7 @@ fn same_metadata(old: &fs::Metadata, metadata: &fs::Metadata) -> bool {
     true
 }
 impl Storage {
-    pub fn open(project: &Path, cipher: Option<CxEncryption>, limits: Limits) -> Result<Self> {
+    pub fn open(project: &Path, cipher: Option<Cipher>, limits: Limits) -> Result<Self> {
         let project = project.canonicalize()?;
         let mut files = Vec::new();
         let mut executables = Vec::new();
@@ -147,7 +148,7 @@ impl Storage {
         self.archives.push(archive);
         self.resolutions.get_mut().clear();
     }
-    /// Detect protected plaintext or select a known cipher using the archive's
+    /// Detect protected plaintext or select a supported cipher using the archive's
     /// checksum. Renaming a game directory or executable does not affect this.
     pub fn detect_cipher(&mut self) -> Result<Option<&'static str>> {
         let probe =
@@ -176,15 +177,20 @@ impl Storage {
             self.cipher = None;
             return Ok(Some("plaintext"));
         }
+        let cipher = Cipher::Applique;
+        if self.archives[index].verify(&name, Some(&cipher)).is_ok() {
+            self.cipher = Some(cipher);
+            return Ok(Some("applique"));
+        }
         for &(label, json) in crate::cx::BUILTIN_PROFILES {
-            let cipher = CxEncryption::from_json(json)?;
+            let cipher = Cipher::Cx(CxEncryption::from_json(json)?);
             if self.archives[index].verify(&name, Some(&cipher)).is_ok() {
                 self.cipher = Some(cipher);
                 return Ok(Some(label));
             }
         }
         anyhow::bail!(
-            "encrypted XP3 archives do not match a known Cx profile; provide an explicit cipher profile"
+            "encrypted XP3 archives do not match a supported cipher. Use --cx-profile FILE for another Cx profile"
         )
     }
     pub fn add_search_path(&mut self, path: &str) -> Result<()> {

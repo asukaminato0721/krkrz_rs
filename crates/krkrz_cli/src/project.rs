@@ -1,7 +1,7 @@
 //! Shared project configuration for the native host and inspection tool.
 use anyhow::{Context, Result};
 use clap::{Args, ValueEnum};
-use krkrz_assets::{cx::CxEncryption, storage::Storage};
+use krkrz_assets::{cipher::Cipher, cx::CxEncryption, storage::Storage};
 use krkrz_core::Limits;
 use std::path::{Path, PathBuf};
 
@@ -11,6 +11,7 @@ pub enum Profile {
     Auto,
     None,
     OtomeDomain,
+    Applique,
 }
 
 #[derive(Args)]
@@ -32,19 +33,21 @@ pub struct ProjectArgs {
 impl ProjectArgs {
     pub fn open(&self, project: &Path) -> Result<Storage> {
         let cipher = if let Some(path) = &self.cx_profile {
-            Some(CxEncryption::from_json(
+            Some(Cipher::Cx(CxEncryption::from_json(
                 &std::fs::read_to_string(path)
                     .with_context(|| format!("read Cx profile {}", path.display()))?,
-            )?)
+            )?))
         } else if self.otome_domain || matches!(self.profile, Profile::OtomeDomain) {
-            Some(CxEncryption::otome_domain()?)
+            Some(Cipher::Cx(CxEncryption::otome_domain()?))
+        } else if matches!(self.profile, Profile::Applique) {
+            Some(Cipher::Applique)
         } else {
             None
         };
         let mut storage = Storage::open(project, cipher, Limits::default())?;
         if self.cx_profile.is_none() && !self.otome_domain && matches!(self.profile, Profile::Auto)
         {
-            storage.detect_cipher().context("automatic archive cipher detection; use --cx-profile FILE for another Cx profile, or --profile none for unencrypted archives")?;
+            storage.detect_cipher().context("automatic archive cipher detection failed. Use --cx-profile FILE for another Cx profile. Use --profile none for unencrypted archives")?;
         }
         Ok(storage)
     }

@@ -39,7 +39,7 @@ pub mod window;
 mod window_ex;
 pub mod window_modal;
 use anyhow::{Context, Result, ensure};
-use krkrz_assets::{cx::CxEncryption, storage::Storage, text};
+use krkrz_assets::{cipher::Cipher, storage::Storage, text};
 use krkrz_core::{Limits, save_directory};
 use krkrz_tjs::{Host, Instruction, ObjectRef, Value, Vm, compile_with_preprocessor, unsupported};
 pub use layer::WindowFrameState;
@@ -992,7 +992,7 @@ impl Session {
     pub fn open(
         project: &Path,
         save_dir: Option<&Path>,
-        cipher: Option<CxEncryption>,
+        cipher: Option<Cipher>,
         budget: u64,
     ) -> Result<Self> {
         let storage = Storage::open(project, cipher, Limits::default())?;

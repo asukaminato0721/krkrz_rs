@@ -1,4 +1,4 @@
-use crate::{binary::Reader, cx::CxEncryption};
+use crate::{binary::Reader, cipher::Cipher};
 use anyhow::{Context, Result, ensure};
 use flate2::read::ZlibDecoder;
 use krkrz_core::{Limits, storage_name};
@@ -196,7 +196,7 @@ impl Archive {
             cache_bytes: 0,
         })
     }
-    pub fn read(&mut self, name: &str, cipher: Option<&CxEncryption>) -> Result<Vec<u8>> {
+    pub fn read(&mut self, name: &str, cipher: Option<&Cipher>) -> Result<Vec<u8>> {
         let name = storage_name(name)?;
         let size = self
             .entries
@@ -210,7 +210,7 @@ impl Archive {
         name: &str,
         offset: u64,
         size: u64,
-        cipher: Option<&CxEncryption>,
+        cipher: Option<&Cipher>,
     ) -> Result<Vec<u8>> {
         let name = storage_name(name)?;
         let entry = self
@@ -238,7 +238,7 @@ impl Archive {
         let mut result = self.read_encoded_range(&entry, offset, size)?;
         if entry.encrypted {
             cipher
-                .context("missing Cx profile")?
+                .context("missing XP3 cipher")?
                 .apply(entry.hash, offset, &mut result);
         }
         Ok(result)
@@ -308,7 +308,7 @@ impl Archive {
         }
         Ok(bytes)
     }
-    pub fn verify(&mut self, name: &str, cipher: Option<&CxEncryption>) -> Result<()> {
+    pub fn verify(&mut self, name: &str, cipher: Option<&Cipher>) -> Result<()> {
         let bytes = self.read(name, cipher)?;
         let entry = &self.entries[&storage_name(name)?];
         ensure!(

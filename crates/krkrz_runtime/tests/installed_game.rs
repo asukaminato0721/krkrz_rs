@@ -36,7 +36,11 @@ fn original_title_accepts_new_game_input() -> Result<()> {
     let mut session = Session::open(
         Path::new(&project),
         Some(saves.path()),
-        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        Some(
+            krkrz_assets::cx::CxEncryption::otome_domain()
+                .unwrap()
+                .into(),
+        ),
         100_000_000_000,
     )?;
     session.services.epoch_ms = 0;
@@ -146,7 +150,11 @@ fn original_startup_completes_framework_initialization() -> Result<()> {
     let mut session = Session::open(
         Path::new(&project),
         Some(saves.path()),
-        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        Some(
+            krkrz_assets::cx::CxEncryption::otome_domain()
+                .unwrap()
+                .into(),
+        ),
         2_000_000_000,
     )?;
     session.startup()?;
@@ -193,7 +201,7 @@ fn embedded_true_type_and_cff_fonts_rasterize_japanese() -> Result<()> {
     let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
     let mut storage = Storage::open(
         Path::new(&project),
-        Some(CxEncryption::otome_domain()?),
+        Some(CxEncryption::otome_domain()?.into()),
         Limits::default(),
     )?;
     let mut book = krkrz_runtime::fonts::FontBook::default();
@@ -232,7 +240,7 @@ fn bgm_crossfade_is_independent_of_host_buffer_size() -> Result<()> {
     let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
     let mut storage = Storage::open(
         Path::new(&project),
-        Some(CxEncryption::otome_domain()?),
+        Some(CxEncryption::otome_domain()?.into()),
         Limits::default(),
     )?;
     let audio = Arc::new(Audio::decode_vorbis(
@@ -282,7 +290,7 @@ fn original_startup_reaches_framework_handoff() -> Result<()> {
     let project = std::env::var_os("KRKRZ_PROJECT_DIR").context("set KRKRZ_PROJECT_DIR")?;
     let mut storage = Storage::open(
         Path::new(&project),
-        Some(CxEncryption::otome_domain()?),
+        Some(CxEncryption::otome_domain()?.into()),
         Limits::default(),
     )?;
     let source = text::decode(&storage.read("startup.tjs")?)?;
@@ -307,7 +315,11 @@ fn native_sound_reads_archive_pcm_and_sli() -> Result<()> {
     let mut session = Session::open(
         Path::new(&project),
         Some(saves.path()),
-        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        Some(
+            krkrz_assets::cx::CxEncryption::otome_domain()
+                .unwrap()
+                .into(),
+        ),
         10_000,
     )?;
     session
@@ -348,7 +360,11 @@ fn original_storage_data_reads_binary_scenario() -> Result<()> {
     let mut session = Session::open(
         Path::new(&project),
         Some(saves.path()),
-        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        Some(
+            krkrz_assets::cx::CxEncryption::otome_domain()
+                .unwrap()
+                .into(),
+        ),
         1_000_000,
     )?;
     session.evaluate("Plugins.link('psbfile.dll')")?;
@@ -397,7 +413,11 @@ fn original_text_render_wrapper_uses_native_layout() -> Result<()> {
     let mut session = Session::open(
         Path::new(&project),
         Some(saves.path()),
-        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        Some(
+            krkrz_assets::cx::CxEncryption::otome_domain()
+                .unwrap()
+                .into(),
+        ),
         100_000,
     )?;
     session.execute_storage("system/textrender.tjs")?;
@@ -427,7 +447,11 @@ fn original_voice_track_constructs_with_phase_vocoder() -> Result<()> {
     let mut session = Session::open(
         Path::new(&project),
         Some(saves.path()),
-        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        Some(
+            krkrz_assets::cx::CxEncryption::otome_domain()
+                .unwrap()
+                .into(),
+        ),
         100_000,
     )?;
     session.evaluate("Plugins.link('getSample.dll')")?;

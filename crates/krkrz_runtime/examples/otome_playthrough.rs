@@ -333,7 +333,11 @@ fn main() -> Result<()> {
     let mut session = Session::open(
         &project,
         Some(Path::new(&args[1])),
-        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        Some(
+            krkrz_assets::cx::CxEncryption::otome_domain()
+                .unwrap()
+                .into(),
+        ),
         1_000_000_000_000,
     )?;
     session.services.trace_enabled = false;

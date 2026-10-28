@@ -11,7 +11,11 @@ fn main() -> Result<()> {
     let mut s = Session::open(
         Path::new(&project),
         Some(saves.path()),
-        Some(krkrz_assets::cx::CxEncryption::otome_domain().unwrap()),
+        Some(
+            krkrz_assets::cx::CxEncryption::otome_domain()
+                .unwrap()
+                .into(),
+        ),
         1_000_000_000_000,
     )?;
     for entry in std::fs::read_dir(Path::new(&project).join("savedata"))? {
