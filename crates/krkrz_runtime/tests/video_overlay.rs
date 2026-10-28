@@ -286,6 +286,29 @@ fn movie_frames_pcm_pause_seek_and_eof_use_session_clock() {
     );
 }
 #[test]
+fn nonpositive_movie_rates_preserve_playback_speed() {
+    let (mut session, _project, _saves) = movie_session();
+    session
+        .evaluate("Scripts.exec('v.playRate=0.0;v.play();')")
+        .unwrap();
+    assert_eq!(session.evaluate("v.playRate").unwrap(), Value::Real(1.0));
+    session.tick(80).unwrap();
+    assert_eq!(session.evaluate("v.frame").unwrap(), Value::Integer(2));
+    assert!(session.take_audio().iter().any(|v| v.abs() > 0.01));
+
+    session.evaluate("v.playRate=2.0").unwrap();
+    for rate in ["0.0", "-1.0"] {
+        session.evaluate(&format!("v.playRate={rate}")).unwrap();
+        assert_eq!(session.evaluate("v.playRate").unwrap(), Value::Real(2.0));
+    }
+    session.tick(160).unwrap();
+    assert_eq!(session.evaluate("v.frame").unwrap(), Value::Integer(6));
+    assert!(session.take_audio().iter().any(|v| v.abs() > 0.01));
+    assert!(session.evaluate("v.playRate=17.0").is_err());
+    assert_eq!(session.evaluate("v.playRate").unwrap(), Value::Real(2.0));
+}
+
+#[test]
 fn movie_loop_and_period_callbacks_follow_frame_progress() {
     let (mut session, _project, _saves) = movie_session();
     session

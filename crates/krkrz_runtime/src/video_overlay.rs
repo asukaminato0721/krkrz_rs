@@ -571,11 +571,15 @@ impl Services {
             }
             "set:playRate" => {
                 let rate = arg()?.real()?;
-                ensure!(
-                    rate.is_finite() && rate > 0.0 && rate <= 16.0,
-                    "unsupported movie playback rate"
-                );
-                video.rate = rate;
+                // dsmovie.cpp::SetPlayRate only applies positive rates.
+                // KAG plugins also set zero before replacing an open movie.
+                if rate > 0.0 {
+                    ensure!(
+                        rate.is_finite() && rate <= 16.0,
+                        "unsupported movie playback rate"
+                    );
+                    video.rate = rate;
+                }
                 Value::Void
             }
             "set:audioVolume" => {
