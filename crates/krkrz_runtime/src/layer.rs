@@ -1139,6 +1139,20 @@ impl Services {
         if op == "doGrayScale" {
             return self.layer_grayscale(id, budget);
         }
+        if matches!(op, "flipUD" | "flipLR") {
+            return self.layer_flip(id, op == "flipUD", budget);
+        }
+        if op == "get:mainImageBuffer" {
+            return self.layer_buffer(id);
+        }
+        if op == "get:mainImageBufferPitch" {
+            return Ok(Value::Integer(
+                self.layers[&id]
+                    .image
+                    .as_ref()
+                    .map_or(0, |image| -i64::from(image.width) * 4),
+            ));
+        }
         if op == "drawText" {
             return self.layer_draw_text(id, args, budget);
         }
@@ -1206,11 +1220,13 @@ mod copy_alpha_to_province;
 mod draw;
 pub use draw::WindowFrameState;
 mod fill_alpha;
+mod flip;
 mod focus;
 mod gamma;
 mod grayscale;
 mod images;
 pub(crate) mod input;
+mod layered_window;
 mod save;
 mod shrink;
 mod stretch;

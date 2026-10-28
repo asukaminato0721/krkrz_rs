@@ -49,6 +49,7 @@ pub struct WindowState {
     pub(crate) registered_objects: Vec<Value>,
     pub(crate) invalidating: bool,
     pub(crate) resize_pending: bool,
+    pub(crate) layered_image: Option<std::sync::Arc<krkrz_assets::media::Image>>,
 }
 #[derive(Clone, Debug)]
 struct WindowedBounds {
@@ -94,12 +95,14 @@ impl Default for WindowState {
             registered_objects: Vec::new(),
             invalidating: false,
             resize_pending: false,
+            layered_image: None,
         }
     }
 }
 pub(crate) fn register(vm: &mut Vm) -> Result<()> {
     let class = vm.register_native_class("Window")?;
     vm.register_native_property(&class, "mainWindow", Some("Window.get:mainWindow"), None)?;
+    vm.register_native_property(&class, "HWND", Some("Window.get:HWND"), None)?;
     for name in [
         "Window",
         "finalize",

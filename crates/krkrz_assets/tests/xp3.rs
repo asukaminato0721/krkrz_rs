@@ -214,6 +214,27 @@ fn patch_overrides_and_search_paths() {
 }
 
 #[test]
+fn archive_search_paths_mount_nested_archives_once() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::create_dir(project.path().join("Arc")).unwrap();
+    std::fs::write(
+        project.path().join("Arc/Images.XP3"),
+        fixture("ui/icon.png", b"nested archive image", false, false),
+    )
+    .unwrap();
+    let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+    assert!(storage.read("icon.png").is_err());
+    storage.add_search_path("arc/images.xp3>ui/").unwrap();
+    assert_eq!(storage.read("icon.png").unwrap(), b"nested archive image");
+    storage.add_search_path("Arc/Images.XP3>ui/").unwrap();
+    assert_eq!(storage.archives.len(), 1);
+    assert_eq!(
+        storage.read("arc/images.xp3>ui/icon.png").unwrap(),
+        b"nested archive image"
+    );
+}
+
+#[test]
 fn cached_resolution_observes_overrides_search_order_and_new_mounts() {
     let d = tempfile::tempdir().unwrap();
     std::fs::write(

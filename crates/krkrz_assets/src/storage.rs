@@ -195,6 +195,12 @@ impl Storage {
     }
     pub fn add_search_path(&mut self, path: &str) -> Result<()> {
         let path = self.normalize(path, true)?;
+        if let Some((archive, _)) = path.split_once('>')
+            && let Some(file) = self.loose_path(archive)?
+            && !self.archives.iter().any(|mounted| mounted.path == file)
+        {
+            self.mount(&file, self.limits)?;
+        }
         self.search_paths.retain(|existing| existing != &path);
         self.search_paths.push(path);
         self.resolutions.get_mut().clear();

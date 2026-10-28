@@ -32,6 +32,64 @@ pub(crate) fn declare_class(vm: &mut Vm, name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Export names read from the installed standalone plugins. Operations use
+/// the normal Layer dispatch, which reports unsupported effects explicitly.
+pub(crate) fn layer_effect(vm: &mut Vm, plugin: &str) -> Result<()> {
+    let methods: &[&str] = match plugin {
+        "layerexalpha.dll" => &[
+            "turnAlpha",
+            "turnAlpha2",
+            "turnAlpha3",
+            "AlphaColorBlend",
+            "AlphaColorBlend2",
+            "AlphaColorRect",
+            "turnOutline",
+            "AlphaDivide",
+            "AlphaAdd",
+            "AlphaAdd2",
+            "BlackForAlpha",
+            "BlackForAlpha2",
+            "AlphaBlend",
+            "ColorAlphaAdd",
+            "ColorVectorEffectAdd",
+            "ExtraColorVectorEffectAdd",
+            "WhiteToBlueBlurAdd",
+            "MaskRect",
+            "ExMaskRect",
+            "ExMaskRect2",
+            "LightForAlpha",
+            "LuminanceForAlpha",
+            "LevelMaskRect",
+            "LevelMaskRect2",
+            "MaskImageRideRect",
+            "MaskImageRideRect2",
+            "MaskImageRideRect3",
+            "MaskImageRideRect4",
+            "MaskImageRideRect5",
+            "MaskImageRideRect7",
+            "MaskImageRideRect8",
+            "AlphaBorderInnerRect",
+            "AlphaBorderImageCoverRect",
+            "MaskImageEffectRect",
+        ],
+        "layerexcolor.dll" => &["TranslucentColorBlend"],
+        "layerexraster.dll" => &[
+            "copyRaster",
+            "copyNotInterpolationRaster",
+            "copyInterpolationRaster",
+            "copyVerticalRaster",
+            "copyVerticalNotInterpolationRaster",
+            "copyVerticalInterpolationRaster",
+        ],
+        "layerexmosaic.dll" => &["AddMosaic"],
+        _ => anyhow::bail!("unknown Layer effect plugin: {plugin}"),
+    };
+    for method in methods {
+        vm.register_native(&format!("Layer.{method}"))?;
+    }
+    Ok(())
+}
+
 pub(crate) fn packinone(vm: &mut Vm) -> Result<()> {
     // Layer is normally registered as a core class before loading plugins.
     if !vm.globals.contains_key("Layer") {

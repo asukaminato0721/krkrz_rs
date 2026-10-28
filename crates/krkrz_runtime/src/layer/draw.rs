@@ -445,11 +445,12 @@ impl crate::Session {
             .context("capture requires a Window")?;
         let root = object(&window_state.primary_layer)?.context("window has no primary Layer")?;
         let root_layer = &self.services.layers[&root];
-        let dynamic = self
-            .services
-            .layers
-            .values()
-            .any(|l| l.window == id && l.transition.is_some())
+        let dynamic = window_state.layered_image.is_some()
+            || self
+                .services
+                .layers
+                .values()
+                .any(|l| l.window == id && l.transition.is_some())
             || self
                 .services
                 .videos
@@ -513,6 +514,18 @@ impl Services {
             .windows
             .get(&window_id)
             .context("capture requires a Window")?;
+        if let Some(image) = &window.layered_image {
+            charge(budget, (image.rgba.len() / 4) as u64)?;
+            let mut image = image.as_ref().clone();
+            // layeredwindow consumes bottom-up DIB rows. The compositor and
+            // both native presenters use top-down RGBA rows.
+            super::flip::flip_rows(
+                &mut image.rgba,
+                image.width as usize * 4,
+                image.height as usize,
+            );
+            return Ok(image);
+        }
         let root = object(&window.primary_layer)?.context("window has no primary Layer")?;
         let layer = &self.layers[&root];
         let mut image = self.layer_complete(

@@ -316,6 +316,9 @@ impl Host for Services {
             return self.csv_call(vm, operation, context, args, budget);
         }
         if let Some(operation) = name.strip_prefix("Window.") {
+            if operation == "get:HWND" {
+                return self.window_handle(context);
+            }
             if operation == "get:mainWindow" {
                 return Ok(self.main_window.map_or(Value::NULL, |id| {
                     Value::Object(ObjectRef {
@@ -555,6 +558,7 @@ impl Host for Services {
             | "Console.@invalidate"
             | "Console.Console"
             | "Console.finalize" => Ok(Value::Void),
+            "layeredwindow" => self.layered_window(args, budget),
             "Plugins.link" => {
                 let spelling = arg(0)?.unary("string")?.text();
                 if self.plugin_names.contains(&spelling) {
@@ -617,6 +621,14 @@ impl Host for Services {
                         self.loaded_plugins.insert("layereximage.dll".into());
                         Ok(Value::Void)
                     }
+                    name @ ("layerexalpha.dll" | "layerexcolor.dll" | "layerexraster.dll"
+                    | "layerexmosaic.dll") => {
+                        if !self.loaded_plugins.contains(name) {
+                            plugins::layer_effect(vm, name)?;
+                            self.loaded_plugins.insert(name.into());
+                        }
+                        Ok(Value::Void)
+                    }
                     // The installed perspective plugin adds one Layer method.
                     // Its rendering operation remains explicitly unsupported.
                     "perspective.dll" => {
@@ -670,9 +682,23 @@ impl Host for Services {
                         self.link_window_ex(vm, path.rsplit('/').next().unwrap_or(""), budget)?;
                         Ok(Value::Void)
                     }
+                    "layeredwindow.dll" => {
+                        if !self.loaded_plugins.contains("layeredwindow.dll") {
+                            vm.register_native("layeredwindow")?;
+                            self.loaded_plugins.insert("layeredwindow.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
                     "menu.dll" => {
                         self.menus
                             .relink(vm, path.rsplit('/').next().unwrap_or(""))?;
+                        Ok(Value::Void)
+                    }
+                    "menufocus.dll" => {
+                        if !self.loaded_plugins.contains("menufocus.dll") {
+                            vm.register_native("System.menuFocus")?;
+                            self.loaded_plugins.insert("menufocus.dll".into());
+                        }
                         Ok(Value::Void)
                     }
                     "alphamovie.dll" => {
