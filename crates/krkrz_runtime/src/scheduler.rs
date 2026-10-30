@@ -6,12 +6,16 @@ use std::collections::BTreeMap;
 pub(crate) enum EventKind {
     Trigger,
     Timer,
+    Input(crate::layer::input::PostedKeyEvent),
 }
 impl EventKind {
     pub(crate) fn method(self) -> &'static str {
         match self {
             Self::Trigger => "onFire",
             Self::Timer => "onTimer",
+            Self::Input(crate::layer::input::PostedKeyEvent::Down { .. }) => "onKeyDown",
+            Self::Input(crate::layer::input::PostedKeyEvent::Up { .. }) => "onKeyUp",
+            Self::Input(crate::layer::input::PostedKeyEvent::Press { .. }) => "onKeyPress",
         }
     }
 }

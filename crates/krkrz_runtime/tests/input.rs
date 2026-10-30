@@ -21,6 +21,56 @@ var a=new Layer(w,p,owner);a.setSize(20,20);a.setPos(10,5);a.visible=true;a.hitT
 "#;
 
 #[test]
+fn script_cursor_moves_update_hover_after_focus_and_use_client_coordinates() {
+    let (_project, _saves, mut s, w) = session(
+        r#"
+        var log=[],w=new Window(),p=new Layer(w,null),a=new Layer(w,p);
+        w.visible=true;w.setInnerSize(200,100);w.setZoom(2,1);
+        p.setSize(100,50);p.visible=true;
+        a.setSize(20,20);a.setPos(10,5);a.visible=a.focusable=true;a.hitThreshold=0;
+        a.onFocus=function(){log.add('focus');cursorX=2;cursorY=3;};
+        a.onMouseEnter=function(){log.add('enter:'+focused);focus();opacity=128;};
+        a.onMouseMove=function(x,y){log.add('move:'+x+','+y);};
+        a.onMouseLeave=function(){log.add('leave');opacity=255;};
+    "#,
+    );
+    s.evaluate("a.focus()").unwrap();
+    assert_eq!(s.evaluate("log.join('|')").unwrap(), Value::string("focus"));
+    s.dispatch_events().unwrap();
+    assert_eq!(
+        s.evaluate("log.join('|')").unwrap(),
+        Value::string("focus|enter:1|move:2,3")
+    );
+    assert_eq!(s.evaluate("a.opacity").unwrap(), Value::Integer(128));
+    assert_eq!(s.take_cursor_position(&w).unwrap(), Some([24, 16]));
+    assert_eq!(s.take_cursor_position(&w).unwrap(), None);
+    // Coalesce cursor writes. Intermediate points must not produce hover events.
+    s.evaluate("a.setCursorPos(18,18)").unwrap();
+    s.evaluate("p.setCursorPos(80,40)").unwrap();
+    s.dispatch_events().unwrap();
+    assert_eq!(
+        s.evaluate("log.join('|')").unwrap(),
+        Value::string("focus|enter:1|move:2,3|leave")
+    );
+    assert_eq!(s.evaluate("a.opacity").unwrap(), Value::Integer(255));
+    assert_eq!(s.take_cursor_position(&w).unwrap(), Some([160, 80]));
+    // A newer physical move cancels an unprocessed script cursor request.
+    s.evaluate("a.setCursorPos(2,3)").unwrap();
+    s.input(
+        &w,
+        InputEvent::PointerMove {
+            x: 2,
+            y: 2,
+            shift: 0,
+        },
+    )
+    .unwrap();
+    s.dispatch_events().unwrap();
+    assert_eq!(s.take_cursor_position(&w).unwrap(), None);
+    assert_eq!(s.evaluate("a.opacity").unwrap(), Value::Integer(255));
+}
+
+#[test]
 fn image_cursors_are_cached_inherited_and_preserved_after_load_failure() {
     use image::ImageEncoder;
     let (project, _save, mut s, window) = session(SETUP);
@@ -457,6 +507,147 @@ fn resize_event_and_recent_key_state() {
         s.evaluate("System.getKeyState(32,false)").unwrap(),
         Value::Integer(0)
     );
+}
+
+#[test]
+fn pad_queries_share_edges_and_repeats_do_not_create_new_presses() {
+    use krkrz_runtime::gamepad::PadKey;
+    let (_project, _saves, mut s, w) = session(SETUP);
+    s.evaluate("w.onKeyDown=function(key,shift){global.log.add(key+':'+shift+':'+System.getKeyState(VK_PADANY));}").unwrap();
+    let down = |key: PadKey, shift| InputEvent::KeyDown {
+        key: key.key_code(),
+        shift,
+    };
+    let up = |key: PadKey| InputEvent::KeyUp {
+        key: key.key_code(),
+        shift: 0,
+    };
+    s.input(&w, down(PadKey::Button1, 0)).unwrap();
+    // Current queries must not consume a pad's pending press.
+    for expression in [
+        "System.getKeyState(VK_PAD1)",
+        "System.getKeyState(VK_PADANY)",
+        "System.getKeyState(VK_PAD1,false)",
+        "!System.getKeyState(VK_PADANY,false)",
+    ] {
+        assert_eq!(
+            s.evaluate(expression).unwrap(),
+            Value::Integer(1),
+            "{expression}"
+        );
+    }
+    s.input(&w, down(PadKey::Button1, 128)).unwrap();
+    assert_eq!(
+        s.evaluate("System.getKeyState(VK_PADANY,false)").unwrap(),
+        Value::Integer(0)
+    );
+    s.input(&w, down(PadKey::Left, 0)).unwrap();
+    s.input(&w, up(PadKey::Left)).unwrap();
+    for expression in [
+        "!System.getKeyState(VK_PADLEFT)",
+        "System.getKeyState(VK_PADANY)",
+        "System.getKeyState(VK_PADANY,false)",
+        "!System.getKeyState(VK_PADLEFT,false)",
+    ] {
+        assert_eq!(
+            s.evaluate(expression).unwrap(),
+            Value::Integer(1),
+            "{expression}"
+        );
+    }
+    assert_eq!(
+        s.evaluate("log[0]+'|'+log[1]").unwrap(),
+        Value::string("448:0:1|448:128:1")
+    );
+    s.input(&w, InputEvent::Focus(false)).unwrap();
+    s.input(&w, down(PadKey::Button2, 0)).unwrap();
+    s.input(&w, up(PadKey::Button2)).unwrap();
+    s.input(&w, InputEvent::KeyDown { key: 65, shift: 0 })
+        .unwrap();
+    // A keyboard key cannot make PADANY true. A short pad tap remains observable.
+    for expression in [
+        "!System.getKeyState(VK_PADANY)",
+        "System.getKeyState(VK_PADANY,false)",
+        "!System.getKeyState(VK_PADANY,false)",
+        "System.getKeyState(65,false)",
+    ] {
+        assert_eq!(
+            s.evaluate(expression).unwrap(),
+            Value::Integer(1),
+            "{expression}"
+        );
+    }
+}
+
+#[test]
+fn script_pad_mapping_posts_ordered_keys_without_changing_physical_key_state() {
+    use krkrz_runtime::gamepad::PadKey;
+    let (_project, _saves, mut s, w) = session(
+        r#"
+        var log=[];
+        class TestWindow extends Window {
+            function TestWindow(){super.Window();visible=true;}
+            function action(e){
+                log.add(e.type+':'+e.key);
+                if(e.key==VK_PAD1)
+                    postInputEvent(e.type,%[key:VK_RETURN,shift:e.shift]);
+            }
+        }
+        var w=new TestWindow();
+    "#,
+    );
+    s.input(
+        &w,
+        InputEvent::KeyDown {
+            key: PadKey::Button1.key_code(),
+            shift: 0,
+        },
+    )
+    .unwrap();
+    s.input(
+        &w,
+        InputEvent::KeyUp {
+            key: PadKey::Button1.key_code(),
+            shift: 0,
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        s.evaluate("log.join('|')").unwrap(),
+        Value::string("onKeyDown:448|onKeyUp:448")
+    );
+    s.dispatch_events().unwrap();
+    assert_eq!(
+        s.evaluate("log.join('|')").unwrap(),
+        Value::string("onKeyDown:448|onKeyUp:448|onKeyDown:13|onKeyUp:13")
+    );
+    assert_eq!(
+        s.evaluate("System.getKeyState(VK_RETURN,false)").unwrap(),
+        Value::Integer(0)
+    );
+    assert_eq!(
+        s.evaluate("System.getKeyState(VK_PADANY,false)").unwrap(),
+        Value::Integer(1)
+    );
+    for expression in [
+        "w.postInputEvent('onMouseDown',%[key:1,shift:0])",
+        "w.postInputEvent('onKeyDown')",
+        "w.postInputEvent('onKeyDown',%[key:13])",
+        "w.postInputEvent('onKeyPress',%[]) ",
+    ] {
+        assert!(s.evaluate(expression).is_err(), "{expression}");
+    }
+    s.evaluate("w.postInputEvent('onKeyPress',%[key:65])")
+        .unwrap();
+    s.dispatch_events().unwrap();
+    assert_eq!(
+        s.evaluate("log[log.count-1]").unwrap(),
+        Value::string("onKeyPress:A")
+    );
+    s.evaluate("w.postInputEvent('onKeyDown',%[key:13,shift:0])")
+        .unwrap();
+    s.evaluate("invalidate w").unwrap();
+    s.dispatch_events().unwrap();
 }
 
 #[test]

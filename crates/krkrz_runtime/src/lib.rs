@@ -16,6 +16,7 @@ mod fftgraph;
 pub mod file_dialog;
 mod font;
 pub mod fonts;
+pub mod gamepad;
 mod get_sample;
 pub mod graphics;
 mod kag_parser;
@@ -455,6 +456,42 @@ impl Host for Services {
                 }
                 return Ok(Value::Void);
             }
+            if operation == "postInputEvent" {
+                use layer::input::PostedKeyEvent;
+                let name = args
+                    .first()
+                    .context("postInputEvent requires an event name")?
+                    .text();
+                ensure!(
+                    matches!(name.as_str(), "onKeyDown" | "onKeyUp" | "onKeyPress"),
+                    "postInputEvent: unknown event {name}"
+                );
+                let params = args
+                    .get(1)
+                    .context("postInputEvent requires event parameters")?;
+                let parameter = |vm: &mut Vm, name: &str| -> Result<u32> {
+                    let member = Value::string(name);
+                    ensure!(
+                        vm.has_member(params, &member)?,
+                        "postInputEvent requires {name}"
+                    );
+                    Ok(vm.get_member(params, &member, false)?.integer()? as u32)
+                };
+                let key = parameter(vm, "key")?;
+                let event = if name == "onKeyPress" {
+                    PostedKeyEvent::Press { key: key as u16 }
+                } else {
+                    let shift = parameter(vm, "shift")?;
+                    if name == "onKeyDown" {
+                        PostedKeyEvent::Down { key, shift }
+                    } else {
+                        PostedKeyEvent::Up { key, shift }
+                    }
+                };
+                self.events
+                    .post(id, scheduler::EventKind::Input(event), 0)?;
+                return Ok(Value::Void);
+            }
             if let Some(keys) = layer::input::window_event_keys(operation) {
                 ensure!(window.constructed, "Window constructor has not run");
                 // WindowIntf's default event methods forward an event Dictionary
@@ -782,11 +819,24 @@ impl Host for Services {
                 let current = args.get(1).map(Value::truth).transpose()?.unwrap_or(true);
                 let mut pressed = false;
                 for window in self.windows.values_mut() {
-                    let recent = window.input.pressed.remove(&key);
-                    pressed |= if current {
+                    pressed |= if key == gamepad::ANY_KEY_CODE {
+                        let is_pad = |code: &u32| gamepad::PadKey::from_key_code(*code).is_some();
+                        if current {
+                            window.input.keys.iter().any(is_pad)
+                        } else {
+                            let recent = window.input.pressed.iter().any(is_pad);
+                            window.input.pressed.retain(|code| !is_pad(code));
+                            recent
+                        }
+                    } else if gamepad::PadKey::from_key_code(key).is_some() && current {
                         window.input.keys.contains(&key)
                     } else {
-                        recent
+                        let recent = window.input.pressed.remove(&key);
+                        if current {
+                            window.input.keys.contains(&key)
+                        } else {
+                            recent
+                        }
                     };
                 }
                 Ok(Value::Integer(pressed.into()))
@@ -1391,6 +1441,7 @@ impl Session {
             self.services
                 .dispatch_async(&mut self.vm, through, 2, &mut self.budget)?;
         }
+        self.dispatch_cursor_moves()?;
         Ok(())
     }
 }

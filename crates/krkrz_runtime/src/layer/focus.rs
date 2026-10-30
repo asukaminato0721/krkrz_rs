@@ -506,10 +506,10 @@ impl Services {
                         layer.cursor_x_work
                     };
                     let y = int(arg(usize::from(op == "setCursorPos"))?)?;
-                    self.windows
-                        .get_mut(&layer.window)
-                        .context("Layer Window was invalidated")?
-                        .pointer = [x.wrapping_add(offset[0]), y.wrapping_add(offset[1])];
+                    self.layer_move_cursor(
+                        layer.window,
+                        [x.wrapping_add(offset[0]), y.wrapping_add(offset[1])],
+                    )?;
                 }
                 Value::Void
             }

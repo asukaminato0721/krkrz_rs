@@ -44,6 +44,7 @@ pub struct WindowState {
     pub layer_top: i32,
     pub primary_layer: Value,
     pub(crate) pointer: [i32; 2],
+    pub(crate) cursor_warp: Option<crate::layer::input::ClientPoint>,
     pub(crate) input: crate::layer::input::State,
     pub(crate) draw_device: Value,
     pub(crate) registered_objects: Vec<Value>,
@@ -90,6 +91,7 @@ impl Default for WindowState {
             layer_top: 0,
             primary_layer: Value::NULL,
             pointer: [0; 2],
+            cursor_warp: None,
             input: Default::default(),
             draw_device: Value::Void,
             registered_objects: Vec::new(),
@@ -132,6 +134,7 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         "onCloseQuery",
         "close",
         "hideMouseCursor",
+        "postInputEvent",
     ] {
         vm.register_native(&format!("Window.{name}"))?;
     }

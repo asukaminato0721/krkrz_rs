@@ -11,7 +11,7 @@ scene traversal and in-game movies are still being verified. Saving from the
 original UI, restarting, restoring and advancing the saved dialogue also pass.
 
 The Rust TJS interpreter and Kirikiri services run the original scripts. Native
-winit/wgpu presentation, mouse/keyboard input and CPAL audio share the same
+winit/wgpu presentation, mouse/keyboard/gamepad input and CPAL audio share the same
 session as deterministic headless replay. Saves default to the game's `savedata`
 directory; use `--save-dir` to select a separate directory.
 
@@ -240,6 +240,34 @@ system directories coincide, their paths use the same `personal/` alias.
 
 Use an optimized build for the original game; the debug interpreter is much slower.
 Optional `--trace /path/outside/the/game/new-trace.json` records execution for diagnosis.
+
+The native host reads gamepads through `gilrs` on Linux, macOS and Windows.
+Connect a controller before or during play. The focused game window receives
+Kirikiri `VK_PAD*` key events. Game scripts select the actions for these keys.
+The host does not assign keyboard shortcuts to games without pad mappings.
+
+| Controller input | Kirikiri key |
+|---|---|
+| D-pad or left stick | `VK_PADLEFT`, `VK_PADUP`, `VK_PADRIGHT`, `VK_PADDOWN` |
+| South / East / West / North face buttons | `VK_PAD1` / `VK_PAD2` / `VK_PAD3` / `VK_PAD4` |
+| Left / Right shoulder | `VK_PAD5` / `VK_PAD6` |
+| Left / Right trigger | `VK_PAD7` / `VK_PAD8` |
+| Select / Start | `VK_PAD9` / `VK_PAD10` |
+
+Otome Domain maps button 1 to confirm, button 2 to cancel, and button 3 to history.
+Directions move the menu focus. The left stick uses separate press and release
+thresholds to prevent drift. Held keys repeat after 500 ms, at 30 ms intervals.
+Several controllers share the same logical keys. The host releases a key when
+its last physical source releases it. Focus loss and disconnection also release keys.
+An unavailable gamepad backend produces a diagnostic and permits normal startup.
+Linux builds require `pkg-config` and the libudev development package.
+FreeBSD gamepad input and native OS dialogs do not support this adapter.
+
+`System.getKeyState` supports individual pad keys and the `VK_PADANY` aggregate.
+Recent pad queries consume press edges. Current pad queries preserve those edges.
+`Window.postInputEvent` queues `onKeyDown`, `onKeyUp`, and `onKeyPress` events,
+so scripts can map pad input to keyboard actions. These events do not change
+physical key state. Replay files can use the same numeric pad key codes.
 
 The engine currently returns an explicit error for unsupported source/native
 operations or compiled scripts. The
