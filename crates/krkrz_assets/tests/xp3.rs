@@ -235,6 +235,33 @@ fn archive_search_paths_mount_nested_archives_once() {
 }
 
 #[test]
+fn auto_paths_resolve_basename_after_a_missing_directory() {
+    let project = tempfile::tempdir().unwrap();
+    std::fs::write(
+        project.path().join("data.xp3"),
+        fixture("scenario/simparams.tjs", b"archive script", false, false),
+    )
+    .unwrap();
+    let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+    assert!(storage.read("data/scenario/simparams.tjs").is_err());
+    storage.add_search_path("scenario").unwrap();
+    assert_eq!(
+        storage.read("data/scenario/simparams.tjs").unwrap(),
+        b"archive script"
+    );
+    std::fs::create_dir_all(project.path().join("data/scenario")).unwrap();
+    std::fs::write(
+        project.path().join("data/scenario/simparams.tjs"),
+        b"direct script",
+    )
+    .unwrap();
+    assert_eq!(
+        storage.read("data/scenario/simparams.tjs").unwrap(),
+        b"direct script"
+    );
+}
+
+#[test]
 fn cached_resolution_observes_overrides_search_order_and_new_mounts() {
     let d = tempfile::tempdir().unwrap();
     std::fs::write(

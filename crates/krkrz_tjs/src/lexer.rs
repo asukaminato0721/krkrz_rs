@@ -75,6 +75,9 @@ impl Lexer<'_> {
         );
         let at = self.location();
         self.bump();
+        while self.peek().is_some_and(char::is_whitespace) {
+            self.bump();
+        }
         let quote = self.bump().unwrap();
         let symbol = |s: &str| Token {
             kind: Kind::Symbol(s.into()),
@@ -317,7 +320,11 @@ impl Lexer<'_> {
                 location,
             });
         };
-        if c == '@' && self.source[self.pos + 1..].starts_with(['\'', '"']) {
+        if c == '@'
+            && self.source[self.pos + 1..]
+                .trim_start()
+                .starts_with(['\'', '"'])
+        {
             let tokens = self.interpolation()?;
             self.pending.extend(tokens);
             return self.next_inner();

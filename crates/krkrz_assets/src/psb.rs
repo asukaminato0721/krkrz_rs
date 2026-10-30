@@ -1,4 +1,4 @@
-//! PSB v2 structured data. Format reference: GARbro ArcPSB.cs; see notices.
+//! PSB structured data. Format reference: GARbro ArcPSB.cs; see notices.
 use anyhow::{Context, Result, bail, ensure};
 use serde::Serialize;
 use std::collections::{BTreeMap, HashSet, VecDeque};
@@ -72,7 +72,19 @@ impl Document {
     pub fn parse(data: &[u8]) -> Result<Self> {
         ensure!(slice(data, 0, 4)? == b"PSB\0", "not a PSB container");
         let version = uint(data, 4, 2)? as u16;
-        ensure!(version == 2, "unsupported PSB version {version}");
+        ensure!(
+            (2..=4).contains(&version),
+            "unsupported PSB version {version}"
+        );
+        slice(
+            data,
+            0,
+            match version {
+                2 => 40,
+                3 => 44,
+                _ => 56,
+            },
+        )?;
         ensure!(
             uint(data, 6, 2)? == 0,
             "encrypted PSB headers are unsupported"
@@ -99,18 +111,39 @@ impl Document {
             .map_err(|_| anyhow::anyhow!("invalid PSB header"))?;
         let metadata = &data[..chunk_data];
         let (bases, next) = array(metadata, names)?;
-        let (parents, _) = array(metadata, next)?;
+        let (parents, next) = array(metadata, next)?;
         ensure!(
-            bases.len() == parents.len(),
+            version != 2 || bases.len() == parents.len(),
             "PSB name table lengths disagree"
         );
         let mut pending = VecDeque::new();
-        if !bases.is_empty() {
+        if version == 2 && !bases.is_empty() {
             pending.push_back((0usize, Vec::new()));
         }
         let mut seen = HashSet::new();
         let mut map = BTreeMap::new();
         let mut name_bytes = 64usize << 20;
+        if version >= 3 {
+            for (id, leaf) in array(metadata, next)?.0.into_iter().enumerate() {
+                let mut node = leaf as usize;
+                let mut name = Vec::new();
+                while node != 0 {
+                    ensure!(name.len() < 4096, "cyclic or excessive PSB name trie");
+                    let parent =
+                        *parents.get(node).context("PSB name parent out of range")? as usize;
+                    let base = *bases.get(parent).context("PSB name base out of range")? as usize;
+                    name.push(u8::try_from(
+                        node.checked_sub(base).context("invalid PSB name edge")?,
+                    )?);
+                    node = parent;
+                }
+                name_bytes = name_bytes
+                    .checked_sub(name.len())
+                    .context("PSB name trie allocation budget exceeded")?;
+                name.reverse();
+                map.insert(id as u32, String::from_utf8(name)?);
+            }
+        }
         while let Some((node, prefix)) = pending.pop_front() {
             ensure!(
                 prefix.len() <= 4096 && seen.insert(node),

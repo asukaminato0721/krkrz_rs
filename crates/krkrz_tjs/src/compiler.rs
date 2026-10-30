@@ -49,6 +49,7 @@ struct Compiler {
     loops: Vec<Loop>,
     unnamed_arguments: usize,
     top_level: bool,
+    declarations: Vec<Instruction>,
 }
 impl Compiler {
     fn at(&self) -> SourceLocation {
@@ -1210,6 +1211,13 @@ impl Compiler {
         }
         Ok(())
     }
+    fn hoist_declaration(&mut self, start: usize) {
+        if self.top_level && self.depth == 1 {
+            // Storage-level declarations exist before executable code. Block
+            // declarations keep their original scope and location.
+            self.declarations.extend(self.program.code.split_off(start));
+        }
+    }
     fn statement_inner(&mut self) -> Result<()> {
         let at = self.at();
         if self.eat(";") {
@@ -1225,11 +1233,15 @@ impl Compiler {
             return Ok(());
         }
         if self.eat("class") {
-            return self.class(&at);
+            let start = self.program.code.len();
+            self.class(&at)?;
+            self.hoist_declaration(start);
+            return Ok(());
         }
         if self.eat("property") {
             let definition = self.property()?;
             let name = definition.name.clone();
+            let start = self.program.code.len();
             let out = self.reg();
             self.emit(
                 Op::Property {
@@ -1240,6 +1252,7 @@ impl Compiler {
             );
             self.bind_top_level_declaration(out, &at)?;
             self.emit(Op::Declare { name, input: out }, &at);
+            self.hoist_declaration(start);
             return Ok(());
         }
         if self.eat("var") || self.eat("const") {
@@ -1249,9 +1262,11 @@ impl Compiler {
         if self.eat("function") {
             let name = self.name()?;
             let function = self.function(name.clone())?;
+            let start = self.program.code.len();
             let input = self.compile_expr(Expr::Function(Box::new(function)), &at)?;
             self.bind_top_level_declaration(input, &at)?;
             self.emit(Op::Declare { name, input }, &at);
+            self.hoist_declaration(start);
             return Ok(());
         }
         if self.eat("try") {
@@ -1479,6 +1494,7 @@ pub fn compile_with_preprocessor(
         loops: vec![],
         unnamed_arguments: 0,
         top_level: true,
+        declarations: vec![],
     };
     let result = (|| -> Result<()> {
         if expression {
@@ -1490,6 +1506,7 @@ pub fn compile_with_preprocessor(
             } else {
                 c.full_expression()?
             };
+            while c.eat(";") {}
             ensure!(c.eof(), "unexpected tokens after TJS expression");
             let input = c.compile_expr(e, &at)?;
             c.emit(Op::Return { input }, &at);
@@ -1504,6 +1521,17 @@ pub fn compile_with_preprocessor(
         let at = c.at();
         e.context(format!("{}:{}:{}", at.storage, at.line, at.column))
     })?;
+    let offset = c.declarations.len();
+    for instruction in &mut c.program.code {
+        match &mut instruction.op {
+            Op::Jump { target } | Op::JumpUnless { target, .. } | Op::Try { target, .. } => {
+                *target += offset;
+            }
+            _ => {}
+        }
+    }
+    c.declarations.append(&mut c.program.code);
+    c.program.code = c.declarations;
     c.program.validate()?;
     Ok(c.program)
 }

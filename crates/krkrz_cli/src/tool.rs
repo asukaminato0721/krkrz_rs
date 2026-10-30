@@ -38,7 +38,7 @@ enum Command {
     Extract { name: String, output: PathBuf },
     /// Decode a source script (UTF-16, UTF-8 or Shift-JIS).
     Script { name: String },
-    /// Inspect a PSB v2 container as JSON.
+    /// Inspect an unencrypted PSB v2, v3, or v4 container as JSON.
     Psb { name: String },
     /// Inspect KAG tokens and attribute order as JSON.
     Kag { name: String },

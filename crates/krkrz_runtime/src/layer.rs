@@ -1321,6 +1321,50 @@ impl Services {
 }
 
 impl Layer {
+    pub(crate) fn clear_motion_alpha(
+        &mut self,
+        color: u32,
+        available: usize,
+        budget: &mut u64,
+    ) -> Result<bool> {
+        let (clip, face, _) = self.motion_surface()?;
+        let clear = face == 0 && color >> 24 == 0;
+        if clear {
+            let count = (clip[2] - clip[0]).max(0) as u64 * (clip[3] - clip[1]).max(0) as u64;
+            *budget = budget
+                .checked_sub(count)
+                .ok_or_else(|| unsupported("Motion clear execution budget exceeded"))?;
+            if count != 0 {
+                let image = self.plugin_image_mut(available)?;
+                for y in clip[1]..clip[3] {
+                    for x in clip[0]..clip[2] {
+                        image.rgba[(y as usize * image.width as usize + x as usize) * 4 + 3] = 0;
+                    }
+                }
+            }
+        }
+        Ok(clear)
+    }
+
+    pub(crate) fn motion_surface(&self) -> Result<([i32; 4], i32, bool)> {
+        let image = self.bitmap()?;
+        let face = self.draw_face();
+        ensure!(
+            matches!(face, 0 | 1),
+            "Motion draw requires an opaque or alpha Layer"
+        );
+        Ok((
+            [
+                self.clip[0].max(0),
+                self.clip[1].max(0),
+                self.clip[2].min(image.width as i32),
+                self.clip[3].min(image.height as i32),
+            ],
+            face,
+            self.hold_alpha,
+        ))
+    }
+
     pub(crate) fn plugin_image_mut(&mut self, available: usize) -> Result<&mut Image> {
         self.prepare_image_write(available)?;
         self.image_modified = true;
@@ -1339,6 +1383,18 @@ impl Layer {
         self.image = Some(Arc::new(image.clone()));
         self.image_modified = true;
         Ok(())
+    }
+}
+
+pub(crate) fn blend_motion_pixel(
+    destination: &mut [u8],
+    source: [u8; 4],
+    face: i32,
+    opacity: i32,
+    hold: bool,
+) {
+    if source[3] != 0 && opacity != 0 {
+        blit::blend_row(destination, &source, 0, face, 2, opacity, hold);
     }
 }
 

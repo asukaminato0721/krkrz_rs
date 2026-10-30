@@ -26,7 +26,7 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
     vm.register_native_property(&class, "root", Some("PSBFile.get:root"), None)?;
     Ok(())
 }
-fn convert(value: Psb, bytes: &[u8], budget: &mut u64) -> Result<Arc<ReadOnlyData>> {
+pub(crate) fn convert(value: Psb, bytes: &[u8], budget: &mut u64) -> Result<Arc<ReadOnlyData>> {
     *budget = budget
         .checked_sub(1)
         .ok_or_else(|| unsupported("PSB conversion execution budget exceeded"))?;

@@ -550,6 +550,19 @@ impl Services {
                 self.windows.get(&id).is_some_and(|w| w.constructed),
                 "context has no constructed Window native instance"
             );
+            if name == "setOverlayBitmap"
+                && args
+                    .first()
+                    .is_none_or(|value| !matches!(value, Value::Object(_)))
+            {
+                ensure!(
+                    self.window_ex.windows.contains_key(&id),
+                    "Window extension is not registered"
+                );
+                // windowEx clears its overlay when no bitmap object is supplied.
+                // Bitmap overlays remain unsupported, so there is none to hide.
+                return Ok(Value::Void);
+            }
             if matches!(
                 name,
                 "maximize" | "minimize" | "showRestore" | "set:maximized" | "set:minimized"
