@@ -286,6 +286,48 @@ fn movie_frames_pcm_pause_seek_and_eof_use_session_clock() {
     );
 }
 #[test]
+fn replacing_a_playing_movie_unloads_before_reporting_stop() {
+    let (mut session, _project, _saves) = movie_session();
+    // KAG's Movie closes the overlay when play changes directly to stop.
+    session.evaluate(r#"Scripts.exec('global.last="stop";v.onStatusChanged=function(status){events.add(status);if(last=="play" && status=="stop") v.close();last=status;};v.play();')"#).unwrap();
+    session.tick(80).unwrap();
+    session
+        .evaluate(r#"Scripts.exec('v.open("movie.mpg");v.prepare();v.play();')"#)
+        .unwrap();
+    session.tick(160).unwrap();
+    assert_eq!(session.evaluate("v.frame").unwrap(), Value::Integer(2));
+    assert_eq!(session.evaluate("last").unwrap(), Value::string("play"));
+    assert_eq!(
+        session.evaluate("events.join(',')").unwrap(),
+        Value::string("stop,play,unload,stop,period2,pause,play")
+    );
+    assert!(session.take_audio().iter().any(|v| v.abs() > 0.01));
+}
+
+#[test]
+fn nonpositive_movie_rates_preserve_playback_speed() {
+    let (mut session, _project, _saves) = movie_session();
+    session
+        .evaluate("Scripts.exec('v.playRate=0.0;v.play();')")
+        .unwrap();
+    assert_eq!(session.evaluate("v.playRate").unwrap(), Value::Real(1.0));
+    session.tick(80).unwrap();
+    assert_eq!(session.evaluate("v.frame").unwrap(), Value::Integer(2));
+    assert!(session.take_audio().iter().any(|v| v.abs() > 0.01));
+
+    session.evaluate("v.playRate=2.0").unwrap();
+    for rate in ["0.0", "-1.0"] {
+        session.evaluate(&format!("v.playRate={rate}")).unwrap();
+        assert_eq!(session.evaluate("v.playRate").unwrap(), Value::Real(2.0));
+    }
+    session.tick(160).unwrap();
+    assert_eq!(session.evaluate("v.frame").unwrap(), Value::Integer(6));
+    assert!(session.take_audio().iter().any(|v| v.abs() > 0.01));
+    assert!(session.evaluate("v.playRate=17.0").is_err());
+    assert_eq!(session.evaluate("v.playRate").unwrap(), Value::Real(2.0));
+}
+
+#[test]
 fn movie_loop_and_period_callbacks_follow_frame_progress() {
     let (mut session, _project, _saves) = movie_session();
     session

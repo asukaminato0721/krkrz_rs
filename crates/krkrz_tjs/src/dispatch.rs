@@ -15,6 +15,15 @@ pub(crate) fn index(key: &Value) -> Option<i64> {
         _ => None,
     }
 }
+
+fn array_index(index: i64, count: usize) -> Option<usize> {
+    let index = if index < 0 {
+        index.checked_add(i64::try_from(count).ok()?)?
+    } else {
+        index
+    };
+    usize::try_from(index).ok()
+}
 impl Vm {
     pub(crate) fn assign_structure(
         &mut self,
@@ -375,8 +384,8 @@ impl Vm {
         } else if let ObjectKind::Array(items) = &mut self.objects[id].kind
             && let Some(index) = index(key)
         {
-            if index >= 0 && (index as usize) < items.len() {
-                items.remove(index as usize);
+            if let Some(index) = array_index(index, items.len()).filter(|i| *i < items.len()) {
+                items.remove(index);
                 true
             } else {
                 false
@@ -410,9 +419,9 @@ impl Vm {
                 }
                 Ok(false)
             }
-            ObjectKind::Array(items) => {
-                Ok(index(key).is_some_and(|i| i >= 0 && (i as usize) < items.len()))
-            }
+            ObjectKind::Array(items) => Ok(index(key)
+                .and_then(|i| array_index(i, items.len()))
+                .is_some_and(|i| i < items.len())),
             _ => Ok(false),
         }
     }
@@ -539,8 +548,10 @@ impl Vm {
         if let ObjectKind::Array(items) = &object.kind
             && let Some(i) = index(key)
         {
-            ensure!(i >= 0, "negative array index");
-            return Ok(items.get(i as usize).cloned().unwrap_or(Value::Void));
+            return Ok(array_index(i, items.len())
+                .and_then(|i| items.get(i))
+                .cloned()
+                .unwrap_or(Value::Void));
         }
         if matches!(object.kind, ObjectKind::Dictionary) || optional {
             return Ok(Value::Void);
@@ -561,8 +572,8 @@ impl Vm {
         if let ObjectKind::Array(items) = &mut self.objects[id].kind
             && let Some(index) = index(key)
         {
-            ensure!((0..1_000_000).contains(&index), "array index exceeds limit");
-            let index = index as usize;
+            let index = array_index(index, items.len()).context("array index out of range")?;
+            ensure!(index < 1_000_000, "array index exceeds limit");
             if items.len() <= index {
                 items.resize(index + 1, Value::Void);
             }
@@ -787,17 +798,15 @@ impl Vm {
                 Ok(Value::Void)
             }
             "erase" | "insert" => {
-                let i = arg(0)?.integer()?;
-                ensure!(
-                    i >= 0 && i as usize <= items.len(),
-                    "array index out of range"
-                );
+                let i = array_index(arg(0)?.integer()?, items.len())
+                    .filter(|i| *i <= items.len())
+                    .context("array index out of range")?;
                 if name == "erase" {
-                    ensure!((i as usize) < items.len(), "array index out of range");
-                    items.remove(i as usize);
+                    ensure!(i < items.len(), "array index out of range");
+                    items.remove(i);
                 } else {
                     ensure!(items.len() < 1_000_000, "array exceeds limit");
-                    items.insert(i as usize, arg(1)?.clone());
+                    items.insert(i, arg(1)?.clone());
                 }
                 Ok(Value::Void)
             }

@@ -26,6 +26,9 @@ eframe.workspace = true
 fontdb.workspace = true
 rfd.workspace = true
 
+[target.'cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))'.dependencies]
+gilrs.workspace = true
+
 [dev-dependencies]
 tempfile.workspace = true
 

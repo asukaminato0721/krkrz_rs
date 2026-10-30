@@ -44,11 +44,13 @@ pub struct WindowState {
     pub layer_top: i32,
     pub primary_layer: Value,
     pub(crate) pointer: [i32; 2],
+    pub(crate) cursor_warp: Option<crate::layer::input::ClientPoint>,
     pub(crate) input: crate::layer::input::State,
     pub(crate) draw_device: Value,
     pub(crate) registered_objects: Vec<Value>,
     pub(crate) invalidating: bool,
     pub(crate) resize_pending: bool,
+    pub(crate) layered_image: Option<std::sync::Arc<krkrz_assets::media::Image>>,
 }
 #[derive(Clone, Debug)]
 struct WindowedBounds {
@@ -89,17 +91,20 @@ impl Default for WindowState {
             layer_top: 0,
             primary_layer: Value::NULL,
             pointer: [0; 2],
+            cursor_warp: None,
             input: Default::default(),
             draw_device: Value::Void,
             registered_objects: Vec::new(),
             invalidating: false,
             resize_pending: false,
+            layered_image: None,
         }
     }
 }
 pub(crate) fn register(vm: &mut Vm) -> Result<()> {
     let class = vm.register_native_class("Window")?;
     vm.register_native_property(&class, "mainWindow", Some("Window.get:mainWindow"), None)?;
+    vm.register_native_property(&class, "HWND", Some("Window.get:HWND"), None)?;
     for name in [
         "Window",
         "finalize",
@@ -129,6 +134,7 @@ pub(crate) fn register(vm: &mut Vm) -> Result<()> {
         "onCloseQuery",
         "close",
         "hideMouseCursor",
+        "postInputEvent",
     ] {
         vm.register_native(&format!("Window.{name}"))?;
     }

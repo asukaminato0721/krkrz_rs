@@ -1,4 +1,5 @@
 use crate::{
+    cipher::Cipher,
     cx::CxEncryption,
     xp3::{Archive, Entry},
 };
@@ -19,7 +20,7 @@ pub struct Storage {
     pub project: PathBuf,
     pub archives: Vec<Archive>,
     pub catalog: BTreeMap<String, usize>,
-    cipher: Option<CxEncryption>,
+    cipher: Option<Cipher>,
     search_paths: Vec<String>,
     limits: Limits,
     loose_directories: RefCell<BTreeMap<PathBuf, DirectoryIndex>>,
@@ -92,9 +93,10 @@ fn same_metadata(old: &fs::Metadata, metadata: &fs::Metadata) -> bool {
     true
 }
 impl Storage {
-    pub fn open(project: &Path, cipher: Option<CxEncryption>, limits: Limits) -> Result<Self> {
+    pub fn open(project: &Path, cipher: Option<Cipher>, limits: Limits) -> Result<Self> {
         let project = project.canonicalize()?;
         let mut files = Vec::new();
+        let mut executables = Vec::new();
         for entry in fs::read_dir(&project)? {
             let path = entry?.path();
             if path
@@ -102,9 +104,16 @@ impl Storage {
                 .is_some_and(|e| e.eq_ignore_ascii_case("xp3"))
             {
                 files.push(path);
+            } else if path
+                .extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+                && path.is_file()
+            {
+                executables.push(path);
             }
         }
         files.sort_by_key(|p| archive_priority(p));
+        executables.sort();
         let mut storage = Self {
             project,
             archives: vec![],
@@ -115,6 +124,12 @@ impl Storage {
             loose_directories: RefCell::new(BTreeMap::new()),
             resolutions: RefCell::new(LruCache::new(NonZeroUsize::new(4096).unwrap())),
         };
+        // Embedded resources form the base. Separate archives retain patch priority.
+        for path in executables {
+            if let Some(archive) = Archive::open_embedded(&path, limits)? {
+                storage.mount_archive(archive);
+            }
+        }
         for path in files {
             storage.mount(&path, limits)?;
         }
@@ -122,15 +137,18 @@ impl Storage {
     }
     pub fn mount(&mut self, path: &Path, limits: Limits) -> Result<()> {
         let archive = Archive::open(path, limits)?;
+        self.mount_archive(archive);
+        Ok(())
+    }
+    fn mount_archive(&mut self, archive: Archive) {
         let index = self.archives.len();
         for name in archive.entries.keys() {
             self.catalog.insert(name.clone(), index);
         }
         self.archives.push(archive);
         self.resolutions.get_mut().clear();
-        Ok(())
     }
-    /// Detect protected plaintext or select a known cipher using the archive's
+    /// Detect protected plaintext or select a supported cipher using the archive's
     /// checksum. Renaming a game directory or executable does not affect this.
     pub fn detect_cipher(&mut self) -> Result<Option<&'static str>> {
         let probe =
@@ -159,19 +177,30 @@ impl Storage {
             self.cipher = None;
             return Ok(Some("plaintext"));
         }
+        let cipher = Cipher::Applique;
+        if self.archives[index].verify(&name, Some(&cipher)).is_ok() {
+            self.cipher = Some(cipher);
+            return Ok(Some("applique"));
+        }
         for &(label, json) in crate::cx::BUILTIN_PROFILES {
-            let cipher = CxEncryption::from_json(json)?;
+            let cipher = Cipher::Cx(CxEncryption::from_json(json)?);
             if self.archives[index].verify(&name, Some(&cipher)).is_ok() {
                 self.cipher = Some(cipher);
                 return Ok(Some(label));
             }
         }
         anyhow::bail!(
-            "encrypted XP3 archives do not match a known Cx profile; provide an explicit cipher profile"
+            "encrypted XP3 archives do not match a supported cipher. Use --cx-profile FILE for another Cx profile"
         )
     }
     pub fn add_search_path(&mut self, path: &str) -> Result<()> {
         let path = self.normalize(path, true)?;
+        if let Some((archive, _)) = path.split_once('>')
+            && let Some(file) = self.loose_path(archive)?
+            && !self.archives.iter().any(|mounted| mounted.path == file)
+        {
+            self.mount(&file, self.limits)?;
+        }
         self.search_paths.retain(|existing| existing != &path);
         self.search_paths.push(path);
         self.resolutions.get_mut().clear();

@@ -136,7 +136,7 @@ fn run() -> Result<()> {
                         out,
                         "{}\t{}\t{}\t{}",
                         entry.size,
-                        if entry.encrypted { "cx" } else { "raw" },
+                        if entry.encrypted { "protected" } else { "raw" },
                         archive
                             .path
                             .file_name()

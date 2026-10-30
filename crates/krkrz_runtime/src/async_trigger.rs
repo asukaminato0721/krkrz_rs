@@ -167,22 +167,32 @@ impl Services {
             *budget = budget
                 .checked_sub(1)
                 .ok_or_else(|| unsupported("posted event execution budget exceeded"))?;
-            if match event.kind {
-                EventKind::Trigger => !self.async_triggers.triggers.contains_key(&id),
-                EventKind::Timer => !self.timers.contains_key(&id),
-            } {
-                continue;
-            }
             let target = Value::object(id);
-            let callback = vm.get_property(
-                &target,
-                &Value::string(event.kind.method()),
-                false,
-                false,
-                self,
-                budget,
-            )?;
-            vm.call_function(&callback, &target, &[], self, budget)?;
+            match event.kind {
+                EventKind::Input(input) => {
+                    if self.windows.contains_key(&id) {
+                        self.window_posted_input(vm, &target, input, budget)?;
+                    }
+                }
+                kind => {
+                    let live = match kind {
+                        EventKind::Trigger => self.async_triggers.triggers.contains_key(&id),
+                        EventKind::Timer => self.timers.contains_key(&id),
+                        EventKind::Input(_) => false,
+                    };
+                    if live {
+                        let callback = vm.get_property(
+                            &target,
+                            &Value::string(kind.method()),
+                            false,
+                            false,
+                            self,
+                            budget,
+                        )?;
+                        vm.call_function(&callback, &target, &[], self, budget)?;
+                    }
+                }
+            }
         }
         Ok(())
     }

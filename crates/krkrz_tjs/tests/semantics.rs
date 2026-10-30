@@ -7,6 +7,47 @@ struct Case {
     source: String,
     expected: Value,
 }
+
+#[test]
+fn array_negative_indices_address_the_tail() {
+    let source = r#"
+        var a=[10,20,30], r=[];
+        r.add(a[-1]); r.add(a['-3']); r.add(typeof a[-4]);
+        a[-2]=7; a[-1]+=2;
+        r.add(a.join(','));
+        a.insert(-1,9); a.erase(-2); delete a[-1];
+        r.add(a.join(','));
+        var caught=0;
+        try { a[-3]=1; } catch { caught++; }
+        r.add(caught); r.add(typeof [][-1]);
+        return r.join('|');
+    "#;
+    let result = Vm::default()
+        .execute(
+            &compile("array-tail", source).unwrap(),
+            &mut (),
+            &mut 10_000,
+        )
+        .unwrap();
+    assert_eq!(
+        result,
+        Value::string("30|10|undefined|10,7,32|10,7|1|undefined")
+    );
+}
+
+#[test]
+fn dictionary_literal_accepts_one_leading_separator() {
+    let source = "var d=%[/*removed option*/,a:7,];return [d.a,typeof %[,].missing].join('|');";
+    let result = Vm::default()
+        .execute(
+            &compile("dictionary-leading-comma", source).unwrap(),
+            &mut (),
+            &mut 1000,
+        )
+        .unwrap();
+    assert_eq!(result, Value::string("7|undefined"));
+    assert!(compile("dictionary-two-commas", "var d=%[,,a:7];").is_err());
+}
 #[test]
 fn original_startup_builtin_corpus() {
     let cases: Vec<Case> =

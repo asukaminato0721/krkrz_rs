@@ -1,6 +1,7 @@
 mod audio_output;
 mod file_dialog;
 mod file_dialog_egui;
+mod gamepad;
 mod input_dialog;
 mod modal_window;
 mod native_host;

@@ -16,6 +16,7 @@ mod fftgraph;
 pub mod file_dialog;
 mod font;
 pub mod fonts;
+pub mod gamepad;
 mod get_sample;
 pub mod graphics;
 mod kag_parser;
@@ -39,7 +40,7 @@ pub mod window;
 mod window_ex;
 pub mod window_modal;
 use anyhow::{Context, Result, ensure};
-use krkrz_assets::{cx::CxEncryption, storage::Storage, text};
+use krkrz_assets::{cipher::Cipher, storage::Storage, text};
 use krkrz_core::{Limits, save_directory};
 use krkrz_tjs::{Host, Instruction, ObjectRef, Value, Vm, compile_with_preprocessor, unsupported};
 pub use layer::WindowFrameState;
@@ -316,6 +317,9 @@ impl Host for Services {
             return self.csv_call(vm, operation, context, args, budget);
         }
         if let Some(operation) = name.strip_prefix("Window.") {
+            if operation == "get:HWND" {
+                return self.window_handle(context);
+            }
             if operation == "get:mainWindow" {
                 return Ok(self.main_window.map_or(Value::NULL, |id| {
                     Value::Object(ObjectRef {
@@ -452,6 +456,42 @@ impl Host for Services {
                 }
                 return Ok(Value::Void);
             }
+            if operation == "postInputEvent" {
+                use layer::input::PostedKeyEvent;
+                let name = args
+                    .first()
+                    .context("postInputEvent requires an event name")?
+                    .text();
+                ensure!(
+                    matches!(name.as_str(), "onKeyDown" | "onKeyUp" | "onKeyPress"),
+                    "postInputEvent: unknown event {name}"
+                );
+                let params = args
+                    .get(1)
+                    .context("postInputEvent requires event parameters")?;
+                let parameter = |vm: &mut Vm, name: &str| -> Result<u32> {
+                    let member = Value::string(name);
+                    ensure!(
+                        vm.has_member(params, &member)?,
+                        "postInputEvent requires {name}"
+                    );
+                    Ok(vm.get_member(params, &member, false)?.integer()? as u32)
+                };
+                let key = parameter(vm, "key")?;
+                let event = if name == "onKeyPress" {
+                    PostedKeyEvent::Press { key: key as u16 }
+                } else {
+                    let shift = parameter(vm, "shift")?;
+                    if name == "onKeyDown" {
+                        PostedKeyEvent::Down { key, shift }
+                    } else {
+                        PostedKeyEvent::Up { key, shift }
+                    }
+                };
+                self.events
+                    .post(id, scheduler::EventKind::Input(event), 0)?;
+                return Ok(Value::Void);
+            }
             if let Some(keys) = layer::input::window_event_keys(operation) {
                 ensure!(window.constructed, "Window constructor has not run");
                 // WindowIntf's default event methods forward an event Dictionary
@@ -555,6 +595,7 @@ impl Host for Services {
             | "Console.@invalidate"
             | "Console.Console"
             | "Console.finalize" => Ok(Value::Void),
+            "layeredwindow" => self.layered_window(args, budget),
             "Plugins.link" => {
                 let spelling = arg(0)?.unary("string")?.text();
                 if self.plugin_names.contains(&spelling) {
@@ -617,6 +658,14 @@ impl Host for Services {
                         self.loaded_plugins.insert("layereximage.dll".into());
                         Ok(Value::Void)
                     }
+                    name @ ("layerexalpha.dll" | "layerexcolor.dll" | "layerexraster.dll"
+                    | "layerexmosaic.dll") => {
+                        if !self.loaded_plugins.contains(name) {
+                            plugins::layer_effect(vm, name)?;
+                            self.loaded_plugins.insert(name.into());
+                        }
+                        Ok(Value::Void)
+                    }
                     // The installed perspective plugin adds one Layer method.
                     // Its rendering operation remains explicitly unsupported.
                     "perspective.dll" => {
@@ -670,9 +719,23 @@ impl Host for Services {
                         self.link_window_ex(vm, path.rsplit('/').next().unwrap_or(""), budget)?;
                         Ok(Value::Void)
                     }
+                    "layeredwindow.dll" => {
+                        if !self.loaded_plugins.contains("layeredwindow.dll") {
+                            vm.register_native("layeredwindow")?;
+                            self.loaded_plugins.insert("layeredwindow.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
                     "menu.dll" => {
                         self.menus
                             .relink(vm, path.rsplit('/').next().unwrap_or(""))?;
+                        Ok(Value::Void)
+                    }
+                    "menufocus.dll" => {
+                        if !self.loaded_plugins.contains("menufocus.dll") {
+                            vm.register_native("System.menuFocus")?;
+                            self.loaded_plugins.insert("menufocus.dll".into());
+                        }
                         Ok(Value::Void)
                     }
                     "alphamovie.dll" => {
@@ -756,11 +819,24 @@ impl Host for Services {
                 let current = args.get(1).map(Value::truth).transpose()?.unwrap_or(true);
                 let mut pressed = false;
                 for window in self.windows.values_mut() {
-                    let recent = window.input.pressed.remove(&key);
-                    pressed |= if current {
+                    pressed |= if key == gamepad::ANY_KEY_CODE {
+                        let is_pad = |code: &u32| gamepad::PadKey::from_key_code(*code).is_some();
+                        if current {
+                            window.input.keys.iter().any(is_pad)
+                        } else {
+                            let recent = window.input.pressed.iter().any(is_pad);
+                            window.input.pressed.retain(|code| !is_pad(code));
+                            recent
+                        }
+                    } else if gamepad::PadKey::from_key_code(key).is_some() && current {
                         window.input.keys.contains(&key)
                     } else {
-                        recent
+                        let recent = window.input.pressed.remove(&key);
+                        if current {
+                            window.input.keys.contains(&key)
+                        } else {
+                            recent
+                        }
                     };
                 }
                 Ok(Value::Integer(pressed.into()))
@@ -992,7 +1068,7 @@ impl Session {
     pub fn open(
         project: &Path,
         save_dir: Option<&Path>,
-        cipher: Option<CxEncryption>,
+        cipher: Option<Cipher>,
         budget: u64,
     ) -> Result<Self> {
         let storage = Storage::open(project, cipher, Limits::default())?;
@@ -1365,6 +1441,7 @@ impl Session {
             self.services
                 .dispatch_async(&mut self.vm, through, 2, &mut self.budget)?;
         }
+        self.dispatch_cursor_moves()?;
         Ok(())
     }
 }

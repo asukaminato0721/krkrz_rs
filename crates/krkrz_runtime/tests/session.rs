@@ -485,3 +485,27 @@ fn standalone_layer_image_plugin_registers_without_packinone() {
     let error = s.evaluate("l.light(0,0)").unwrap_err();
     assert!(format!("{error:#}").contains("unsupported Layer operation: light"));
 }
+
+#[test]
+fn standalone_layer_effect_plugins_keep_core_class() {
+    let project = tempfile::tempdir().unwrap();
+    let saves = tempfile::tempdir().unwrap();
+    let mut session = Session::open(project.path(), Some(saves.path()), None, 10_000).unwrap();
+    std::fs::write(
+        project.path().join("effects.tjs"),
+        r#"
+        var klass=Layer, w=new Window(), before=new Layer(w,null);
+        Plugins.link('plugin/LayerExAlpha.dll');
+        Plugins.link('plugin/LayerExColor.dll');
+        Plugins.link('plugin/LayerExRaster.dll');
+        Plugins.link('plugin/LayerExMosaic.dll');
+        Plugins.link('layerExAlpha.dll');
+        var l=new Layer(w,before);
+        return [Layer===klass, typeof l.turnAlpha, typeof l.TranslucentColorBlend,
+            typeof l.copyInterpolationRaster, typeof l.AddMosaic].join('|');
+    "#,
+    )
+    .unwrap();
+    let value = session.execute_storage("effects.tjs").unwrap();
+    assert_eq!(value, Value::string("1|Object|Object|Object|Object"));
+}

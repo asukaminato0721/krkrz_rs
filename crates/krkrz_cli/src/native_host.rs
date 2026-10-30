@@ -1,4 +1,4 @@
-use crate::{audio_output::AudioOutput, presenter::Presenter};
+use crate::{audio_output::AudioOutput, gamepad::Gamepads, presenter::Presenter};
 use anyhow::{Context, Result};
 use krkrz_runtime::{InputEvent, Session, WindowFrameState, display::Monitor, window::WindowState};
 use krkrz_tjs::Value;
@@ -32,6 +32,7 @@ struct NativeWindow {
     modifiers: ModifiersState,
     buttons: u32,
     keys: BTreeSet<u32>,
+    focused: bool,
     pressed_at: Option<[i32; 2]>,
     last_click: Option<(Instant, [i32; 2])>,
     suspended: bool,
@@ -167,6 +168,7 @@ pub fn run(session: &mut Session, audio_enabled: bool, icon: Option<Icon>) -> Re
             None
         },
         windows: BTreeMap::new(),
+        gamepads: Gamepads::new(),
         cursors: BTreeMap::new(),
         icon,
         started: false,
@@ -184,6 +186,7 @@ struct Host<'a> {
     session: &'a mut Session,
     audio: Option<AudioOutput>,
     windows: BTreeMap<usize, NativeWindow>,
+    gamepads: Gamepads,
     cursors: BTreeMap<i32, CustomCursor>,
     icon: Option<Icon>,
     started: bool,
@@ -290,6 +293,7 @@ impl Host<'_> {
                     modifiers: ModifiersState::empty(),
                     buttons: 0,
                     keys: BTreeSet::new(),
+                    focused: false,
                     pressed_at: None,
                     last_click: None,
                     suspended: false,
@@ -515,7 +519,14 @@ impl Host<'_> {
             }
             WindowEvent::Ime(Ime::Commit(text)) => input.push(InputEvent::Text(text)),
             WindowEvent::Focused(focused) => {
+                native.focused = focused;
                 if !focused {
+                    input.extend(
+                        self.gamepads
+                            .release_window(id)
+                            .into_iter()
+                            .map(|d| d.event),
+                    );
                     for key in std::mem::take(&mut native.keys) {
                         input.push(InputEvent::KeyUp { key, shift: 0 });
                     }
@@ -554,6 +565,27 @@ impl Host<'_> {
         for event in input {
             if self.session.services.windows.contains_key(&id) {
                 self.session.input(&target, event)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn poll_gamepads(&mut self, now: u64) -> Result<()> {
+        let target = self.windows.iter().find_map(|(&id, native)| {
+            let state = self.session.services.windows.get(&id)?;
+            (native.focused && state.visible && !state.minimized && !native.suspended).then_some(id)
+        });
+        for delivery in self.gamepads.poll(target, now) {
+            if self.session.services.windows.contains_key(&delivery.window) {
+                let mut event = delivery.event;
+                if let Some(native) = self.windows.get(&delivery.window) {
+                    match &mut event {
+                        InputEvent::KeyDown { shift: flags, .. }
+                        | InputEvent::KeyUp { shift: flags, .. } => *flags |= shift(native),
+                        _ => {}
+                    }
+                }
+                self.session.input(&Value::object(delivery.window), event)?;
             }
         }
         Ok(())
@@ -606,6 +638,10 @@ impl ApplicationHandler for Host<'_> {
             }
         };
         if !frames.is_empty() {
+            if let Err(error) = self.poll_gamepads(now) {
+                self.fail(event_loop, error);
+                return;
+            }
             if self.session.vm.should_collect_garbage() {
                 let mut roots = Vec::new();
                 for (&id, native) in &self.windows {
@@ -631,6 +667,18 @@ impl ApplicationHandler for Host<'_> {
                     }
                     self.sync_windows(event_loop)?;
                     for (&id, native) in &mut self.windows {
+                        if native.focused
+                            && native.state.visible
+                            && !native.state.minimized
+                            && let Some([x, y]) =
+                                self.session.take_cursor_position(&Value::object(id))?
+                            && native
+                                .window
+                                .set_cursor_position(PhysicalPosition::new(x, y).into())
+                                .is_ok()
+                        {
+                            native.pointer = [x, y];
+                        }
                         let completed = if let Some(image) = completed.remove(&id) {
                             native.frame = Some(image);
                             // The final transition callback can mutate the tree.

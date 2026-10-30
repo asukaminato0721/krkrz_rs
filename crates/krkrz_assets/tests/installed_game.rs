@@ -14,7 +14,7 @@ fn game() -> Result<Storage> {
         .context("set KRKRZ_PROJECT_DIR to the installed game directory")?;
     Storage::open(
         std::path::Path::new(&project),
-        Some(CxEncryption::otome_domain()?),
+        Some(CxEncryption::otome_domain()?.into()),
         Limits::default(),
     )
 }

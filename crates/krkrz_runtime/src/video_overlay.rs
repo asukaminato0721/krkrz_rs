@@ -194,7 +194,15 @@ impl Services {
         }
         if operation == "open" {
             let storage = arg(0)?.text();
-            let Value::Object(window) = &self.videos[&id].owner else {
+            // VideoOvlImpl.cpp::Open closes the old movie first. KAG must
+            // receive unload before stop, or Movie.onStatusChanged closes
+            // the replacement as though the previous movie reached its end.
+            self.video_call(vm, "close", context, &[], budget)?;
+            let video = self
+                .videos
+                .get(&id)
+                .context("VideoOverlay was invalidated during close")?;
+            let Value::Object(window) = &video.owner else {
                 unreachable!()
             };
             ensure!(
@@ -571,11 +579,15 @@ impl Services {
             }
             "set:playRate" => {
                 let rate = arg()?.real()?;
-                ensure!(
-                    rate.is_finite() && rate > 0.0 && rate <= 16.0,
-                    "unsupported movie playback rate"
-                );
-                video.rate = rate;
+                // dsmovie.cpp::SetPlayRate only applies positive rates.
+                // KAG plugins also set zero before replacing an open movie.
+                if rate > 0.0 {
+                    ensure!(
+                        rate.is_finite() && rate <= 16.0,
+                        "unsupported movie playback rate"
+                    );
+                    video.rate = rate;
+                }
                 Value::Void
             }
             "set:audioVolume" => {

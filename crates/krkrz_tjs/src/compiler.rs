@@ -291,6 +291,8 @@ impl Compiler {
             Expr::Array(items)
         } else if self.eat("%[") {
             let mut items = vec![];
+            // tjs.y permits an empty dictionary list before its first comma.
+            self.eat(",");
             while !self.eat("]") {
                 let key = self.expression(0)?;
                 let key = if self.eat(":") {

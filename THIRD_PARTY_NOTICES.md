@@ -1,8 +1,8 @@
 # Third-party notices
 
-The Cx interpreter, Otome Domain Cx profile, PSB reader and TLG5 decoder are adapted from
+The Cx interpreter, Otome Domain Cx profile, Applique cipher, PSB reader and TLG5 decoder are adapted from
 GARbro, commit `b09ee4570ccb1daf6ac56710ee8934dc0b8baeb0`.
-Sources: `ArcFormats/KiriKiri/KiriKiriCx.cs`, `ArcFormats/Resources/Formats.dat`,
+Sources: `ArcFormats/KiriKiri/KiriKiriCx.cs`, `ArcFormats/KiriKiri/CryptAlgorithms.cs`, `ArcFormats/Resources/Formats.dat`,
 `ArcFormats/Emote/ArcPSB.cs`, and `ArcFormats/KiriKiri/ImageTLG.cs`. Research checkouts and proprietary game data
 are not included.
 

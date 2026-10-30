@@ -1,6 +1,10 @@
 //! Host events use the same LayerManager dispatch path in native and replay hosts.
 use super::*;
 
+/// Physical client coordinates, after the window's canvas transform.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ClientPoint(pub [i32; 2]);
+
 #[derive(Clone, Copy, Default)]
 struct HitOptions {
     exclude: Option<usize>,
@@ -15,6 +19,7 @@ pub(crate) struct State {
     hit: bool,
     pub keys: std::collections::BTreeSet<u32>,
     pub pressed: std::collections::BTreeSet<u32>,
+    pub cursor_move: Option<ClientPoint>,
 }
 #[derive(Clone, Debug)]
 pub enum InputEvent {
@@ -61,6 +66,30 @@ pub enum InputEvent {
     Text(String),
     Focus(bool),
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PostedKeyEvent {
+    Down { key: u32, shift: u32 },
+    Up { key: u32, shift: u32 },
+    Press { key: u16 },
+}
+
+impl PostedKeyEvent {
+    pub(crate) fn into_input(self) -> InputEvent {
+        match self {
+            Self::Down { key, shift } => InputEvent::KeyDown { key, shift },
+            Self::Up { key, shift } => InputEvent::KeyUp { key, shift },
+            Self::Press { key } => InputEvent::Text(String::from_utf16_lossy(&[key])),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum InputSource {
+    Host,
+    Script,
+}
+
 pub(crate) fn window_event_keys(name: &str) -> Option<&'static [&'static str]> {
     Some(match name {
         "onResize" | "onMouseEnter" | "onMouseLeave" | "onActivate" | "onDeactivate" => &[],
@@ -341,6 +370,44 @@ impl Services {
     }
 }
 impl crate::Session {
+    /// Consume a script cursor request in physical client pixels.
+    pub fn take_cursor_position(&mut self, window: &Value) -> Result<Option<[i32; 2]>> {
+        let id = object(window)?.context("cursor position requires a Window")?;
+        let window = self
+            .services
+            .windows
+            .get_mut(&id)
+            .context("cursor Window is invalid")?;
+        Ok(window.cursor_warp.take().map(|point| point.0))
+    }
+
+    pub(crate) fn dispatch_cursor_moves(&mut self) -> Result<()> {
+        // A script can request a cursor move while focus callbacks hold a lock.
+        // Deliver mouse callbacks after that input/event batch completes.
+        let pending: Vec<_> = self
+            .services
+            .windows
+            .iter_mut()
+            .filter_map(|(&id, window)| window.input.cursor_move.take().map(|point| (id, point)))
+            .collect();
+        for (id, ClientPoint([x, y])) in pending {
+            if let Some(window) = self.services.windows.get(&id) {
+                let shift = [(1, 8), (2, 16), (4, 32), (16, 1), (17, 4), (18, 2)]
+                    .into_iter()
+                    .filter(|(key, _)| window.input.keys.contains(key))
+                    .fold(0, |flags, (_, bit)| flags | bit);
+                self.services.dispatch_window_input(
+                    &mut self.vm,
+                    &Value::object(id),
+                    InputEvent::PointerMove { x, y, shift },
+                    InputSource::Script,
+                    &mut self.budget,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     fn host_window_event(&mut self, window: usize, name: &str, args: &[Value]) -> Result<()> {
         self.services
             .host_window_event(&mut self.vm, window, name, args, &mut self.budget)
@@ -404,6 +471,38 @@ impl State {
 }
 
 impl Services {
+    pub(super) fn layer_move_cursor(&mut self, window: usize, point: [i32; 2]) -> Result<()> {
+        let state = self
+            .windows
+            .get(&window)
+            .context("Layer Window was invalidated")?;
+        let client = if let Some(layer) =
+            object(&state.primary_layer)?.and_then(|id| self.layers.get(&id))
+        {
+            let [left, top, width, height] = state.draw_rect(layer.width, layer.height);
+            [
+                (i64::from(left)
+                    + i64::from(point[0]) * i64::from(width) / i64::from(layer.width.max(1)))
+                    as i32,
+                (i64::from(top)
+                    + i64::from(point[1]) * i64::from(height) / i64::from(layer.height.max(1)))
+                    as i32,
+            ]
+        } else {
+            point
+        };
+        let state = self.windows.get_mut(&window).unwrap();
+        if state.pointer != point {
+            state.pointer = point;
+            state.input.cursor_move = Some(ClientPoint(client));
+            state.cursor_warp = Some(ClientPoint(client));
+        }
+        if state.mouse_cursor_state == 1 {
+            state.mouse_cursor_state = 0;
+        }
+        Ok(())
+    }
+
     pub(crate) fn host_window_event(
         &mut self,
         vm: &mut Vm,
@@ -430,12 +529,33 @@ impl Services {
         event: InputEvent,
         budget: &mut u64,
     ) -> Result<()> {
+        self.dispatch_window_input(vm, window, event, InputSource::Host, budget)
+    }
+
+    pub(crate) fn window_posted_input(
+        &mut self,
+        vm: &mut Vm,
+        window: &Value,
+        event: PostedKeyEvent,
+        budget: &mut u64,
+    ) -> Result<()> {
+        self.dispatch_window_input(vm, window, event.into_input(), InputSource::Script, budget)
+    }
+
+    fn dispatch_window_input(
+        &mut self,
+        vm: &mut Vm,
+        window: &Value,
+        event: InputEvent,
+        source: InputSource,
+        budget: &mut u64,
+    ) -> Result<()> {
         ensure!(
             self.input_dispatch_depth < 128,
             "window input nesting limit exceeded"
         );
         self.input_dispatch_depth += 1;
-        let result = self.window_input_inner(vm, window, event, budget);
+        let result = self.window_input_inner(vm, window, event, source, budget);
         self.input_dispatch_depth -= 1;
         // A close request must not invalidate a Layer while its script event
         // still has native calls to complete, such as super.onMouseDown().
@@ -461,6 +581,7 @@ impl Services {
         vm: &mut Vm,
         window: &Value,
         event: InputEvent,
+        source: InputSource,
         budget: &mut u64,
     ) -> Result<()> {
         let window = object(window)?.context("input requires a Window")?;
@@ -564,6 +685,17 @@ impl Services {
             ),
         };
         if let Some(state) = self.windows.get_mut(&window) {
+            if source == InputSource::Host
+                && matches!(
+                    event,
+                    InputEvent::PointerMove { .. }
+                        | InputEvent::PointerDown { .. }
+                        | InputEvent::PointerUp { .. }
+                )
+            {
+                state.input.cursor_move = None;
+                state.cursor_warp = None;
+            }
             if matches!(event, InputEvent::PointerMove { .. })
                 && state.pointer != point
                 && state.mouse_cursor_state == 1
@@ -571,11 +703,13 @@ impl Services {
                 state.mouse_cursor_state = 0;
             }
             match &event {
-                InputEvent::KeyDown { key, .. } => {
-                    state.input.keys.insert(*key);
-                    state.input.pressed.insert(*key);
+                InputEvent::KeyDown { key, .. } if source == InputSource::Host => {
+                    let newly_pressed = state.input.keys.insert(*key);
+                    if newly_pressed || crate::gamepad::PadKey::from_key_code(*key).is_none() {
+                        state.input.pressed.insert(*key);
+                    }
                 }
-                InputEvent::KeyUp { key, .. } => {
+                InputEvent::KeyUp { key, .. } if source == InputSource::Host => {
                     state.input.keys.remove(key);
                 }
                 InputEvent::PointerDown { button, .. } => {
@@ -603,7 +737,7 @@ impl Services {
         let s = self;
         match event {
             InputEvent::PointerMove { shift, .. } | InputEvent::PointerDown { shift, .. } => {
-                let moved = s.windows[&window].pointer != point;
+                let moved = source == InputSource::Script || s.windows[&window].pointer != point;
                 s.windows.get_mut(&window).unwrap().pointer = point;
                 s.host_hover(vm, window, point, shift, moved, budget)?;
                 if !s.windows.contains_key(&window) {
