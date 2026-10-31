@@ -280,7 +280,7 @@ outside the installation.
 | Crate | Implemented | Still required for the slice |
 |---|---|---|
 | `krkrz_core` | Storage-name normalization, resource limits, source/input types, separate save path selection | Full Kirikiri URI/media normalization |
-| `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2, PNG/JPEG/TLG5/TLG6, integer WAVE/Vorbis PCM, SLI loops and labels, AlphaMovie rectangle pixel decoding | Remaining video codecs |
+| `krkrz_assets` | Chained XP3 indexes, compressed/raw segments, range reads, bounded segment caches, Cx interpreter/profile, patch ordering, explicit search paths, case-insensitive loose-file reads, qualified archive paths, text decoding/encoding, PSB v2–v4, PNG/JPEG/TLG5/TLG6, integer WAVE/Vorbis PCM, SLI loops and labels, AlphaMovie rectangle pixel decoding | Remaining video codecs |
 | `krkrz_tjs` | UTF-16 values, object dispatch, arrays/dictionaries, functions and bound contexts, classes/inheritance, properties, exceptions, switch/do/while/for control flow, comma/swap and eager logical-assignment operators, global unary-dot lookup, ordered class initializers and deferred base resolution, explicit invalidation/finalization, interpolation, default parameters, argument forwarding/rest/spread, octet values, `instanceof`, preprocessing, RegExp, native class/accessor registration, constant containers, hexadecimal reals, structured serialization, register interpreter, budgets, exact-engine differential tests | Full grammar and built-ins, function hoisting, exact reference-counted finalization timing, original bytecode loader |
 | `krkrz_kag` | UTF-16 KAGParserEx tokenization, ordered attributes, labels, escaped brackets and multiline tags; runtime bindings provide expressions, macros, conditions, jumps/calls and label-based state restoration | Complete game-framework integration and replay validation |
 | `krkrz_runtime` | Shared session services, nested script execution, storage/script/debug natives, isolated save overlay, ScriptsEx/saveStruct/CSVParser components, PSBFile views, TextRenderBase layout/timing, GdiPlus geometry, AlphaMovie playback/Layer delivery, MenuItem state/tree/click dispatch, WIN32Dialog templates/bounded buffers/closed state, engine constants, application locks, bounded decoded-image cache, Window state and deferred resize callbacks, WaveSoundBuffer decoding/control/fade state and getSample, deterministic scheduler, Fontations/Zeno font rasterization and Layer.drawText, image loading/blits, CPU source-over compositor, PCM loop mixer with conditional links/labels/crossfades | Kirikiri object/plugin APIs, framework integration, remaining transitions/effects/callback integration, SLI label expressions, original saves and replay |
@@ -364,7 +364,7 @@ mode. Explicit invalidation releases parser state, including during row callback
 Invalid legacy encoding replacement rules and automatic object collection remain
 open. Startup can now load these components together through PackinOne.
 
-The `psbfile.dll` replacement exposes PSB v2 documents as read-only TJS views,
+The `psbfile.dll` replacement exposes unencrypted PSB v2–v4 documents as read-only TJS views,
 including arrays, dictionaries and resource octets. Thirty-six cases match the
 installed plugin, including identity, reflection, cloning, invalidation and
 serialization. The original `StorageData` script reads a binary game scenario
@@ -442,6 +442,31 @@ bars, popups and OS shortcut delivery are not implemented. Shortcut name tables
 use stable English defaults until a platform keyboard adapter is available.
 
 `Plugins.link('krmovie.dll')` uses the existing built-in `VideoOverlay` decoder.
+`Plugins.link('motionplayer.dll')` registers `Motion.Player` and
+`Motion.ResourceManager`. The player renders 2D `krkr` Motion PSBs into Layers.
+It supports inline RGBA8 and RL images, stepped and interpolated frames, cubic
+easing, looping, seeking, translation, scale, rotation, flips, opacity and clipping.
+Scripts advance the 60 fps timeline with `progress(milliseconds)`. The resource
+manager supports loading, bounded caching, unloading and invalidation. Active
+players retain their resources after unloading, and garbage collection retains
+script owners. Drawing is synchronous and uses nearest-pixel sampling; native
+worker startup and subpixel filtering can differ.
+Mesh, particles, 3D, parameter timelines, actions, synchronization, nested motion
+references, custom inheritance and other texture formats remain unsupported.
+Encrypted PSB headers and PSB v4 flattened arrays also remain unsupported.
+The supplied Ryuudouji Shimon installation completes startup and displays its
+publisher logo and notice screen through 12 seconds of headless execution.
+All 11 MPEG animations pass playback, pause, rewind and end-of-file checks through
+the original `MovieControlLayer` script. This installation contains no Motion PSBs;
+Motion validation uses synthetic fixtures and native-plugin comparisons.
+These checks do not establish complete story playback.
+
+Storage-level function, class and property declarations are available before
+executable statements. Auto-path lookup uses the requested basename after a direct
+lookup fails. Interpolated strings accept whitespace after `@`, and expression
+evaluation accepts trailing semicolons. `Scripts.getTraceString` reports current
+script storage names and line numbers, with an optional frame limit.
+
 `Plugins.link('krflash.dll')` accepts decoder registration and preserves existing
 `VideoOverlay` objects. Embedded VP6 video with MP3 streaming audio is supported
 in FWS and zlib-compressed CWS files. A single static wrapper sprite is supported.

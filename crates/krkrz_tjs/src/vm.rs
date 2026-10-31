@@ -369,6 +369,7 @@ pub struct Vm {
     pub(crate) native_array_class: usize,
     pub(crate) random_state: [u32; 4],
     pub(crate) depth: usize,
+    stack_locations: Vec<SourceLocation>,
 }
 impl Default for Vm {
     fn default() -> Self {
@@ -384,6 +385,7 @@ impl Default for Vm {
             native_array_class: 0,
             random_state: [123456789, 362436069, 521288629, 88675123],
             depth: 0,
+            stack_locations: vec![],
         };
         for name in ["Array", "Dictionary", "RegExp"] {
             vm.register_native(name).expect("initial TJS heap");
@@ -786,9 +788,30 @@ impl Vm {
             return Err(unsupported("TJS call stack depth exceeded"));
         }
         self.depth += 1;
+        self.stack_locations.push(SourceLocation {
+            storage: program.storage.clone(),
+            line: 1,
+            column: 1,
+        });
         let result = self.run_inner(program, host, budget, frame);
+        self.stack_locations.pop();
         self.depth -= 1;
         result
+    }
+    /// Current script frames, innermost first. Zero selects all frames.
+    pub fn stack_trace(&self, limit: usize) -> String {
+        let count = if limit == 0 {
+            self.stack_locations.len()
+        } else {
+            limit
+        };
+        self.stack_locations
+            .iter()
+            .rev()
+            .take(count)
+            .map(|at| format!("{}({})", at.storage, at.line))
+            .collect::<Vec<_>>()
+            .join(" <-- ")
     }
     fn load_name(
         &mut self,
@@ -919,6 +942,10 @@ impl Vm {
         let mut ip = 0;
         while let Some(instruction) = program.code.get(ip) {
             let at = &instruction.location;
+            if let Some(location) = self.stack_locations.last_mut() {
+                location.line = at.line;
+                location.column = at.column;
+            }
             if *budget == 0 {
                 return Err(unsupported(format!(
                     "{}:{}:{}: execution budget exhausted after {} instructions",

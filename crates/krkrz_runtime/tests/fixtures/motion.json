@@ -1,0 +1,750 @@
+{
+  "id": "motion",
+  "spec": "krkr",
+  "label": "test",
+  "version": 3.03,
+  "easing": [],
+  "source": {
+    "image": {
+      "type": 1,
+      "icon": {
+        "quad": {
+          "width": 2,
+          "height": 2,
+          "originX": 0,
+          "originY": 0,
+          "pixel": {
+            "$bytes": [
+              0,
+              0,
+              255,
+              255,
+              0,
+              255,
+              0,
+              255,
+              255,
+              0,
+              0,
+              255,
+              255,
+              255,
+              255,
+              255
+            ]
+          }
+        },
+        "compressed": {
+          "width": 2,
+          "height": 2,
+          "originX": 0,
+          "originY": 0,
+          "pixel": {
+            "$bytes": [
+              128,
+              0,
+              0,
+              255,
+              255,
+              0,
+              255,
+              255,
+              255,
+              255
+            ]
+          },
+          "compress": "RL"
+        }
+      }
+    }
+  },
+  "object": {
+    "hero": {
+      "type": 0,
+      "motion": {
+        "idle": {
+          "type": 0,
+          "lastTime": 3,
+          "loopTime": -1,
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 6,
+            "bottom": 2
+          },
+          "layer": [
+            {
+              "type": 0,
+              "label": "sprite",
+              "coordinate": 0,
+              "inheritMask": 1532,
+              "objTriPriority": 2,
+              "transformOrder": [
+                3,
+                2,
+                1,
+                0
+              ],
+              "children": [],
+              "frameList": [
+                {
+                  "time": 0,
+                  "type": 3,
+                  "content": {
+                    "src": "src/image/quad",
+                    "mask": 2,
+                    "coord": [
+                      0,
+                      0,
+                      0
+                    ]
+                  }
+                },
+                {
+                  "time": 2,
+                  "type": 2,
+                  "content": {
+                    "src": "src/image/quad",
+                    "mask": 2,
+                    "coord": [
+                      4,
+                      0,
+                      0
+                    ]
+                  }
+                },
+                {
+                  "time": 3,
+                  "type": 0
+                }
+              ],
+              "metadata": null,
+              "parameterize": null,
+              "visible": 1,
+              "exportSelf": 1,
+              "groundCorrection": 0,
+              "joinTarget": 1,
+              "meshTransform": 0,
+              "meshCombine": 0,
+              "meshDivision": 10,
+              "stencilType": 0
+            }
+          ],
+          "layerIndexMap": {
+            "sprite": 0
+          },
+          "priority": [
+            {
+              "time": 0,
+              "type": 1,
+              "content": [
+                0
+              ]
+            },
+            {
+              "time": 3,
+              "type": 1,
+              "content": null
+            }
+          ],
+          "tag": [],
+          "variable": [],
+          "parameter": [],
+          "referenceModelFileList": [],
+          "referenceProjectFileList": [],
+          "parameterize": null,
+          "metadata": null
+        },
+        "loop": {
+          "type": 0,
+          "lastTime": 3,
+          "loopTime": 0,
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 6,
+            "bottom": 2
+          },
+          "layer": [
+            {
+              "type": 0,
+              "label": "sprite",
+              "coordinate": 0,
+              "inheritMask": 1532,
+              "objTriPriority": 2,
+              "transformOrder": [
+                3,
+                2,
+                1,
+                0
+              ],
+              "children": [],
+              "frameList": [
+                {
+                  "time": 0,
+                  "type": 3,
+                  "content": {
+                    "src": "src/image/quad",
+                    "mask": 2,
+                    "coord": [
+                      0,
+                      0,
+                      0
+                    ]
+                  }
+                },
+                {
+                  "time": 2,
+                  "type": 2,
+                  "content": {
+                    "src": "src/image/quad",
+                    "mask": 2,
+                    "coord": [
+                      4,
+                      0,
+                      0
+                    ]
+                  }
+                },
+                {
+                  "time": 3,
+                  "type": 0
+                }
+              ],
+              "metadata": null,
+              "parameterize": null,
+              "visible": 1,
+              "exportSelf": 1,
+              "groundCorrection": 0,
+              "joinTarget": 1,
+              "meshTransform": 0,
+              "meshCombine": 0,
+              "meshDivision": 10,
+              "stencilType": 0
+            }
+          ],
+          "layerIndexMap": {
+            "sprite": 0
+          },
+          "priority": [
+            {
+              "time": 0,
+              "type": 1,
+              "content": [
+                0
+              ]
+            },
+            {
+              "time": 3,
+              "type": 1,
+              "content": null
+            }
+          ],
+          "tag": [],
+          "variable": [],
+          "parameter": [],
+          "referenceModelFileList": [],
+          "referenceProjectFileList": [],
+          "parameterize": null,
+          "metadata": null
+        },
+        "hold": {
+          "type": 0,
+          "lastTime": 3,
+          "loopTime": -1,
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 6,
+            "bottom": 2
+          },
+          "layer": [
+            {
+              "type": 0,
+              "label": "sprite",
+              "coordinate": 0,
+              "inheritMask": 1532,
+              "objTriPriority": 2,
+              "transformOrder": [
+                3,
+                2,
+                1,
+                0
+              ],
+              "children": [],
+              "frameList": [
+                {
+                  "time": 0,
+                  "type": 1,
+                  "content": {
+                    "src": "src/image/quad",
+                    "mask": 2,
+                    "coord": [
+                      0,
+                      0,
+                      0
+                    ]
+                  }
+                },
+                {
+                  "time": 2,
+                  "type": 2,
+                  "content": {
+                    "src": "src/image/quad",
+                    "mask": 2,
+                    "coord": [
+                      4,
+                      0,
+                      0
+                    ]
+                  }
+                },
+                {
+                  "time": 3,
+                  "type": 0
+                }
+              ],
+              "metadata": null,
+              "parameterize": null,
+              "visible": 1,
+              "exportSelf": 1,
+              "groundCorrection": 0,
+              "joinTarget": 1,
+              "meshTransform": 0,
+              "meshCombine": 0,
+              "meshDivision": 10,
+              "stencilType": 0
+            }
+          ],
+          "layerIndexMap": {
+            "sprite": 0
+          },
+          "priority": [
+            {
+              "time": 0,
+              "type": 1,
+              "content": [
+                0
+              ]
+            },
+            {
+              "time": 3,
+              "type": 1,
+              "content": null
+            }
+          ],
+          "tag": [],
+          "variable": [],
+          "parameter": [],
+          "referenceModelFileList": [],
+          "referenceProjectFileList": [],
+          "parameterize": null,
+          "metadata": null
+        },
+        "compressed": {
+          "type": 0,
+          "lastTime": 3,
+          "loopTime": -1,
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 6,
+            "bottom": 2
+          },
+          "layer": [
+            {
+              "type": 0,
+              "label": "sprite",
+              "coordinate": 0,
+              "inheritMask": 1532,
+              "objTriPriority": 2,
+              "transformOrder": [
+                3,
+                2,
+                1,
+                0
+              ],
+              "children": [],
+              "frameList": [
+                {
+                  "time": 0,
+                  "type": 3,
+                  "content": {
+                    "src": "src/image/compressed",
+                    "mask": 2,
+                    "coord": [
+                      0,
+                      0,
+                      0
+                    ]
+                  }
+                },
+                {
+                  "time": 2,
+                  "type": 2,
+                  "content": {
+                    "src": "src/image/compressed",
+                    "mask": 2,
+                    "coord": [
+                      4,
+                      0,
+                      0
+                    ]
+                  }
+                },
+                {
+                  "time": 3,
+                  "type": 0
+                }
+              ],
+              "metadata": null,
+              "parameterize": null,
+              "visible": 1,
+              "exportSelf": 1,
+              "groundCorrection": 0,
+              "joinTarget": 1,
+              "meshTransform": 0,
+              "meshCombine": 0,
+              "meshDivision": 10,
+              "stencilType": 0
+            }
+          ],
+          "layerIndexMap": {
+            "sprite": 0
+          },
+          "priority": [
+            {
+              "time": 0,
+              "type": 1,
+              "content": [
+                0
+              ]
+            },
+            {
+              "time": 3,
+              "type": 1,
+              "content": null
+            }
+          ],
+          "tag": [],
+          "variable": [],
+          "parameter": [],
+          "referenceModelFileList": [],
+          "referenceProjectFileList": [],
+          "parameterize": null,
+          "metadata": null
+        },
+        "curve": {
+          "type": 0,
+          "lastTime": 3,
+          "loopTime": -1,
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 6,
+            "bottom": 2
+          },
+          "layer": [
+            {
+              "type": 0,
+              "label": "sprite",
+              "coordinate": 0,
+              "inheritMask": 1532,
+              "objTriPriority": 2,
+              "transformOrder": [
+                3,
+                2,
+                1,
+                0
+              ],
+              "children": [],
+              "frameList": [
+                {
+                  "time": 0,
+                  "type": 3,
+                  "content": {
+                    "src": "src/image/quad",
+                    "mask": 2050,
+                    "coord": [
+                      0,
+                      0,
+                      0
+                    ],
+                    "ccc": {
+                      "c": [
+                        1,
+                        1
+                      ],
+                      "x": [
+                        0,
+                        0,
+                        1,
+                        1
+                      ],
+                      "y": [
+                        0,
+                        1,
+                        1,
+                        1
+                      ]
+                    }
+                  }
+                },
+                {
+                  "time": 2,
+                  "type": 2,
+                  "content": {
+                    "src": "src/image/quad",
+                    "mask": 2,
+                    "coord": [
+                      4,
+                      0,
+                      0
+                    ]
+                  }
+                },
+                {
+                  "time": 3,
+                  "type": 0
+                }
+              ],
+              "metadata": null,
+              "parameterize": null,
+              "visible": 1,
+              "exportSelf": 1,
+              "groundCorrection": 0,
+              "joinTarget": 1,
+              "meshTransform": 0,
+              "meshCombine": 0,
+              "meshDivision": 10,
+              "stencilType": 0
+            }
+          ],
+          "layerIndexMap": {
+            "sprite": 0
+          },
+          "priority": [
+            {
+              "time": 0,
+              "type": 1,
+              "content": [
+                0
+              ]
+            },
+            {
+              "time": 3,
+              "type": 1,
+              "content": null
+            }
+          ],
+          "tag": [],
+          "variable": [],
+          "parameter": [],
+          "referenceModelFileList": [],
+          "referenceProjectFileList": [],
+          "parameterize": null,
+          "metadata": null
+        },
+        "rotate": {
+          "type": 0,
+          "lastTime": 3,
+          "loopTime": -1,
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 6,
+            "bottom": 2
+          },
+          "layer": [
+            {
+              "type": 0,
+              "label": "sprite",
+              "coordinate": 0,
+              "inheritMask": 1532,
+              "objTriPriority": 2,
+              "transformOrder": [
+                3,
+                2,
+                1,
+                0
+              ],
+              "children": [],
+              "frameList": [
+                {
+                  "time": 0,
+                  "type": 2,
+                  "content": {
+                    "src": "src/image/quad",
+                    "mask": 18,
+                    "coord": [
+                      4,
+                      4,
+                      0
+                    ],
+                    "angle": 90
+                  }
+                },
+                {
+                  "time": 2,
+                  "type": 2,
+                  "content": {
+                    "src": "src/image/quad",
+                    "mask": 18,
+                    "coord": [
+                      4,
+                      4,
+                      0
+                    ],
+                    "angle": 90
+                  }
+                },
+                {
+                  "time": 3,
+                  "type": 0
+                }
+              ],
+              "metadata": null,
+              "parameterize": null,
+              "visible": 1,
+              "exportSelf": 1,
+              "groundCorrection": 0,
+              "joinTarget": 1,
+              "meshTransform": 0,
+              "meshCombine": 0,
+              "meshDivision": 10,
+              "stencilType": 0
+            }
+          ],
+          "layerIndexMap": {
+            "sprite": 0
+          },
+          "priority": [
+            {
+              "time": 0,
+              "type": 1,
+              "content": [
+                0
+              ]
+            },
+            {
+              "time": 3,
+              "type": 1,
+              "content": null
+            }
+          ],
+          "tag": [],
+          "variable": [],
+          "parameter": [],
+          "referenceModelFileList": [],
+          "referenceProjectFileList": [],
+          "parameterize": null,
+          "metadata": null
+        },
+        "flip": {
+          "type": 0,
+          "lastTime": 3,
+          "loopTime": -1,
+          "bounds": {
+            "left": 0,
+            "top": 0,
+            "right": 6,
+            "bottom": 2
+          },
+          "layer": [
+            {
+              "type": 0,
+              "label": "sprite",
+              "coordinate": 0,
+              "inheritMask": 1532,
+              "objTriPriority": 2,
+              "transformOrder": [
+                3,
+                2,
+                1,
+                0
+              ],
+              "children": [],
+              "frameList": [
+                {
+                  "time": 0,
+                  "type": 3,
+                  "content": {
+                    "src": "src/image/quad",
+                    "mask": 6,
+                    "coord": [
+                      2,
+                      0,
+                      0
+                    ],
+                    "fx": 1
+                  }
+                },
+                {
+                  "time": 2,
+                  "type": 2,
+                  "content": {
+                    "src": "src/image/quad",
+                    "mask": 2,
+                    "coord": [
+                      2,
+                      0,
+                      0
+                    ]
+                  }
+                },
+                {
+                  "time": 3,
+                  "type": 0
+                }
+              ],
+              "metadata": null,
+              "parameterize": null,
+              "visible": 1,
+              "exportSelf": 1,
+              "groundCorrection": 0,
+              "joinTarget": 1,
+              "meshTransform": 0,
+              "meshCombine": 0,
+              "meshDivision": 10,
+              "stencilType": 0
+            }
+          ],
+          "layerIndexMap": {
+            "sprite": 0
+          },
+          "priority": [
+            {
+              "time": 0,
+              "type": 1,
+              "content": [
+                0
+              ]
+            },
+            {
+              "time": 3,
+              "type": 1,
+              "content": null
+            }
+          ],
+          "tag": [],
+          "variable": [],
+          "parameter": [],
+          "referenceModelFileList": [],
+          "referenceProjectFileList": [],
+          "parameterize": null,
+          "metadata": null
+        }
+      },
+      "metadata": null
+    }
+  },
+  "screenSize": {
+    "width": 16,
+    "height": 8,
+    "originX": 0,
+    "originY": 0
+  },
+  "metadata": {
+    "日本語": "synthetic"
+  }
+}

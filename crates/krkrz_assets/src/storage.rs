@@ -328,13 +328,16 @@ impl Storage {
             return Ok(Some(name.to_owned()));
         }
         if !name.contains('>') {
+            // TVPGetPlacedPath searches the auto-path table by storage basename
+            // after the direct lookup fails, even if the request has a directory.
+            let basename = name.rsplit('/').next().unwrap_or(name);
             for path in self.search_paths.iter().rev() {
                 let separator = if path.is_empty() || path.ends_with('>') {
                     ""
                 } else {
                     "/"
                 };
-                let candidate = format!("{path}{separator}{name}");
+                let candidate = format!("{path}{separator}{basename}");
                 if self.contains(&candidate, probe)? {
                     return Ok(Some(candidate));
                 }

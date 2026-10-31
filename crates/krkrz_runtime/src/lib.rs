@@ -23,6 +23,7 @@ mod kag_parser;
 mod layer;
 mod layer_draw;
 mod menu;
+mod motion;
 mod phase_vocoder;
 mod plugins;
 mod psb_file;
@@ -107,6 +108,7 @@ pub struct Services {
     text_renderers: BTreeMap<usize, text_render::Renderer>,
     layer_draw: layer_draw::State,
     menus: menu::State,
+    motion: motion::State,
     dialogs: dialog::State,
     sound_options: Option<Vec<u8>>,
     window_ex: window_ex::State,
@@ -193,6 +195,7 @@ impl Host for Services {
 
     fn gc_trace(&self, id: usize) -> Vec<Value> {
         let mut edges = Vec::new();
+        self.motion.gc_trace(id, &mut edges);
         if let Some(window) = self.windows.get(&id) {
             window.gc_trace(&mut edges);
             self.layer_manager_gc_trace(id, &mut edges);
@@ -312,6 +315,9 @@ impl Host for Services {
         }
         if let Some(operation) = name.strip_prefix("PSBFile.") {
             return self.psb_call(vm, operation, context, args, budget);
+        }
+        if let Some(operation) = name.strip_prefix("Motion.") {
+            return self.motion_call(vm, operation, context, args, budget);
         }
         if let Some(operation) = name.strip_prefix("CSVParser.") {
             return self.csv_call(vm, operation, context, args, budget);
@@ -766,6 +772,13 @@ impl Host for Services {
                         }
                         Ok(Value::Void)
                     }
+                    "motionplayer.dll" => {
+                        if !self.loaded_plugins.contains("motionplayer.dll") {
+                            motion::register(vm)?;
+                            self.loaded_plugins.insert("motionplayer.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
                     "fftgraph.dll" => {
                         if !self.loaded_plugins.contains("fftgraph.dll") {
                             vm.register_native("drawFFTGraph")?;
@@ -947,6 +960,20 @@ impl Host for Services {
                 Ok(Value::Void)
             }
             "Scripts.getClassNames" => vm.class_names(arg(0)?),
+            "Scripts.getTraceString" => {
+                let limit = args
+                    .first()
+                    .filter(|v| !matches!(v, Value::Void))
+                    .map(Value::integer)
+                    .transpose()?
+                    .unwrap_or(0);
+                let limit = if limit < 0 {
+                    1
+                } else {
+                    usize::try_from(limit).unwrap_or(usize::MAX)
+                };
+                Ok(Value::string(&vm.stack_trace(limit)))
+            }
             "Scripts.execStorage" | "Scripts.evalStorage" | "Scripts.evalStorageDiscard" => {
                 let context = script_context(args.get(2));
                 self.script(
@@ -1179,6 +1206,7 @@ impl Session {
             "System.doCompact",
             "Scripts.execStorage",
             "Scripts.evalStorage",
+            "Scripts.getTraceString",
             "Scripts.exec",
             "Scripts.eval",
             "Scripts.getClassNames",
@@ -1242,6 +1270,7 @@ impl Session {
                 psb_files: BTreeMap::new(),
                 text_renderers: BTreeMap::new(),
                 layer_draw: layer_draw::State::default(),
+                motion: motion::State::default(),
                 menus,
                 dialogs: dialog::State::default(),
                 sound_options: None,

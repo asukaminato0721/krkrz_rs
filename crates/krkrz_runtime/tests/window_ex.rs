@@ -36,6 +36,28 @@ fn original_window_ex_corpus() {
 const SETUP: &str = "Plugins.link('menu.dll');if(typeof global.Pad=='undefined')global.Pad=%[];if(typeof Debug.console=='undefined')Debug.console=%[];Plugins.link('windowEx.dll');";
 
 #[test]
+fn clearing_an_absent_overlay_succeeds_but_setting_a_bitmap_remains_unsupported() {
+    assert_eq!(
+        run(
+            &format!(
+                "{SETUP}var w=new Window();w.registerExEvent();return typeof w.setOverlayBitmap();"
+            ),
+            10000
+        )
+        .unwrap(),
+        Value::string("void")
+    );
+    let error = run(
+        &format!(
+            "{SETUP}var w=new Window();w.registerExEvent();w.setOverlayBitmap(new Layer(w,null));"
+        ),
+        10000,
+    )
+    .unwrap_err();
+    assert!(error.downcast_ref::<VmAbort>().is_some(), "{error:#}");
+}
+
+#[test]
 fn deferred_maximize_minimize_restore_and_query_veto() {
     let project = tempfile::tempdir().unwrap();
     let saves = tempfile::tempdir().unwrap();
