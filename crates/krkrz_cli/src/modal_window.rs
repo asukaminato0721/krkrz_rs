@@ -113,6 +113,27 @@ fn color_image(frame: &ModalFrame) -> egui::ColorImage {
     )
 }
 
+/// Script dialog dimensions are logical points. The desktop scale applies to
+/// the window, its bitmap and pointer input together.
+struct DialogSize([i32; 2]);
+impl DialogSize {
+    fn points(&self) -> egui::Vec2 {
+        egui::vec2(self.0[0] as f32, self.0[1] as f32)
+    }
+
+    fn apply(&self, ctx: &egui::Context) {
+        let size = self.points();
+        // Keep nonresizable Wayland constraints consistent with the content.
+        for command in [
+            egui::ViewportCommand::MinInnerSize(size),
+            egui::ViewportCommand::MaxInnerSize(size),
+            egui::ViewportCommand::InnerSize(size),
+        ] {
+            ctx.send_viewport_cmd(command);
+        }
+    }
+}
+
 pub fn run_child() -> Result<()> {
     let mut input = BufReader::new(std::io::stdin());
     let frame: ModalFrame = receive(&mut input)?.context("missing modal window frame")?;
@@ -136,6 +157,7 @@ pub fn run_child() -> Result<()> {
                 input,
                 texture: None,
                 finished: false,
+                pixels_per_point: None,
             }))
         }),
     )
@@ -147,6 +169,7 @@ struct App {
     input: BufReader<std::io::Stdin>,
     texture: Option<egui::TextureHandle>,
     finished: bool,
+    pixels_per_point: Option<f32>,
 }
 impl App {
     fn event(&mut self, ctx: &egui::Context, event: ModalEvent) -> Result<()> {
@@ -156,6 +179,7 @@ impl App {
             self.frame = frame;
             self.texture = None;
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.frame.caption.clone()));
+            DialogSize(self.frame.client).apply(ctx);
         } else {
             self.finished = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -170,11 +194,27 @@ impl eframe::App for App {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
             return;
         }
+        let pixels_per_point = ctx.pixels_per_point();
+        let size = DialogSize(self.frame.client);
+        let size_error = (ui.max_rect().size() - size.points()).abs();
+        // The initial Wayland configure can arrive after the first resize.
+        // Retry until the client area matches, allowing logical-pixel rounding.
+        if self.pixels_per_point != Some(pixels_per_point) || size_error.max_elem() > 0.5 {
+            size.apply(&ctx);
+            if self.pixels_per_point.is_none() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(egui::pos2(
+                    self.frame.position[0] as f32 / pixels_per_point,
+                    self.frame.position[1] as f32 / pixels_per_point,
+                )));
+            }
+            self.pixels_per_point = Some(pixels_per_point);
+            ctx.request_repaint();
+        }
         let texture = self.texture.get_or_insert_with(|| {
             ctx.load_texture(
                 "modal-layer-tree",
                 color_image(&self.frame),
-                egui::TextureOptions::LINEAR,
+                egui::TextureOptions::NEAREST,
             )
         });
         let mut event = None;
@@ -199,8 +239,8 @@ impl eframe::App for App {
                     && let Some(pos) = response.interact_pointer_pos()
                 {
                     event = Some(ModalEvent::Click {
-                        x: (pos.x - area.min.x) as i32,
-                        y: (pos.y - area.min.y) as i32,
+                        x: (pos.x - area.min.x).floor() as i32,
+                        y: (pos.y - area.min.y).floor() as i32,
                     });
                 }
             });
@@ -235,6 +275,53 @@ impl eframe::App for App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn modal_retries_stale_window_size_and_updates_fixed_size_constraints() {
+        let ctx = egui::Context::default();
+        let mut host = eframe::Frame::_new_kittest();
+        let mut app = App {
+            frame: ModalFrame {
+                caption: String::new(),
+                position: [0, 0],
+                client: [200, 84],
+                rect: [0, 0, 200, 84],
+                width: 200,
+                height: 84,
+                rgba: vec![255; 200 * 84 * 4],
+            },
+            input: BufReader::new(std::io::stdin()),
+            texture: None,
+            finished: false,
+            pixels_per_point: None,
+        };
+        for (actual, resizing) in [
+            (egui::vec2(400.0, 168.0), true),
+            (egui::vec2(400.0, 168.0), true),
+            (egui::vec2(200.0, 84.0), false),
+        ] {
+            let mut input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, actual)),
+                ..Default::default()
+            };
+            input
+                .viewports
+                .get_mut(&egui::ViewportId::ROOT)
+                .unwrap()
+                .native_pixels_per_point = Some(2.0);
+            let mut output = ctx.run_ui(input, |ui| eframe::App::ui(&mut app, ui, &mut host));
+            let commands = &output.viewport_output[&egui::ViewportId::ROOT].commands;
+            let target = egui::vec2(200.0, 84.0);
+            for command in [
+                egui::ViewportCommand::MinInnerSize(target),
+                egui::ViewportCommand::MaxInnerSize(target),
+                egui::ViewportCommand::InnerSize(target),
+            ] {
+                assert_eq!(commands.contains(&command), resizing, "{command:?}");
+            }
+            output.textures_delta.clear();
+        }
+    }
 
     #[test]
     fn modal_pixels_preserve_rgb_when_window_alpha_is_unused() {
