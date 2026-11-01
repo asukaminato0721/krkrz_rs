@@ -480,6 +480,11 @@ voice volume sliders plus optional voice-playback reduction controls. OK returns
 a nine-byte settings octet; Cancel leaves the game's settings unchanged.
 Headless calls require an input-dialog handler.
 
+The `scroll` transition supports all four directions and all three stay modes.
+Its 24 synthetic cases match original-engine pixels with and without children.
+Clipped rendering preserves the full image coordinates. Completion delivers the
+final frame before exchanging layers and resuming the script.
+
 The `ripple` transition follows SamplePlugin's scalar displacement tables,
 wave timing, reflected image borders and RGB blending. Its options include
 `centerx`, `centery`, `rwidth`, `roundness`, `speed`, and `maxdrift`. It shares

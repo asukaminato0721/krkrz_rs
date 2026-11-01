@@ -118,11 +118,11 @@ impl Services {
         depth: usize,
         live_bytes: usize,
     ) -> Result<Image> {
-        // Ripple samples neighboring pixels. Complete the whole transition
+        // Displacement effects sample other pixels. Complete the whole transition
         // surface before cropping a partial parent/dirty rectangle.
         let layer = &self.layers[&id];
         if let Some(t) = &layer.transition
-            && t.ripple.is_some()
+            && t.needs_full_surface()
         {
             let full = if t.with_children {
                 Rect {

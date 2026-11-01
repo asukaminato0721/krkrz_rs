@@ -574,6 +574,86 @@ fn original_stretch_copy_pixels() {
 }
 
 #[test]
+fn original_scroll_transition_pixels() {
+    #[derive(Deserialize)]
+    struct ScrollCase {
+        name: String,
+        source: String,
+        expected: String,
+    }
+    let cases: Vec<ScrollCase> =
+        serde_json::from_str(include_str!("fixtures/layer_scroll.json")).unwrap();
+    for case in cases {
+        let (project, _saves, mut s) = session("", 1_000_000);
+        std::fs::write(project.path().join("test.tjs"), &case.source).unwrap();
+        assert_eq!(
+            s.execute_storage("test.tjs")
+                .unwrap_or_else(|e| panic!("{}: {e:#}", case.name)),
+            Value::string(&case.expected),
+            "{}",
+            case.name
+        );
+    }
+}
+
+#[test]
+fn scroll_transition_clipping_and_completion() {
+    for children in ["true", "false"] {
+        for from in 0..4 {
+            let (project, _saves, mut s) = session("", 1_000_000);
+            std::fs::write(project.path().join("test.tjs"), format!(
+                "var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),clock=0,done=0;p.setSize(5,3);p.setImageSize(5,3);a.setSize(5,3);a.setImageSize(5,3);b.setSize(5,3);b.setImageSize(5,3);a.type=ltOpaque;b.type=ltOpaque;a.fillRect(0,0,5,3,0xff000000);b.fillRect(0,0,5,3,0xff000000);a.visible=true;for(var y=0;y<3;y++)for(var x=0;x<5;x++){{a.setMainPixel(x,y,x+y*5);b.setMainPixel(x,y,128+x+y*5);}}a.onTransitionCompleted=function(){{done++;}};a.beginTransition('scroll',{children},b,%[time:1000,from:{from},selfupdate:true,callback:function(){{return global.clock;}}]);"
+            )).unwrap();
+            s.execute_storage("test.tjs").unwrap();
+            let w = s.evaluate("w").unwrap();
+            s.capture_window(&w).unwrap();
+            s.evaluate("clock=400").unwrap();
+            let full = s.capture_window(&w).unwrap();
+            s.evaluate("Scripts.exec('p.setSize(3,2);p.setImageSize(3,2);')")
+                .unwrap();
+            let cropped = s.capture_window(&w).unwrap();
+            assert_eq!((cropped.width, cropped.height), (3, 2));
+            for y in 0..2 {
+                assert_eq!(
+                    &cropped.rgba[y * 3 * 4..(y + 1) * 3 * 4],
+                    &full.rgba[y * 5 * 4..(y * 5 + 3) * 4],
+                    "children {children}, from {from}, row {y}"
+                );
+            }
+            assert_eq!(s.evaluate("done").unwrap(), Value::Integer(0));
+            s.evaluate("clock=1000").unwrap();
+            let completed = s.capture_window(&w).unwrap();
+            let expected: Vec<u8> = [128, 129, 130, 133, 134, 135]
+                .into_iter()
+                .flat_map(|blue| [0, 0, blue, 255])
+                .collect();
+            assert_eq!(completed.rgba, expected);
+            assert_eq!(s.evaluate("done").unwrap(), Value::Integer(1));
+            assert_eq!(s.capture_window(&w).unwrap().rgba, expected);
+            assert_eq!(s.evaluate("done").unwrap(), Value::Integer(1));
+        }
+    }
+}
+
+#[test]
+fn scroll_transition_rejects_invalid_options_before_starting() {
+    for option in ["from:-1", "from:4", "stay:-1", "stay:3"] {
+        let (project, _saves, mut s) = session(
+            "var w=new Window(),a=new Layer(w,null),b=new Layer(w,a);a.setSize(5,3);b.setSize(5,3);",
+            100_000,
+        );
+        std::fs::write(project.path().join("test.tjs"),format!("try{{a.beginTransition('scroll',true,b,%[time:100,{option}]);}}catch{{return 1;}}return 0;")).unwrap();
+        assert_eq!(
+            s.execute_storage("test.tjs").unwrap(),
+            Value::Integer(1),
+            "{option}"
+        );
+        s.evaluate("a.beginTransition('scroll',true,b,%[time:100])")
+            .unwrap();
+    }
+}
+
+#[test]
 fn ripple_blends_and_completes_with_the_native_transition_lifecycle() {
     let (_project, _saves, mut s) = session(
         "Plugins.link('extrans.dll');var w=new Window(),p=new Layer(w,null),a=new Layer(w,p),b=new Layer(w,p),clock=0,done=0;p.setSize(32,32);p.setImageSize(32,32);a.setSize(32,32);a.setImageSize(32,32);b.setSize(32,32);b.setImageSize(32,32);a.type=ltOpaque;b.type=ltOpaque;a.fillRect(0,0,32,32,0xff000000);b.fillRect(0,0,32,32,0xffffffff);a.visible=true;a.onTransitionCompleted=function(){done++;};a.beginTransition('ripple',true,b,%[time:100,maxdrift:8,selfupdate:true,callback:function(){return global.clock;}]);",

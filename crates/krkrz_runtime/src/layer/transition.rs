@@ -1,13 +1,13 @@
-//! Crossfade provider and Layer transition lifecycle from LayerIntf/TransIntf.
+//! Layer transition providers and lifecycle from LayerIntf/TransIntf.
 use super::*;
 mod ripple;
+mod scroll;
 
 pub(super) struct Transition {
     pub source: usize,
     pub with_children: bool,
     pub phase: i32,
-    rule: Option<Rule>,
-    pub(super) ripple: Option<ripple::Ripple>,
+    effect: Effect,
     duration: u64,
     tick: u64,
     identity: std::rc::Rc<()>,
@@ -17,6 +17,12 @@ pub(super) struct Transition {
     task: crate::coroutine::TaskId,
     presented: std::rc::Rc<std::cell::Cell<bool>>,
 }
+enum Effect {
+    Crossfade,
+    Universal(Rule),
+    Ripple(Box<ripple::Ripple>),
+    Scroll(scroll::Scroll),
+}
 struct Rule {
     width: usize,
     height: usize,
@@ -25,7 +31,15 @@ struct Rule {
 }
 impl Transition {
     fn phase_max(&self) -> i32 {
-        255 + self.rule.as_ref().map_or(0, |r| r.vague)
+        match &self.effect {
+            Effect::Universal(rule) => 255 + rule.vague,
+            Effect::Scroll(scroll) => scroll.extent(),
+            Effect::Crossfade | Effect::Ripple(_) => 255,
+        }
+    }
+
+    pub(super) fn needs_full_surface(&self) -> bool {
+        matches!(self.effect, Effect::Ripple(_) | Effect::Scroll(_))
     }
 }
 impl Services {
@@ -47,7 +61,10 @@ impl Services {
             "Layer is already in a transition"
         );
         let name = args[0].text();
-        if !matches!(name.as_str(), "crossfade" | "universal" | "ripple") {
+        if !matches!(
+            name.as_str(),
+            "crossfade" | "universal" | "ripple" | "scroll"
+        ) {
             return Err(unsupported(format!("transition provider {name}")));
         }
         let with_children = args
@@ -91,12 +108,13 @@ impl Services {
             "transition requires a time option"
         );
         let duration = time.integer()?.max(2) as u64;
-        let ripple = if name == "ripple" {
-            Some(ripple::Ripple::new(vm, self, options, size, budget)?)
-        } else {
-            None
-        };
-        let rule = if name == "universal" {
+        let effect = if name == "ripple" {
+            Effect::Ripple(Box::new(ripple::Ripple::new(
+                vm, self, options, size, budget,
+            )?))
+        } else if name == "scroll" {
+            Effect::Scroll(scroll::Scroll::new(vm, self, options, size, budget)?)
+        } else if name == "universal" {
             let vague =
                 vm.get_property(options, &Value::string("vague"), true, false, self, budget)?;
             let vague = if matches!(vague, Value::Void) {
@@ -143,14 +161,14 @@ impl Services {
                     }
                 })
                 .collect();
-            Some(Rule {
+            Effect::Universal(Rule {
                 width: image.width as usize,
                 height: image.height as usize,
                 pixels,
                 vague,
             })
         } else {
-            None
+            Effect::Crossfade
         };
         let callback = vm.get_property(
             options,
@@ -200,8 +218,7 @@ impl Services {
             source,
             with_children,
             phase: 0,
-            rule,
-            ripple,
+            effect,
             duration,
             tick: if callback.is_some() { 0 } else { self.time_ms },
             identity: std::rc::Rc::new(()),
@@ -546,7 +563,7 @@ impl Transition {
         kind: i32,
         origin: [i64; 2],
     ) {
-        if let Some(ripple) = &self.ripple {
+        if let Effect::Ripple(ripple) = &self.effect {
             ripple.blend(
                 destination,
                 source,
@@ -556,7 +573,11 @@ impl Transition {
             );
             return;
         }
-        let Some(rule) = &self.rule else {
+        if let Effect::Scroll(scroll) = &self.effect {
+            scroll.blend(destination, source, self.phase);
+            return;
+        }
+        let Effect::Universal(rule) = &self.effect else {
             crossfade(destination, source, kind, self.phase);
             return;
         };
