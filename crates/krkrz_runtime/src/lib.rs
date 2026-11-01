@@ -348,6 +348,7 @@ impl Host for Services {
                 if self.main_window == Some(id) {
                     self.main_window = None;
                 }
+                self.cancel_window_timers(id);
                 let registered = if let Some(window) = self.windows.get_mut(&id) {
                     window.invalidating = true;
                     std::mem::take(&mut window.registered_objects)

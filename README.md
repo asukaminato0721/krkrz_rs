@@ -462,7 +462,8 @@ Motion validation uses synthetic fixtures and native-plugin comparisons.
 These checks do not establish complete story playback.
 
 Storage-level function, class and property declarations are available before
-executable statements. Auto-path lookup uses the requested basename after a direct
+executable statements, including declarations inside blocks and conditional branches.
+Auto-path lookup uses the requested basename after a direct
 lookup fails. Interpolated strings accept whitespace after `@`, and expression
 evaluation accepts trailing semicolons. `Scripts.getTraceString` reports current
 script storage names and line numbers, with an optional frame limit.

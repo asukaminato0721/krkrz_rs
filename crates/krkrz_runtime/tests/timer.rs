@@ -17,6 +17,49 @@ fn session(source: &str, budget: u64) -> (tempfile::TempDir, tempfile::TempDir, 
     (project, saves, session)
 }
 #[test]
+fn window_invalidation_cancels_its_bound_and_named_timer_callbacks() {
+    let (_project, _saves, mut session) = session(
+        r#"
+        global.log=[];
+        class W extends Window {
+            function W(){super.Window();}
+            function pulse(){log.add(this.visible);}
+        }
+        global.w=new W();
+        global.boundTimer=new Timer(w.pulse,'');
+        global.namedTimer=new Timer(w,'pulse');
+        global.liveTimer=new Timer(function(){log.add('live');},'');
+        var timers=[boundTimer,namedTimer,liveTimer];
+        for(var i=0;i<timers.count;i++){
+            timers[i].interval=1;timers[i].capacity=1;timers[i].enabled=true;
+        }
+        "#,
+        100_000,
+    );
+    session.advance_clock(2).unwrap();
+    assert_eq!(
+        session.evaluate("log.join(',')").unwrap(),
+        Value::string("0,0,live")
+    );
+    session.evaluate("(global.stopper=new AsyncTrigger(function(){invalidate global.w;},''),stopper.mode=1,stopper.trigger())").unwrap();
+    session.advance_clock(4).unwrap();
+    assert_eq!(
+        session.evaluate("log.join(',')").unwrap(),
+        Value::string("0,0,live,live")
+    );
+    assert_eq!(
+        session
+            .evaluate("boundTimer.enabled+namedTimer.enabled")
+            .unwrap(),
+        Value::Integer(0)
+    );
+    assert_eq!(
+        session.evaluate("liveTimer.enabled").unwrap(),
+        Value::Integer(1)
+    );
+}
+
+#[test]
 fn original_timer_corpus() {
     let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/timer.json")).unwrap();
     for case in cases {

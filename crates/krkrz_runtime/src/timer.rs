@@ -52,6 +52,21 @@ fn ticks(time_ms: u64) -> Result<u64> {
         .ok_or_else(|| unsupported("Timer clock range exceeded"))
 }
 impl Services {
+    pub(crate) fn cancel_window_timers(&mut self, window: usize) {
+        for (&id, timer) in &mut self.timers {
+            let Value::Object(owner) = &timer.owner else {
+                unreachable!("Timer constructors require an Object action owner");
+            };
+            if owner.context.or(owner.object) == Some(window) {
+                timer.enabled = false;
+                self.events.cancel(id, EventKind::Timer);
+                if let Some(task) = timer.task.take() {
+                    self.timer_tasks.cancel(task);
+                }
+            }
+        }
+    }
+
     pub(crate) fn timer_call(
         &mut self,
         vm: &mut Vm,
