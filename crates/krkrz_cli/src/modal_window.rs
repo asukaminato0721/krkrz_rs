@@ -98,6 +98,21 @@ fn validate(frame: &ModalFrame) -> Result<()> {
     Ok(())
 }
 
+fn color_image(frame: &ModalFrame) -> egui::ColorImage {
+    // Window surfaces retain RGB where the primary Layer does not use alpha.
+    // Present those colors as opaque pixels, as presenter.wgsl does.
+    egui::ColorImage::new(
+        [frame.width as usize, frame.height as usize],
+        frame
+            .rgba
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|[r, g, b, _]| egui::Color32::from_rgb(*r, *g, *b))
+            .collect(),
+    )
+}
+
 pub fn run_child() -> Result<()> {
     let mut input = BufReader::new(std::io::stdin());
     let frame: ModalFrame = receive(&mut input)?.context("missing modal window frame")?;
@@ -158,10 +173,7 @@ impl eframe::App for App {
         let texture = self.texture.get_or_insert_with(|| {
             ctx.load_texture(
                 "modal-layer-tree",
-                egui::ColorImage::from_rgba_unmultiplied(
-                    [self.frame.width as usize, self.frame.height as usize],
-                    &self.frame.rgba,
-                ),
+                color_image(&self.frame),
                 egui::TextureOptions::LINEAR,
             )
         });
@@ -217,5 +229,34 @@ impl eframe::App for App {
             self.finished = true;
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn modal_pixels_preserve_rgb_when_window_alpha_is_unused() {
+        let frame = ModalFrame {
+            caption: String::new(),
+            position: [0, 0],
+            client: [3, 1],
+            rect: [0, 0, 3, 1],
+            width: 3,
+            height: 1,
+            rgba: vec![240, 240, 240, 0, 120, 100, 80, 128, 40, 50, 60, 255],
+        };
+        validate(&frame).unwrap();
+        let image = color_image(&frame);
+        assert_eq!(image.size, [3, 1]);
+        assert_eq!(
+            image.pixels,
+            [
+                egui::Color32::from_rgb(240, 240, 240),
+                egui::Color32::from_rgb(120, 100, 80),
+                egui::Color32::from_rgb(40, 50, 60),
+            ]
+        );
     }
 }
