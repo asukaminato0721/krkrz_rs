@@ -467,6 +467,10 @@ lookup fails. Interpolated strings accept whitespace after `@`, and expression
 evaluation accepts trailing semicolons. `Scripts.getTraceString` reports current
 script storage names and line numbers, with an optional frame limit.
 
+`Storages.getLocalName` converts file storage names to local paths. It preserves
+existing filesystem case and trailing directory separators. Paths need not exist.
+The method rejects archive members and does not search auto paths.
+
 `Plugins.link('krflash.dll')` accepts decoder registration and preserves existing
 `VideoOverlay` objects. Embedded VP6 video with MP3 streaming audio is supported
 in FWS and zlib-compressed CWS files. A single static wrapper sprite is supported.

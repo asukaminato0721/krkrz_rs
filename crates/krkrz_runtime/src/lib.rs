@@ -1059,6 +1059,9 @@ impl Host for Services {
                 }
             }
             "Storages.getFullPath" => Ok(Value::string(&self.storage.full_path(&arg(0)?.text())?)),
+            "Storages.getLocalName" => {
+                Ok(Value::string(&self.storage.local_name(&arg(0)?.text())?))
+            }
             _ => Err(unsupported(format!(
                 "unsupported Kirikiri native operation: {name}"
             ))),
@@ -1216,6 +1219,7 @@ impl Session {
             "Storages.isExistentStorage",
             "Storages.getPlacedPath",
             "Storages.getFullPath",
+            "Storages.getLocalName",
             "Storages.extractStorageName",
             "Storages.extractStoragePath",
             "Storages.extractStorageExt",

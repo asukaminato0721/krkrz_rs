@@ -243,6 +243,48 @@ impl Storage {
         }
         Ok(result)
     }
+    /// Convert a storage name to a local path without auto-path lookup or
+    /// an existence requirement. Archive members have no local path.
+    pub fn local_name(&self, name: &str) -> Result<String> {
+        let normalized = self.full_path(name)?;
+        ensure!(
+            !normalized.is_empty() && !normalized.contains('>'),
+            "storage has no local filesystem path: {name}"
+        );
+        let local = krkrz_core::local_storage_path(&normalized);
+        let mut path = PathBuf::from("/");
+        // Storage names use ASCII case folding. Recover existing filesystem
+        // spelling so the result also works on case-sensitive hosts.
+        for component in local.split('/').filter(|part| !part.is_empty()) {
+            let mut matched = None;
+            if let Ok(entries) = fs::read_dir(&path) {
+                for (count, entry) in entries.enumerate() {
+                    ensure!(
+                        count < self.limits.entries,
+                        "local directory entry limit exceeded"
+                    );
+                    let entry = entry?;
+                    if entry
+                        .file_name()
+                        .to_string_lossy()
+                        .eq_ignore_ascii_case(component)
+                    {
+                        ensure!(
+                            matched.is_none(),
+                            "ambiguous case-insensitive storage name: {name}"
+                        );
+                        matched = Some(entry.file_name());
+                    }
+                }
+            }
+            path.push(matched.unwrap_or_else(|| component.into()));
+        }
+        let mut result = path.to_string_lossy().into_owned();
+        if local.ends_with('/') && !result.ends_with('/') {
+            result.push('/');
+        }
+        Ok(result)
+    }
     fn normalize(&self, name: &str, directory: bool) -> Result<String> {
         let name = name.replace('\\', "/");
         let name = krkrz_core::local_storage_path(&name);
