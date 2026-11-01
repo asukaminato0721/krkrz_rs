@@ -1212,9 +1212,9 @@ impl Compiler {
         Ok(())
     }
     fn hoist_declaration(&mut self, start: usize) {
-        if self.top_level && self.depth == 1 {
-            // Storage-level declarations exist before executable code. Block
-            // declarations keep their original scope and location.
+        if self.top_level {
+            // TJS registers named functions, classes and properties on the
+            // storage context, including declarations inside blocks or branches.
             self.declarations.extend(self.program.code.split_off(start));
         }
     }

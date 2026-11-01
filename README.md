@@ -466,6 +466,8 @@ executable statements. Auto-path lookup uses the requested basename after a dire
 lookup fails. Interpolated strings accept whitespace after `@`, and expression
 evaluation accepts trailing semicolons. `Scripts.getTraceString` reports current
 script storage names and line numbers, with an optional frame limit.
+KAG tag, attribute and macro names fold ASCII letters only. Fullwidth Latin
+letters and other non-ASCII characters retain their case, matching TJS.
 
 `Storages.getLocalName` converts file storage names to local paths. It preserves
 existing filesystem case and trailing directory separators. Paths need not exist.
@@ -522,6 +524,12 @@ supports BMP, PNG (RGBA or `png24`) and JPEG (`jpg` or `jpgN` quality), includin
 appending serialized state after BMP thumbnails. PNG/JPEG metadata options are
 unsupported; JPEG encoding uses the Rust codec and is not byte-identical to the
 original encoder.
+
+`Plugins.link('layerExSave.dll')` adds the plugin's Layer and Window methods.
+`Layer.saveLayerImagePng` writes PNG screenshots through the save overlay.
+`Layer.copyBlueToAlpha` copies source blue into destination alpha across their
+shared image extent. PNG metadata, PNG octets, TLG5 output, asynchronous saving
+and the remaining utility methods report unsupported operations.
 
 `System.shellExecute(target, parameters)` delegates URLs and local documents to
 the desktop opener (`xdg-open` on Linux, `open` on macOS). Targets are passed as

@@ -17,6 +17,30 @@ fn session(source: &str, budget: u64) -> (tempfile::TempDir, tempfile::TempDir, 
     (project, saves, session)
 }
 #[test]
+fn tag_attribute_and_macro_names_fold_only_ascii_letters() {
+    for plugin in ["KAGParser.dll", "KAGParserEx.dll"] {
+        let (project, _saves, mut session) = session("", 100_000);
+        std::fs::write(
+            project.path().join("names.ks"),
+            "[macro name=全ＳＥ停止ABC][全ＳＥ停止 ＳＥValue=%value][endmacro][全ＳＥ停止aBc VALUE=42]",
+        )
+        .unwrap();
+        std::fs::write(
+            project.path().join("names.tjs"),
+            format!(
+                "Plugins.link('{plugin}');var p=new KAGParser();p.loadScenario('names.ks');var tag=p.getNextTag();return tag.tagname+':'+tag.ＳＥvalue;"
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            session.execute_storage("names.tjs").unwrap(),
+            Value::string("全ＳＥ停止:42"),
+            "{plugin}"
+        );
+    }
+}
+
+#[test]
 fn original_kag_parser_corpus() {
     let cases: Vec<Case> = serde_json::from_str(include_str!("fixtures/kag_parser.json")).unwrap();
     for case in cases {

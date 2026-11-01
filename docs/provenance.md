@@ -210,6 +210,17 @@ No resource DLL or platform GUI code is executed by Rust.
 The next Window-extension reference is `wtnbgo/windowEx` revision
 `88c9be22ff8f9e6d42edbf4787092837f177a89a`, by miahmie. Its source is cached
 outside the repository and has not been ported yet.
+
+The `layerExSave` binding follows `wtnbgo/layerExSave`, pinned in
+`references.json`. `Main.cpp`, `savepng.cpp` and `utils.cpp` define registration,
+PNG saving and `copyBlueToAlpha`. Rust reuses its PNG encoder and save overlay.
+Blue-to-alpha copies the shared image extent and ignores clip and draw-face settings.
+PNG metadata, PNG octets, TLG5 output, asynchronous saving and the remaining
+utility methods are not implemented.
+
+KAG tag, attribute and macro names follow `tTJSString::ToLowerCase` in
+`krkrz/tjs2/tjsString.cpp`. This operation folds ASCII letters only.
+It preserves fullwidth Latin letters used in script-defined tag handlers.
 # Synthetic Windows Media fixture
 
 `crates/krkrz_runtime/tests/fixtures/video_overlay.wmv` contains generated test

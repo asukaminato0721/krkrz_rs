@@ -97,6 +97,10 @@ Layer shrinkCopy follows miahmie's shrinkCopy plugin, revision
 `007fbba3b3531b476d6b97e7ee80553868f31b2d` from wtnbgo/shrinkCopy.
 Its readme specifies the Kirikiri license reproduced below. BMP serialization
 and palette dithering follow `visual/GraphicsLoaderIntf.cpp` and `visual/tvpgl.c`.
+The layerExSave binding follows `wtnbgo/layerExSave`, revision
+`b0939dc916f1b39775768cbb25e6a54b4e217410`, by Go Watanabe.
+Its readme specifies the same Kirikiri license. PNG encoding uses the Rust
+image codec. No LodePNG source is included.
 Scroll transitions follow `visual/TransIntf.cpp`. Universal transitions also
 follow that file and the historical
 `src/core/visual/IA32/univtrans.nas` at revision

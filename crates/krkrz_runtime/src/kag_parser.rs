@@ -938,7 +938,7 @@ impl Services {
             }
             "macro" => {
                 let mut p = handle.borrow_mut();
-                let name = p.args.get(vm, "name")?.text().to_lowercase();
+                let name = p.args.get(vm, "name")?.text().to_ascii_lowercase();
                 ensure!(!name.is_empty(), "missing KAG macro name");
                 p.recording = Some((name, Vec::new()));
             }

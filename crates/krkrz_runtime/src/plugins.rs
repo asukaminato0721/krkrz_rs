@@ -90,6 +90,37 @@ pub(crate) fn layer_effect(vm: &mut Vm, plugin: &str) -> Result<()> {
     Ok(())
 }
 
+pub(crate) fn layer_save(vm: &mut Vm) -> Result<()> {
+    for method in [
+        "saveLayerImagePng",
+        "saveLayerImagePngOctet",
+        "saveLayerImageTlg5",
+        "saveProvinceImage",
+        "getCropRect",
+        "getCropRectZero",
+        "getDiffRect",
+        "getDiffPixel",
+        "oozeColor",
+        "copyBlueToAlpha",
+        "isBlank",
+        "clearAlpha",
+        "getAverageColor",
+        "getFingerPrintValue",
+        "getShrinkVectorOctet",
+    ] {
+        vm.register_native(&format!("Layer.{method}"))?;
+    }
+    for method in [
+        "startSaveLayerImage",
+        "cancelSaveLayerImage",
+        "stopSaveLayerImage",
+    ] {
+        vm.register_native(&format!("Window.{method}"))?;
+    }
+    vm.register_native("Math.octetVectorSum")?;
+    Ok(())
+}
+
 pub(crate) fn packinone(vm: &mut Vm) -> Result<()> {
     // Layer is normally registered as a core class before loading plugins.
     if !vm.globals.contains_key("Layer") {

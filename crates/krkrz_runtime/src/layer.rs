@@ -1127,6 +1127,23 @@ impl Services {
         if op == "saveLayerImage" {
             return self.layer_save_image(id, args, budget);
         }
+        if op == "saveLayerImagePng" {
+            let name = arg(0)?.clone();
+            let image = self.layers[&id].bitmap()?;
+            let opaque = image.rgba.as_chunks::<4>().0.iter().all(|p| p[3] == 255);
+            return self.layer_save_image(
+                id,
+                &[
+                    name,
+                    Value::string(if opaque { "png24" } else { "png" }),
+                    args.get(1).cloned().unwrap_or(Value::Void),
+                ],
+                budget,
+            );
+        }
+        if op == "copyBlueToAlpha" {
+            return self.layer_copy_blue_to_alpha(id, arg(0)?, budget);
+        }
         if op == "loadImages" {
             return self.layer_load_images(vm, id, args, budget);
         }
@@ -1217,6 +1234,7 @@ mod blit;
 mod blur;
 mod clip_alpha;
 mod copy_alpha_to_province;
+mod copy_blue_to_alpha;
 mod draw;
 pub use draw::WindowFrameState;
 mod fill_alpha;

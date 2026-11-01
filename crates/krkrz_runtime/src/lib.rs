@@ -664,6 +664,13 @@ impl Host for Services {
                         self.loaded_plugins.insert("layereximage.dll".into());
                         Ok(Value::Void)
                     }
+                    "layerexsave.dll" => {
+                        if !self.loaded_plugins.contains("layerexsave.dll") {
+                            plugins::layer_save(vm)?;
+                            self.loaded_plugins.insert("layerexsave.dll".into());
+                        }
+                        Ok(Value::Void)
+                    }
                     name @ ("layerexalpha.dll" | "layerexcolor.dll" | "layerexraster.dll"
                     | "layerexmosaic.dll") => {
                         if !self.loaded_plugins.contains(name) {

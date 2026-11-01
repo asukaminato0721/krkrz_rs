@@ -17,15 +17,72 @@ function next(n) { return n * 2; }
 }
 
 #[test]
-fn block_functions_keep_their_scope() {
+fn storage_block_functions_exist_even_in_unexecuted_branches() {
     let program = compile(
         "block-declaration",
-        "if(false) {function hidden(){return 1;}} return typeof global.hidden;",
+        "var result=hidden();if(false) {function hidden(){return 9;}} return result;",
     )
     .unwrap();
     assert_eq!(
         Vm::default().execute(&program, &mut (), &mut 1000).unwrap(),
-        Value::string("undefined")
+        Value::Integer(9)
+    );
+}
+
+#[test]
+fn nested_storage_functions_survive_blocks_but_variables_do_not() {
+    let program = compile(
+        "nested-block-declarations",
+        "var result=soundUpdate();{{var local=4;function soundUpdate(){return 12;}}}return result+':'+typeof global.local;",
+    )
+    .unwrap();
+    assert_eq!(
+        Vm::default().execute(&program, &mut (), &mut 1000).unwrap(),
+        Value::string("12:undefined")
+    );
+}
+
+#[test]
+fn storage_block_declarations_keep_their_definition_context() {
+    let mut vm = Vm::default();
+    let context = vm.new_dictionary().unwrap();
+    vm.set_member(&context, &Value::string("value"), Value::Integer(4))
+        .unwrap();
+    vm.execute_in_context(
+        &compile(
+            "context-block-declaration",
+            "{{function soundUpdate(){return this.value;}}}",
+        )
+        .unwrap(),
+        &context,
+        &mut (),
+        &mut 1000,
+    )
+    .unwrap();
+    let function = vm
+        .get_member(&context, &Value::string("soundUpdate"), false)
+        .unwrap();
+    let other = vm.new_dictionary().unwrap();
+    vm.set_member(&other, &Value::string("value"), Value::Integer(99))
+        .unwrap();
+    assert_eq!(
+        vm.call_function(&function, &other, &[], &mut (), &mut 1000)
+            .unwrap(),
+        Value::Integer(4)
+    );
+    assert!(!vm.globals.contains_key("soundUpdate"));
+}
+
+#[test]
+fn storage_block_classes_and_properties_exist_before_execution() {
+    let program = compile(
+        "block-class-property",
+        "return (new Hidden()).value+answer; if(false){class Hidden{var value=4;} property answer{getter{return 3;}}}",
+    )
+    .unwrap();
+    assert_eq!(
+        Vm::default().execute(&program, &mut (), &mut 1000).unwrap(),
+        Value::Integer(7)
     );
 }
 

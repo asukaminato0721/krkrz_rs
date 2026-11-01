@@ -132,7 +132,9 @@ fn at(s: &[u16], p: usize) -> u16 {
     s.get(p).copied().unwrap_or(0)
 }
 fn lower(s: &[u16]) -> String {
-    String::from_utf16_lossy(s).to_lowercase()
+    // tTJSString::ToLowerCase folds ASCII only. Fullwidth Latin letters and
+    // other non-ASCII characters remain part of the exact tag/attribute name.
+    String::from_utf16_lossy(s).to_ascii_lowercase()
 }
 /// Scan one tag. Evaluation remains incremental in the native host; `end` gives
 /// the cursor position at which each attribute's expression is evaluated.

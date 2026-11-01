@@ -93,5 +93,10 @@
     "name": "shrinkCopy",
     "url": "https://github.com/wtnbgo/shrinkCopy",
     "revision": "007fbba3b3531b476d6b97e7ee80553868f31b2d"
+  },
+  {
+    "name": "layerExSave",
+    "url": "https://github.com/wtnbgo/layerExSave",
+    "revision": "b0939dc916f1b39775768cbb25e6a54b4e217410"
   }
 ]
