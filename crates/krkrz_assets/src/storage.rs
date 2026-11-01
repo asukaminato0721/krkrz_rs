@@ -177,10 +177,14 @@ impl Storage {
             self.cipher = None;
             return Ok(Some("plaintext"));
         }
-        let cipher = Cipher::Applique;
-        if self.archives[index].verify(&name, Some(&cipher)).is_ok() {
-            self.cipher = Some(cipher);
-            return Ok(Some("applique"));
+        for (label, cipher) in [
+            ("applique", Cipher::Applique),
+            ("poring-soft", Cipher::PoringSoft),
+        ] {
+            if self.archives[index].verify(&name, Some(&cipher)).is_ok() {
+                self.cipher = Some(cipher);
+                return Ok(Some(label));
+            }
         }
         for &(label, json) in crate::cx::BUILTIN_PROFILES {
             let cipher = Cipher::Cx(CxEncryption::from_json(json)?);

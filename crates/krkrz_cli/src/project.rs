@@ -12,6 +12,7 @@ pub enum Profile {
     None,
     OtomeDomain,
     Applique,
+    PoringSoft,
 }
 
 #[derive(Args)]
@@ -41,6 +42,8 @@ impl ProjectArgs {
             Some(Cipher::Cx(CxEncryption::otome_domain()?))
         } else if matches!(self.profile, Profile::Applique) {
             Some(Cipher::Applique)
+        } else if matches!(self.profile, Profile::PoringSoft) {
+            Some(Cipher::PoringSoft)
         } else {
             None
         };

@@ -208,9 +208,9 @@ checksums; it does not depend on the game's directory or executable name.
 Repacked archives that retain the protected flag on plaintext are also detected.
 With no cipher selected, each protected resource must pass its full stored
 checksum before any bytes are returned, including for partial reads.
-The Applique cipher and one Cx data profile from GARbro are supported.
-Automatic selection checks both ciphers. Use `--profile applique` to select
-Applique explicitly. Other Cx profiles can be supplied
+The Applique and PoringSoft ciphers and one Cx data profile from GARbro are supported.
+Automatic selection checks all supported ciphers. Use `--profile applique` or
+`--profile poring-soft` to select either cipher explicitly. Other Cx profiles can be supplied
 with `--cx-profile /path/to/profile.json`; see the bundled JSON in
 [asset profile data](crates/krkrz_assets/data/) for the schema. This does not add
 support for other XP3 encryption schemes. Unknown encryption fails with a diagnostic.

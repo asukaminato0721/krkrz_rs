@@ -21,6 +21,8 @@ Implementation references:
   reference, and all arithmetic wraps at 32 bits. No executable x86 is generated.
 - `GARbro/ArcFormats/Resources/Formats.dat`: only the `Otome＊Domain` Cx profile
   is bundled. No encrypted game content is bundled.
+- `GARbro/ArcFormats/KiriKiri/CryptAlgorithms.cs`: Applique and PoringSoft
+  entry transforms. Automatic selection requires a matching archive checksum.
 - `GARbro/ArcFormats/Emote/ArcPSB.cs`: PSB v2 headers, name tries, arrays, strings,
   dictionaries and resource references. Rust adds offset, allocation and depth
   validation. Other PSB versions/encrypted headers are explicit errors.

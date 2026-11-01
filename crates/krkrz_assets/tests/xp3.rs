@@ -416,6 +416,36 @@ fn cipher_detection_uses_archive_contents_without_a_game_executable() {
 }
 
 #[test]
+fn poring_soft_detection_and_segmented_range_reads() {
+    let project = tempfile::tempdir().unwrap();
+    let path = project.path().join("data.xp3");
+    let plain = (0..12).collect::<Vec<u8>>();
+    let bytes = fixture_with_cipher("startup.tjs", &plain, Some(&Cipher::PoringSoft), true, true);
+    std::fs::write(&path, &bytes).unwrap();
+    let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+    assert_eq!(storage.detect_cipher().unwrap(), Some("poring-soft"));
+    assert_eq!(storage.read("startup.tjs").unwrap(), plain);
+    storage.verify("startup.tjs").unwrap();
+
+    let mut archive = Archive::open(&path, Limits::default()).unwrap();
+    assert!(archive.read("startup.tjs", None).is_err());
+    for (start, end) in [(0, 12), (0, 5), (3, 8), (6, 12), (12, 12)] {
+        assert_eq!(
+            archive
+                .read_range("startup.tjs", start, end - start, Some(&Cipher::PoringSoft))
+                .unwrap(),
+            plain[start as usize..end as usize]
+        );
+    }
+    let mut corrupt = bytes;
+    corrupt[19] ^= 1;
+    std::fs::write(&path, corrupt).unwrap();
+    let mut storage = Storage::open(project.path(), None, Limits::default()).unwrap();
+    assert!(storage.detect_cipher().is_err());
+    assert!(storage.read("startup.tjs").is_err());
+}
+
+#[test]
 fn applique_detection_and_segmented_range_reads() {
     let project = tempfile::tempdir().unwrap();
     let path = project.path().join("data.xp3");
