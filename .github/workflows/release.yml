@@ -42,7 +42,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
@@ -113,7 +113,7 @@ jobs:
           ) -DestinationPath "dist/$env:ARTIFACT_NAME.zip"
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: krkrz-${{ matrix.name }}
           path: dist/*
@@ -124,7 +124,7 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build FreeBSD artifact
         uses: vmactions/freebsd-vm@v1
@@ -152,7 +152,7 @@ jobs:
               -C crates/na_mpeg2_decoder LICENSE-MPL-2.0
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: krkrz-freebsd-x86_64
           path: dist/krkrz-freebsd-x86_64.tar.gz
@@ -171,7 +171,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Read workspace version
         id: version
@@ -185,7 +185,7 @@ jobs:
           PY
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: krkrz-*
           path: dist
