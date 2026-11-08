@@ -259,7 +259,7 @@ impl eframe::App for FileApp {
             }
         });
         if let Some(path) = self.overwrite.clone() {
-            egui::Modal::new(egui::Id::new("overwrite")).show(&ctx, |ui| {
+            egui::Modal::new(egui::Id::unique("overwrite")).show(&ctx, |ui| {
                 ui.heading("Replace existing file?");
                 ui.label(path.to_string_lossy());
                 ui.horizontal(|ui| {

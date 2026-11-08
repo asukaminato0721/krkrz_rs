@@ -8,7 +8,7 @@ fn presentation_clips_without_rescaling() {
     let adapter = pollster::block_on(instance.request_adapter(&Default::default()))
         .expect("GPU adapter required for presentation test");
     let (device, queue) =
-        pollster::block_on(adapter.request_device(&Default::default(), None)).unwrap();
+        pollster::block_on(adapter.request_device(&Default::default())).unwrap();
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let (layout, pipeline) = create_pipeline(&device, format);
     let source = device.create_texture(&wgpu::TextureDescriptor {
@@ -31,7 +31,7 @@ fn presentation_clips_without_rescaling() {
     queue.write_texture(
         source.as_image_copy(),
         &pixels,
-        wgpu::ImageDataLayout {
+        wgpu::TexelCopyBufferLayout {
             offset: 0,
             bytes_per_row: Some(16),
             rows_per_image: Some(4),
@@ -97,9 +97,9 @@ fn presentation_clips_without_rescaling() {
         let mut encoder = device.create_command_encoder(&Default::default());
         encoder.copy_texture_to_buffer(
             target.as_image_copy(),
-            wgpu::ImageCopyBuffer {
+            wgpu::TexelCopyBufferInfo {
                 buffer: &readback,
-                layout: wgpu::ImageDataLayout {
+                layout: wgpu::TexelCopyBufferLayout {
                     offset: 0,
                     bytes_per_row: Some(stride),
                     rows_per_image: Some(height),
@@ -111,9 +111,9 @@ fn presentation_clips_without_rescaling() {
         let slice = readback.slice(..);
         let (tx, rx) = std::sync::mpsc::channel();
         slice.map_async(wgpu::MapMode::Read, move |result| tx.send(result).unwrap());
-        device.poll(wgpu::Maintain::Wait);
+        device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         rx.recv().unwrap().unwrap();
-        let data = slice.get_mapped_range();
+        let data = slice.get_mapped_range().unwrap();
         for y in 0..height {
             for x in 0..width {
                 let dx = i64::from(x) - i64::from(rect[0]);

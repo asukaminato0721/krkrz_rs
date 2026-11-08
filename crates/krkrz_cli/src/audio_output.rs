@@ -96,34 +96,34 @@ impl AudioOutput {
             .supported_output_configs()?
             .filter(|c| {
                 c.channels() == 2
-                    && c.min_sample_rate().0 <= 48_000
-                    && c.max_sample_rate().0 >= 48_000
+                    && c.min_sample_rate() <= 48_000
+                    && c.max_sample_rate() >= 48_000
             })
             .max_by_key(|c| match c.sample_format() {
                 SampleFormat::F32 => 3,
                 SampleFormat::I16 => 2,
                 _ => 1,
             })
-            .map(|c| c.with_sample_rate(cpal::SampleRate(48_000)))
+            .map(|c| c.with_sample_rate(48_000))
             .unwrap_or(default);
         let config = preferred.config();
         ensure!(
-            config.channels > 0 && config.sample_rate.0 > 0,
+            config.channels > 0 && config.sample_rate > 0,
             "audio device returned an invalid format"
         );
-        let (queue, consumer) = OutputQueue::new(config.sample_rate.0)?;
+        let (queue, consumer) = OutputQueue::new(config.sample_rate)?;
         let (sender, errors) = mpsc::sync_channel(1);
         let stream = match preferred.sample_format() {
-            SampleFormat::I8 => build::<i8>(&device, &config, consumer, sender)?,
-            SampleFormat::I16 => build::<i16>(&device, &config, consumer, sender)?,
-            SampleFormat::I32 => build::<i32>(&device, &config, consumer, sender)?,
-            SampleFormat::I64 => build::<i64>(&device, &config, consumer, sender)?,
-            SampleFormat::U8 => build::<u8>(&device, &config, consumer, sender)?,
-            SampleFormat::U16 => build::<u16>(&device, &config, consumer, sender)?,
-            SampleFormat::U32 => build::<u32>(&device, &config, consumer, sender)?,
-            SampleFormat::U64 => build::<u64>(&device, &config, consumer, sender)?,
-            SampleFormat::F32 => build::<f32>(&device, &config, consumer, sender)?,
-            SampleFormat::F64 => build::<f64>(&device, &config, consumer, sender)?,
+            SampleFormat::I8 => build::<i8>(&device, config, consumer, sender)?,
+            SampleFormat::I16 => build::<i16>(&device, config, consumer, sender)?,
+            SampleFormat::I32 => build::<i32>(&device, config, consumer, sender)?,
+            SampleFormat::I64 => build::<i64>(&device, config, consumer, sender)?,
+            SampleFormat::U8 => build::<u8>(&device, config, consumer, sender)?,
+            SampleFormat::U16 => build::<u16>(&device, config, consumer, sender)?,
+            SampleFormat::U32 => build::<u32>(&device, config, consumer, sender)?,
+            SampleFormat::U64 => build::<u64>(&device, config, consumer, sender)?,
+            SampleFormat::F32 => build::<f32>(&device, config, consumer, sender)?,
+            SampleFormat::F64 => build::<f64>(&device, config, consumer, sender)?,
             format => bail!("unsupported audio device sample format: {format}"),
         };
         stream.play().context("start audio output stream")?;
@@ -142,7 +142,7 @@ impl AudioOutput {
 }
 fn build<T: SizedSample + FromSample<f32>>(
     device: &cpal::Device,
-    config: &StreamConfig,
+    config: StreamConfig,
     mut consumer: Consumer<[f32; 2]>,
     errors: SyncSender<String>,
 ) -> Result<Stream> {

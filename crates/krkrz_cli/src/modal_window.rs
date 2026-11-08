@@ -234,7 +234,7 @@ impl eframe::App for App {
                     egui::Color32::WHITE,
                 );
                 let response =
-                    ui.interact(area, egui::Id::new("modal-input"), egui::Sense::click());
+                    ui.interact(area, egui::Id::unique("modal-input"), egui::Sense::click());
                 if response.clicked()
                     && let Some(pos) = response.interact_pointer_pos()
                 {

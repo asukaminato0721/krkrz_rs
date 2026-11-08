@@ -22,7 +22,9 @@ impl AppLocks {
         let name = name.split('\0').next().unwrap_or_default();
         // Keep lock files after release: unlinking would allow two independent
         // file handles to lock different inodes under the same name.
-        let path = directory.join(format!("{:x}", Sha256::digest(name.as_bytes())));
+        let digest: [u8; 32] = Sha256::digest(name.as_bytes()).into();
+        let file_name: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+        let path = directory.join(file_name);
         let file = OpenOptions::new()
             .create(true)
             .truncate(false)

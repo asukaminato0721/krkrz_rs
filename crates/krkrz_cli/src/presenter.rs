@@ -21,7 +21,7 @@ impl Presenter {
         pollster::block_on(Self::create(window))
     }
     async fn create(window: Arc<dyn Window>) -> Result<Self> {
-        let requested = wgpu::util::backend_bits_from_env();
+        let requested = wgpu::Backends::from_env();
         let result =
             Self::create_backend(window.clone(), requested.unwrap_or(wgpu::Backends::all())).await;
         match result {
@@ -41,16 +41,20 @@ impl Presenter {
     }
     async fn create_backend(window: Arc<dyn Window>, backends: wgpu::Backends) -> Result<Self> {
         let size = window.surface_size();
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends,
-            ..Default::default()
-        });
+        // GLES (notably on Wayland) needs the display connection up front to
+        // present; the window shares the display it will create a surface on.
+        let mut descriptor = wgpu::InstanceDescriptor::new_with_display_handle(Box::new(
+            window.clone(),
+        ));
+        descriptor.backends = backends;
+        let instance = wgpu::Instance::new(descriptor);
         let surface = instance.create_surface(window)?;
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 compatible_surface: Some(&surface),
                 power_preference: wgpu::PowerPreference::LowPower,
                 force_fallback_adapter: false,
+                apply_limit_buckets: false,
             })
             .await
             .context("no GPU adapter can present this window")?;
@@ -61,8 +65,8 @@ impl Presenter {
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::downlevel_defaults()
                         .using_resolution(adapter.limits()),
+                    ..Default::default()
                 },
-                None,
             )
             .await?;
         let mut config = surface
@@ -151,7 +155,7 @@ impl Presenter {
         self.queue.write_texture(
             texture.as_image_copy(),
             &image.rgba,
-            wgpu::ImageDataLayout {
+            wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(image.width * 4),
                 rows_per_image: Some(image.height),
@@ -159,12 +163,17 @@ impl Presenter {
             texture.size(),
         );
         let frame = match self.surface.get_current_texture() {
-            Ok(frame) => frame,
-            Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+            wgpu::CurrentSurfaceTexture::Success(frame)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(frame) => frame,
+            wgpu::CurrentSurfaceTexture::Lost | wgpu::CurrentSurfaceTexture::Outdated => {
                 return configure_surface(&self.surface, &self.device, &self.config);
             }
-            Err(wgpu::SurfaceError::Timeout) => return Ok(()),
-            Err(error) => return Err(error.into()),
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Validation => {
+                anyhow::bail!("GPU surface texture acquisition failed validation")
+            }
         };
         // The game rectangle may extend beyond the acquired surface during a
         // resize, or intentionally through zoom/full-screen placement. Keep the
@@ -181,12 +190,12 @@ impl Presenter {
             &view,
             rect,
         )));
-        frame.present();
+        self.queue.present(frame);
         Ok(())
     }
 }
 
-/// wgpu 0.20 routes surface configuration errors through its fatal panic
+/// wgpu routes surface configuration errors through its fatal panic
 /// handler, not device error scopes. Keep this boundary narrow: initialization
 /// can then try another backend, and resize/surface loss report a host error.
 fn configure_surface(
@@ -239,21 +248,21 @@ fn create_pipeline(
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: None,
-        bind_group_layouts: &[&layout],
-        push_constant_ranges: &[],
+        bind_group_layouts: &[Some(&layout)],
+        immediate_size: 0,
     });
     let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: None,
         layout: Some(&pipeline_layout),
         vertex: wgpu::VertexState {
             module: &shader,
-            entry_point: "vertex",
+            entry_point: Some("vertex"),
             compilation_options: Default::default(),
             buffers: &[],
         },
         fragment: Some(wgpu::FragmentState {
             module: &shader,
-            entry_point: "fragment",
+            entry_point: Some("fragment"),
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format,
@@ -264,7 +273,8 @@ fn create_pipeline(
         primitive: Default::default(),
         depth_stencil: None,
         multisample: Default::default(),
-        multiview: None,
+        multiview_mask: None,
+        cache: None,
     });
     (layout, pipeline)
 }
@@ -282,6 +292,7 @@ fn render_frame(
             label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view,
+                depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
                     load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
@@ -291,6 +302,7 @@ fn render_frame(
             depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
+            multiview_mask: None,
         });
         if rect[2] > 0 && rect[3] > 0 {
             pass.set_pipeline(pipeline);

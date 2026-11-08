@@ -1,5 +1,5 @@
 use krkrz_assets::media::Image;
-use tlg::{tlg_type::TlgEncoderTrait, tlg6::Tlg6Encoder};
+use tlg::{TlgEncoderTrait, tlg6::Tlg6Encoder};
 
 #[test]
 fn independent_tlg6_encoder_roundtrip_and_malformed_input() {
