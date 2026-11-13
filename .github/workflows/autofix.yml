@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 concurrency:
   group: autofix
@@ -55,14 +56,16 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --all
 
-      - name: Commit and push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "Nothing to fix."
-          else
-            git commit -m "autofix: cargo fmt + clippy --fix"
-            git push
-          fi
+      # Uses the default GITHUB_TOKEN, so the build workflow does not run on
+      # this PR automatically; close and reopen it to trigger CI.
+      - name: Open pull request
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: autofix/fmt-clippy
+          delete-branch: true
+          commit-message: "autofix: cargo fmt + clippy --fix"
+          title: "autofix: cargo fmt + clippy --fix"
+          body: |
+            Automated `cargo clippy --fix` followed by `cargo fmt --all`.
+
+            CI does not start automatically on this PR; close and reopen it to run the build.
