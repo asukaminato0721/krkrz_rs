@@ -137,7 +137,12 @@ impl MpaAudioDecoder {
             self.dec_codec = Some(codec_type);
         }
 
-        let pkt = PacketRef::new(self.track_id, Timestamp::new(0), Duration::new(0), pkt_bytes);
+        let pkt = PacketRef::new(
+            self.track_id,
+            Timestamp::new(0),
+            Duration::new(0),
+            pkt_bytes,
+        );
 
         let dec = self.dec.as_mut().expect("decoder must be initialized");
         let decoded = dec.decode_ref(&pkt).map(|buf| {
