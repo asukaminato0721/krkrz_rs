@@ -43,9 +43,8 @@ impl Presenter {
         let size = window.surface_size();
         // GLES (notably on Wayland) needs the display connection up front to
         // present; the window shares the display it will create a surface on.
-        let mut descriptor = wgpu::InstanceDescriptor::new_with_display_handle(Box::new(
-            window.clone(),
-        ));
+        let mut descriptor =
+            wgpu::InstanceDescriptor::new_with_display_handle(Box::new(window.clone()));
         descriptor.backends = backends;
         let instance = wgpu::Instance::new(descriptor);
         let surface = instance.create_surface(window)?;
@@ -59,15 +58,13 @@ impl Presenter {
             .await
             .context("no GPU adapter can present this window")?;
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("Kirikiri presentation"),
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::downlevel_defaults()
-                        .using_resolution(adapter.limits()),
-                    ..Default::default()
-                },
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("Kirikiri presentation"),
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::downlevel_defaults()
+                    .using_resolution(adapter.limits()),
+                ..Default::default()
+            })
             .await?;
         let mut config = surface
             .get_default_config(&adapter, size.width.max(1), size.height.max(1))

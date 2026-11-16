@@ -95,9 +95,7 @@ impl AudioOutput {
         let preferred = device
             .supported_output_configs()?
             .filter(|c| {
-                c.channels() == 2
-                    && c.min_sample_rate() <= 48_000
-                    && c.max_sample_rate() >= 48_000
+                c.channels() == 2 && c.min_sample_rate() <= 48_000 && c.max_sample_rate() >= 48_000
             })
             .max_by_key(|c| match c.sample_format() {
                 SampleFormat::F32 => 3,

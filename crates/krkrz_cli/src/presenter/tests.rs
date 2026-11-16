@@ -7,8 +7,7 @@ fn presentation_clips_without_rescaling() {
     let instance = wgpu::Instance::default();
     let adapter = pollster::block_on(instance.request_adapter(&Default::default()))
         .expect("GPU adapter required for presentation test");
-    let (device, queue) =
-        pollster::block_on(adapter.request_device(&Default::default())).unwrap();
+    let (device, queue) = pollster::block_on(adapter.request_device(&Default::default())).unwrap();
     let format = wgpu::TextureFormat::Rgba8Unorm;
     let (layout, pipeline) = create_pipeline(&device, format);
     let source = device.create_texture(&wgpu::TextureDescriptor {
