@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
@@ -59,7 +59,7 @@ jobs:
       # Uses the default GITHUB_TOKEN, so the build workflow does not run on
       # this PR automatically; close and reopen it to trigger CI.
       - name: Open pull request
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           branch: autofix/fmt-clippy
           delete-branch: true
